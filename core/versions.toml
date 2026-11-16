@@ -1,7 +1,8 @@
 # Licensed under the Apache-2.0 license
 
 # Immutable caliptra-sw commits. The submodule gitlink defaults to latest.
-# 2.1 is the official baseline; latest pins upstream's caliptra-2.2-dev branch.
+# 2.1 is the official baseline; latest includes the predictor workaround in
+# chipsalliance/caliptra-sw#4428 for broader 2.2 FPGA validation.
 [versions]
 "2.1" = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb"
-latest = "1a5ed709808ab5bd77372dd9cee66f8833936901"
+latest = "ab26838b4036dd7520d2812afa40ed6cd865ef7a"

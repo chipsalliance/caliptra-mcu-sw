@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
 concurrency:
@@ -296,6 +300,23 @@ jobs:
           cargo xtask-fpga fpga download-bitstream
           mv caliptra-bitstream.pdi /tmp/caliptra-bitstream.pdi
 
+      - name: Download pinned 2.2 segmented bitstream bundle
+        if: matrix.hw-revision == 'latest'
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: 43534379286
+          artifact-ids: 14097800964
+          path: /tmp/latest-bitstream
+          merge-multiple: true
+
+      - name: Verify and extract 2.2 bitstream
+        if: matrix.hw-revision == 'latest'
+        run: |
+          tar -xzf /tmp/latest-bitstream/caliptra-bitstream.tar.gz -C /tmp/latest-bitstream
+          echo "d15fb675fec9e38db30267fcc99de9134087149bb4302e76d1dfac00dc2f9e48  /tmp/latest-bitstream/runtime_9117a1a.pdi" | sha256sum -c
+          mv /tmp/latest-bitstream/runtime_9117a1a.pdi /tmp/caliptra-bitstream.pdi
+
       - name: Build release profile and test binaries
         run: |
           export OPENSSL_NO_VENDOR=true
@@ -326,7 +347,6 @@ jobs:
           mksquashfs /tmp/caliptra-test-binaries /tmp/caliptra-test-binaries.sqsh -comp zstd
 
       - name: 'Upload bitstream'
-        if: matrix.hw-revision == '2.1'
         uses: actions/upload-artifact@v7
         with:
           name: caliptra-bitstream-${{ matrix.hw-revision }}
@@ -348,15 +368,18 @@ jobs:
           path: /tmp/caliptra-binaries
           retention-days: 1
 
-  test_artifacts:
-    # Only the validated 2.1 bitstream is executed; latest remains build-only.
+  test_artifacts_revision:
     if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
     env:
-      CALIPTRA_HW_REV: "2.1"
-      CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/rev-2_1/fuses.hjson
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/${{ matrix.hw-revision == '2.1' && 'rev-2_1' || 'latest' }}/fuses.hjson
       RUSTUP_TOOLCHAIN: "1.96.1"
 
     steps:
@@ -368,19 +391,19 @@ jobs:
       - name: 'Download Test Binaries Artifact'
         uses: actions/download-artifact@v8
         with:
-          name: caliptra-test-binaries-2.1
+          name: caliptra-test-binaries-${{ matrix.hw-revision }}
           path: /tmp/caliptra-test-binaries.sqsh
 
       - name: 'Download Test Firmware Artifact'
         uses: actions/download-artifact@v8
         with:
-          name: caliptra-test-firmware-2.1
+          name: caliptra-test-firmware-${{ matrix.hw-revision }}
           path: /tmp/caliptra-binaries
 
       - name: 'Download Bitstream'
         uses: actions/download-artifact@v8
         with:
-          name: caliptra-bitstream-2.1
+          name: caliptra-bitstream-${{ matrix.hw-revision }}
           path: /tmp/caliptra-bitstream
 
       - name: Install Cargo for source-switch validation
@@ -391,7 +414,7 @@ jobs:
       - name: Load bitstream
         run: |
           chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask switch-version 2.1
+          /tmp/caliptra-binaries/xtask switch-version "${{ matrix.hw-revision }}"
           /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
 
       - name: Mount binaries
@@ -431,7 +454,17 @@ jobs:
         uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
-          name: caliptra-test-results-2.1
+          name: caliptra-test-results-${{ matrix.hw-revision }}
           path: |
             /tmp/junit.xml
             /tmp/nextest-list.json
+
+  test_artifacts:
+    if: ${{ always() && vars.RUN_FPGA_CI != 'false' }}
+    needs: test_artifacts_revision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both FPGA revisions to pass
+        env:
+          RESULT: ${{ needs.test_artifacts_revision.result }}
+        run: test "$RESULT" = success
