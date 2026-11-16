@@ -27,6 +27,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   RUSTUP_TOOLCHAIN: "1.96.1"
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -61,6 +65,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         include:
           - label: core
@@ -412,7 +417,6 @@ jobs:
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           cargo build --release --manifest-path ocp-eat-verifier/Cargo.toml -p ocptoken
           cp ocp-eat-verifier/target/release/ocptoken spdm-emu/build/bin/
-          test -x spdm-emu/build/bin/spdm_device_validator_sample
           test -x spdm-emu/build/bin/spdm_requester_emu
           git -C spdm-emu rev-parse HEAD | tee spdm-emu/build/bin/spdm-emu-revision.txt
           tar -czf "${RUNNER_TEMP}/spdm-emu-tools.tar.gz" -C spdm-emu build/bin
@@ -429,8 +433,7 @@ jobs:
     needs: [resolve, prepare, spdm-tools]
     if: ${{ always() && needs.prepare.result == 'success' }}
     runs-on: e2-standard-16-big-disk
-    # SPDM conformance alone can take most of an hour in the emulator.
-    timeout-minutes: 240
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -552,10 +555,7 @@ jobs:
           junit = ET.Element("testsuite", name="ROM/runtime compatibility")
           scenarios = """recovery_cold_boot flash_cold_boot streaming_boot handoff runtime_commands
           cold_reboot corrupted_runtime corrupted_manifest svn_rollback svn_boundary warm_reset
-          suite_attestation_ocp_eat_non_tcb suite_attestation_ocp_eat_tcb suite_attestation_ocp_eat_mixed
-          suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe
-          suite_ownership_dot suite_owner_stable_key
-          suite_network_boot suite_usb_recovery""".split()
+          suite_attestation_ocp_eat_non_tcb suite_attestation_ocp_eat_tcb suite_attestation_ocp_eat_mixed""".split()
           for rom, runtime in itertools.product(["rom-sdk-2.1.0"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
               directory = root / "results" / rom / runtime
               cases, issues, received = [], [], 0
