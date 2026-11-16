@@ -40,6 +40,8 @@ mod test_ocp_dev_identity_provision_tool;
 mod test_offline_signing;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
+#[cfg(all(test, not(feature = "fpga_realtime")))]
+mod test_rom_runtime_compatibility;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
