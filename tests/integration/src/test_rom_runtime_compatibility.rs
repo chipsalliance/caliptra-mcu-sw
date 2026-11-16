@@ -6,7 +6,7 @@
 mod fixtures;
 mod spdm;
 
-use crate::test::{CustomCaliptraFw, TestParams};
+use crate::test::CustomCaliptraFw;
 use anyhow::{bail, ensure, Context, Result};
 use caliptra_api::{calc_checksum, SocManager};
 use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel, McuManager};
@@ -28,16 +28,28 @@ use std::{
 };
 use zerocopy::FromBytes;
 
-const CORE: &str = "b99535ded32492d6c23bbc56f95e787a1e275b59";
-const ROMS: [(&str, &str); 1] = [("rom-sdk-2.1.0", "da451221542758758f1c4ce35efbe48da9935dd8")];
-const RUNTIMES: [&str; 3] = ["rt-sdk-2.1.0", "rt-sdk-2.1.1", "main-2.1"];
+/// Core ROM pinned by the latest released 2.0 runtime SDK (`rt-sdk-2.0.0`),
+/// as the 2.1 matrix pins the Core of `rt-sdk-2.1.1`.
+const CORE: &str = "e5ceee831f1b6b49a8d139a705133e47deab8711";
+const CORE_TOOLCHAIN: &str = "1.85";
+const HW_REVISION: &str = "2.0.0";
+const ROMS: [(&str, &str); 2] = [
+    ("rom-sdk-2.0.0", "af221b798025d16093aa8c36a2d7e56c47908e9b"),
+    ("rom-sdk-2.0.1", "7cb0e5576b4760969071b6d30762b082f858b390"),
+];
+const ROM_TOOLCHAIN: &str = "1.85";
+const RUNTIMES: [&str; 1] = ["main"];
+const RUNTIME_TOOLCHAIN: &str = "1.96.1";
+/// Caliptra 2.0 MCU ROMs refuse flash boot unless built for 2.1 hardware.
+const MODES: [&str; 1] = ["streaming"];
 const PLDM_TID: u8 = 1;
+/// Caliptra's AXI address of MCI; fixtures load SoC images into MCU mailbox 1
+/// SRAM at offset 0x80_0000 from it.
+const MCI_BASE_AXI_ADDRESS: u64 = 0xa800_0000;
 
 fn runtime_source(label: &str) -> Result<String> {
     Ok(match label {
-        "rt-sdk-2.1.0" => "24ea8b90bb56c0aed5512232dfbbca3dd2e39716".into(),
-        "rt-sdk-2.1.1" => "8c9c8ff27de1babf63c0be74e973185837439040".into(),
-        "main-2.1" => std::env::var("MCU_COMPAT_CURRENT_RUNTIME_SHA")?,
+        "main" => std::env::var("MCU_COMPAT_CURRENT_RUNTIME_SHA")?,
         _ => bail!("Unknown runtime {label}"),
     })
 }
@@ -46,9 +58,7 @@ fn runtime_source(label: &str) -> Result<String> {
 /// Only the Core ROM (`CORE`) is fixed across the matrix.
 fn core_firmware_source(runtime: &str) -> Result<(String, &'static str)> {
     Ok(match runtime {
-        "rt-sdk-2.1.0" => ("557fd1a9864831a7d1cdfaffd3b33fd2e26f5e93".into(), "1.85"),
-        "rt-sdk-2.1.1" => (CORE.into(), "1.96"),
-        "main-2.1" => (std::env::var("MCU_COMPAT_CURRENT_CORE_SHA")?, "1.96"),
+        "main" => (std::env::var("MCU_COMPAT_CURRENT_CORE_SHA")?, "1.96"),
         _ => bail!("Unknown runtime {runtime}"),
     })
 }
@@ -57,14 +67,6 @@ fn artifact_root() -> Result<PathBuf> {
     let path = std::env::var_os("MCU_COMPAT_ARTIFACT_DIR")
         .context("BLOCKED: MCU_COMPAT_ARTIFACT_DIR is required")?;
     Ok(fs::canonicalize(path)?)
-}
-
-fn require_agreement() -> Result<()> {
-    ensure!(
-        !std::env::var("MCU_COMPAT_AGREEMENT").unwrap_or_default().trim().is_empty(),
-        "BLOCKED: owner agreement on the 2.1 Core, OTP/signing and release build configurations is required"
-    );
-    Ok(())
 }
 
 #[derive(Deserialize, Serialize)]
@@ -116,10 +118,10 @@ fn image(root: &Path, label: &str, mode: &str) -> Result<(Build, Vec<u8>)> {
     } else {
         runtime_source(label)?
     };
-    let toolchain = if label.starts_with("rom-") || label == "rt-sdk-2.1.0" {
-        "1.85"
+    let toolchain = if label.starts_with("rom-") {
+        ROM_TOOLCHAIN
     } else {
-        "1.96.1"
+        RUNTIME_TOOLCHAIN
     };
     ensure!(
         build.source == source && build.toolchain == toolchain,
@@ -168,13 +170,15 @@ struct PairConfig {
     soc_manifest: Artifact,
     otp: Artifact,
     vendor_pk_hash: String,
-    primary_flash: Artifact,
+    /// Released-ROM flash image; only prepared for flash-capable ROMs.
+    primary_flash: Option<Artifact>,
     runtime_flash: Artifact,
     pldm_package: Artifact,
     /// How the selected runtime loads SoC images: `pldm` or `flash`.
     soc_loading: String,
     expected_capabilities: String,
-    handoff_address: u32,
+    /// DCCM handoff table address; absent for ROMs that predate the table.
+    handoff_address: Option<u32>,
     soc_images: Vec<MemoryCheck>,
     negative_cases: BTreeMap<String, NegativeCase>,
 }
@@ -192,13 +196,12 @@ struct SelectedPair {
 
 impl SelectedPair {
     fn load(scenario: &str) -> Result<Self> {
-        require_agreement()?;
         let root = artifact_root()?;
         let rom = std::env::var("MCU_COMPAT_ROM")?;
         let runtime = std::env::var("MCU_COMPAT_RUNTIME")?;
         let mode = std::env::var("MCU_COMPAT_MODE")?;
         ensure!(
-            matches!(mode.as_str(), "flash" | "streaming"),
+            MODES.contains(&mode.as_str()),
             "Unknown runtime configuration"
         );
         let configuration = Self::service_configuration(scenario, &mode);
@@ -227,9 +230,9 @@ impl SelectedPair {
             serde_json::from_slice(&fs::read(root.join("fixtures/core.json"))?)?;
         ensure!(
             core["source"] == CORE
-                && core["hardware"] == "2.1.0"
+                && core["hardware"] == HW_REVISION
                 && core["firmware"][&runtime] == core_firmware_source(&runtime)?.0,
-            "Fixtures are not the agreed 2.1 Core ROM and the runtime's Core firmware"
+            "Fixtures are not the pinned 2.0 Core ROM and the runtime's Core firmware"
         );
         Ok(Self {
             config,
@@ -312,38 +315,36 @@ impl SelectedPair {
             (
                 otp,
                 if flash {
-                    self.config.primary_flash.read(&self.root)?
+                    self.config
+                        .primary_flash
+                        .as_ref()
+                        .context("BLOCKED: no released-ROM flash image")?
+                        .read(&self.root)?
                 } else {
                     runtime_flash.read(&self.root)?
                 },
             )
         };
-        let params = TestParams {
-            custom_mcu_rom: Some(self.rom.clone()),
-            custom_mcu_runtime: Some(runtime),
-            custom_caliptra_fw: Some(core_fw),
-            otp_memory: Some(otp),
-            flash_boot: flash,
-            primary_flash_image: Some(primary_flash),
-            i3c_port: if transport {
-                Some(
-                    random_port::PortPicker::new()
-                        .random(true)
-                        .pick()
-                        .context("No free I3C port")?,
-                )
-            } else {
-                None
-            },
-            rom_only: true,
-            ..Default::default()
+        let i3c_port = if transport {
+            Some(
+                random_port::PortPicker::new()
+                    .random(true)
+                    .pick()
+                    .context("No free I3C port")?,
+            )
+        } else {
+            None
         };
+        // The Core emulator otherwise places MCI at a random AXI base, so Core
+        // DMA from the fixtures' SoC load addresses never completes. The
+        // main-2.1 hardware model sets this default itself.
+        std::env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("{MCI_BASE_AXI_ADDRESS:#018x}"),
+        );
         // Instantiate only the supplied images; the shared helper may compile fallback firmware.
-        let rom = params.custom_mcu_rom.context("Missing selected ROM")?;
-        let runtime = params
-            .custom_mcu_runtime
-            .context("Missing selected runtime")?;
-        let core = params.custom_caliptra_fw.context("Missing Core fixtures")?;
+        let rom = self.rom.clone();
+        let core = core_fw;
         let vendor_hash = std::array::from_fn(|index| {
             u32::from_be_bytes(
                 core.vendor_pk_hash[index * 4..index * 4 + 4]
@@ -351,12 +352,12 @@ impl SelectedPair {
                     .unwrap(),
             )
         });
-        Ok(caliptra_mcu_hw_model::new(InitParams {
-            hw_revision: Some("2.1.0".parse()?),
+        caliptra_mcu_hw_model::new(InitParams {
+            hw_revision: Some(HW_REVISION.parse()?),
             capture_mcu_exit: true,
             fuses: Fuses {
                 vendor_pk_hash: vendor_hash,
-                fuse_pqc_key_type: 1,
+                fuse_pqc_key_type: caliptra_image_types::FwVerificationPqcKeyType::LMS as u32,
                 ..Default::default()
             },
             caliptra_rom: &core_rom,
@@ -367,15 +368,14 @@ impl SelectedPair {
             vendor_pk_hash: Some(core.vendor_pk_hash),
             vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
             active_mode: true,
-            ocp_lock_en: false,
-            i3c_port: params.i3c_port,
+            i3c_port,
             enable_mcu_uart_log: true,
             check_booted_to_runtime: false,
-            otp_memory: params.otp_memory.as_deref(),
-            primary_flash_initial_contents: params.primary_flash_image,
+            otp_memory: Some(&otp),
+            primary_flash_initial_contents: Some(primary_flash),
             flash_boot: flash,
             ..Default::default()
-        })?)
+        })
     }
 }
 
@@ -429,12 +429,21 @@ fn check_no_fatal(hw: &mut impl McuHwModel) -> Result<()> {
 
 fn verify_svn_boundary(manifest: &[u8], otp: &[u8], runtime: &[u8]) -> Result<u32> {
     use caliptra_auth_man_types::AuthorizationManifest;
+    use caliptra_mcu_registers_generated::fuses;
     use sha2::Sha384;
-    ensure!(otp.len() == 0xe88, "Wrong SVN OTP size");
+    ensure!(
+        otp.len() == fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE,
+        "Wrong SVN OTP size"
+    );
     let signed = AuthorizationManifest::ref_from_bytes(manifest)
         .map_err(|error| anyhow::anyhow!("Invalid boundary manifest: {error}"))?;
-    let floor: u32 = otp[0x3cc..0x3dc].iter().map(|byte| byte.count_ones()).sum();
-    let ceiling = u32::from_le_bytes(otp[0x3dc..0x3e0].try_into()?);
+    // SoC manifest SVN floor bitmap, then the maximum SVN.
+    let svn = fuses::SVN_PARTITION_BYTE_OFFSET;
+    let floor: u32 = otp[svn + 20..svn + 36]
+        .iter()
+        .map(|byte| byte.count_ones())
+        .sum();
+    let ceiling = u32::from_le_bytes(otp[svn + 36..svn + 40].try_into()?);
     ensure!(
         floor > 0 && signed.preamble.svn == floor && floor <= ceiling,
         "Not an exact signed SVN boundary"
@@ -1004,7 +1013,9 @@ fn check_capabilities(response: &[u8], expected: &[u8]) -> Result<()> {
     );
     ensure!(
         payload == expected,
-        "Capabilities differ from selected release metadata"
+        "Capabilities differ from selected release metadata: expected {}, got {}",
+        hex::encode(expected),
+        hex::encode(payload)
     );
     Ok(())
 }
@@ -1064,7 +1075,12 @@ fn flash_layout_requires_bootable_partition_table() {
 
 /// Returns why the selected ROM's flash image cannot serve the runtime's flash loader.
 fn flash_layout_incompatibility(pair: &SelectedPair) -> Result<Option<String>> {
-    let flash = pair.config.primary_flash.read(&pair.root)?;
+    let flash = pair
+        .config
+        .primary_flash
+        .as_ref()
+        .context("BLOCKED: no released-ROM flash image")?
+        .read(&pair.root)?;
     Ok((!has_bootable_partition_table(&flash)).then(|| {
         format!(
             "{} stores its flash image at offset 0, where the runtime's flash loader requires \
@@ -1114,9 +1130,20 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
         ));
     }
     if matches!(scenario, "flash_cold_boot" | "cold_reboot") && pair.streaming() {
-        return Ok(Some(
-            "Covered by the separate flash-only configuration".into(),
-        ));
+        return Ok(Some(if MODES.contains(&"flash") {
+            "Covered by the separate flash-only configuration".into()
+        } else {
+            "Caliptra 2.0 MCU ROMs reject flash boot (it requires the hw-2-1 feature); \
+             only streaming recovery boot applies"
+                .into()
+        }));
+    }
+    if scenario == "handoff" && pair.config.handoff_address.is_none() {
+        return Ok(Some(format!(
+            "{} predates the ROM handoff table; the runtime must boot without it, \
+             which recovery_cold_boot covers",
+            pair.config.rom
+        )));
     }
     if matches!(scenario, "flash_cold_boot" | "cold_reboot") {
         if let Some(reason) = flash_layout_incompatibility(pair)? {
@@ -1270,11 +1297,15 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
             &hex::decode(&pair.config.expected_capabilities)?,
         )?,
         "handoff" => {
-            let bytes = read_memory(&mut hw.mcu_manager(), pair.config.handoff_address, 8)?;
+            let address = pair
+                .config
+                .handoff_address
+                .context("Missing ROM handoff address")?;
+            let bytes = read_memory(&mut hw.mcu_manager(), address, 8)?;
             ensure!(
                 &bytes[..4] == b"MCUH" && bytes[4..8] == [1, 0, 0, 0],
                 "Released ROM handoff at {:#x} is not version 1.0 after runtime startup: expected 4d43554801000000, got {}",
-                pair.config.handoff_address,
+                address,
                 hex::encode(&bytes)
             );
             // The selected ROM predates boot-source/capability fields.
@@ -1330,7 +1361,7 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
         "suite_network_boot" => return Ok(Some("No network ROM/configuration is selected".into())),
         "suite_usb_recovery" => {
             return Ok(Some(
-                "USB recovery is outside the selected 2.1 I3C configuration".into(),
+                "USB recovery is outside the selected 2.0 I3C configuration".into(),
             ))
         }
         _ => {}

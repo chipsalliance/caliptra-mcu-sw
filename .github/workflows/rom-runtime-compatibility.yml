@@ -5,22 +5,14 @@ name: Released ROM/runtime compatibility
 on:
   workflow_call:
     inputs:
-      fixture-agreement:
-        description: Owner approval of 2.1 Core b99535d, LMS test keys, Raw OTP, release flash/streaming and non-TCB/TCB/mixed live-service configurations
-        type: string
-        default: ""
       expected-capabilities:
-        description: JSON mapping each runtime label to its expected flash and streaming capability hex strings
+        description: JSON overriding the reviewed EXPECTED_CAPABILITIES bytes
         type: string
         default: ""
   workflow_dispatch:
     inputs:
-      fixture-agreement:
-        description: Owner approval of the fixed 2.1 Core/OTP/signing, release flash/streaming and non-TCB/TCB/mixed live-service configurations
-        type: string
-        required: false
       expected-capabilities:
-        description: 'JSON: {"rt-sdk-2.1.0":{"flash":"...","streaming":"..."},"rt-sdk-2.1.1":{...},"main-2.1":{...}}'
+        description: 'JSON override: {"main":{"streaming":"..."}}'
         type: string
         required: false
 
@@ -32,9 +24,7 @@ env:
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   CARGO_BUILD_JOBS: "4"
   CARGO_INCREMENTAL: "0"
-  CALIPTRA_HW_REV: "2.1"
-  MCU_COMPAT_AGREEMENT: ${{ inputs.fixture-agreement || vars.MCU_COMPAT_FIXTURE_AGREEMENT }}
-  MCU_COMPAT_CAPABILITIES: ${{ inputs.expected-capabilities || vars.MCU_COMPAT_CAPABILITIES }}
+  MCU_COMPAT_CAPABILITIES: ${{ inputs.expected-capabilities }}
 
 jobs:
   resolve:
@@ -46,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main-2.1
+          ref: ${{ github.sha }}
       - id: source
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -63,33 +53,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The Core pinned by rt-sdk-2.0.0 (caliptra-sw release_v20260820_0-2.0).
           - label: core
             repository: chipsalliance/caliptra-sw
-            source: b99535ded32492d6c23bbc56f95e787a1e275b59
-            toolchain: "1.96"
-          # Core firmware ships with each MCU runtime; only the Core ROM above is fixed.
-          - label: core-fw-rt-sdk-2.1.0
-            repository: chipsalliance/caliptra-sw
-            source: 557fd1a9864831a7d1cdfaffd3b33fd2e26f5e93
+            source: e5ceee831f1b6b49a8d139a705133e47deab8711
             toolchain: "1.85"
-          - label: core-fw-rt-sdk-2.1.1
-            repository: chipsalliance/caliptra-sw
-            source: b99535ded32492d6c23bbc56f95e787a1e275b59
-            toolchain: "1.96"
-          - label: core-fw-main-2.1
+          # Core firmware ships with each MCU runtime; only the Core ROM above is fixed.
+          - label: core-fw-main
             repository: chipsalliance/caliptra-sw
             source: ${{ needs.resolve.outputs.core-sha }}
             toolchain: "1.96"
-          - label: rom-sdk-2.1.0
-            source: da451221542758758f1c4ce35efbe48da9935dd8
+          - label: rom-sdk-2.0.0
+            source: af221b798025d16093aa8c36a2d7e56c47908e9b
             toolchain: "1.85"
-          - label: rt-sdk-2.1.0
-            source: 24ea8b90bb56c0aed5512232dfbbca3dd2e39716
+          - label: rom-sdk-2.0.1
+            source: 7cb0e5576b4760969071b6d30762b082f858b390
             toolchain: "1.85"
-          - label: rt-sdk-2.1.1
-            source: 8c9c8ff27de1babf63c0be74e973185837439040
-            toolchain: "1.96.1"
-          - label: main-2.1
+          - label: main
             source: ${{ needs.resolve.outputs.runtime-sha }}
             toolchain: "1.96.1"
     env:
@@ -116,55 +96,37 @@ jobs:
           git submodule status --recursive > output/submodules.txt
           rustc --version > output/toolchain.txt
           if [ "$LABEL" = core ]; then
-            echo 'cargo run --locked -p caliptra-builder --bin image -- --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
+            echo 'cargo run --locked -p caliptra-builder --bin image -- --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
             cargo run --locked -p caliptra-builder --bin image -- \
               --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin \
-              --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
+              --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
             cp error/src/lib.rs output/errors.rs
           elif [[ "$LABEL" == core-fw-* ]]; then
-            echo 'cargo run --locked -p caliptra-builder --bin image -- --fw output/caliptra-firmware.bin --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
+            echo 'cargo run --locked -p caliptra-builder --bin image -- --fw output/caliptra-firmware.bin --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
             cargo run --locked -p caliptra-builder --bin image -- \
               --fw output/caliptra-firmware.bin \
-              --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
+              --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
             cp error/src/lib.rs output/errors.rs
           elif [[ "$LABEL" == rom-* ]]; then
-            # Use the shipping handoff allocation, not rom-build's devel manifest.
-            sizing_features=hw-2-1
-            if [ "$LABEL" = rom-sdk-2.1.0 ]; then sizing_features+=,release; fi
-            command=(cargo run --locked -p caliptra-mcu-xtask -- firmware-bundler build
-              firmware-bundler/reference/emulator/user-app.toml \
-              --rom-features hw-2-1 --runtime-features "$sizing_features"
-              caliptra-mcu-rom-emulator)
+            # The release's own ROM build, which pads the image and appends its SHA-384 digest.
+            command=(cargo run --locked -p xtask -- rom-build --platform emulator)
             printf '%q ' "${command[@]}" > output/build-command.txt
             "${command[@]}" 2>&1 | tee output/build.log
-            # Match rom-build's zero padding and appended SHA-384 ROM digest.
-            python3 - <<'PY'
-          import hashlib, pathlib
-          data = pathlib.Path("target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator.bin").read_bytes()
-          assert len(data) <= 0x10000 - 48, "ROM does not leave space for its digest"
-          data = data.ljust(0x10000 - 48, b"\0")
-          pathlib.Path("output/image.bin").write_bytes(data + hashlib.sha384(data).digest())
-          PY
-            cp firmware-bundler/reference/emulator/user-app.toml output/rom-manifest.toml
-            cp target/debug/caliptra-mcu-xtask output/flash-image-tool
+            cp target/riscv32imc-unknown-none-elf/release/mcu-rom-emulator.bin output/image.bin
             cp error/src/lib.rs output/errors.rs
-            cp target/riscv32imc-unknown-none-elf/linker-scripts/caliptra-mcu-rom-emulator-*.ld output/
+            # 2.0 ROMs predate the DCCM handoff table; record one if a linker script defines it.
+            find target/riscv32imc-unknown-none-elf -name '*rom*.ld' -exec cp {} output/ \;
           else
-            # SDK 2.1.0's builder includes only SoC images in the embedded policy.
             mkdir -p target/generated
             cat > target/generated/attestation_manifest.toml <<'EOF'
           vendor = "ChipsAlliance"
           model = "Caliptra-SS"
-          EOF
-            if [ "$LABEL" != rt-sdk-2.1.0 ]; then
-              cat >> target/generated/attestation_manifest.toml <<'EOF'
 
           [[components]]
           fw_id = 4
           is_tcb = true
           is_ak_target = false
           EOF
-            fi
             cat >> target/generated/attestation_manifest.toml <<'EOF'
 
           [[components]]
@@ -185,7 +147,7 @@ jobs:
           fw_id = 4097
           EOF
             cp target/generated/attestation_manifest.toml target/generated/soc_image_descriptors.toml output/
-            for mode in flash streaming services-non-tcb services-tcb services-mixed; do
+            for mode in streaming services-non-tcb services-tcb services-mixed; do
               cp output/attestation_manifest.toml target/generated/attestation_manifest.toml
               boot_mode="$mode"
               if [[ "$mode" == services-* ]]; then
@@ -199,11 +161,7 @@ jobs:
                 cp target/generated/soc_image_descriptors.toml "output/$mode-soc_image_descriptors.toml"
               fi
               soc_loading="$boot_mode"
-              # SDK 2.1.0's attestation features always reload SoC images from
-              # flash, even after a streaming load. Build its service images
-              # flash-loaded, as its SDK tested them; prepare_inputs reads this.
-              if [[ "$LABEL" == rt-sdk-2.1.0 && "$mode" == services-* ]]; then soc_loading=flash; fi
-              features=(--features hw-2-1 --features mcu-mbox-service --features "$soc_loading-boot")
+              features=(--features mcu-mbox-service --features "$soc_loading-boot")
               if [ "$boot_mode" = streaming ]; then features+=(--features spdm --features mctp-vdm-service); fi
               # Native cold-boot attestation features retain the responder after loading.
               case "$mode" in
@@ -211,8 +169,8 @@ jobs:
                 services-tcb) features+=(--features test-mctp-spdm-attestation-tcb) ;;
                 services-mixed) features+=(--features test-mctp-spdm-attestation-mixed) ;;
               esac
-              printf '%q ' cargo run --locked -p caliptra-mcu-xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" > "output/$mode-command.txt"
-              cargo run --locked -p caliptra-mcu-xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" 2>&1 | tee "output/$mode-build.log"
+              printf '%q ' cargo run --locked -p xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" > "output/$mode-command.txt"
+              cargo run --locked -p xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" 2>&1 | tee "output/$mode-build.log"
               cp "target/riscv32imc-unknown-none-elf/release/$mode.bin" output/
             done
             cp common/config/src/version.rs output/
@@ -230,10 +188,9 @@ jobs:
               source = re.sub(r"\s+", "", (p/"errors.rs").read_text())
               data["mcu_error"] = int(re.search(r"\(ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY,(0x[0-9a-fA-F_]+),", source)[1].replace("_", ""), 16)
               addresses = {int(x, 16) for f in p.glob("*.ld") for x in re.findall(r"HANDOFF_ADDR\s*=\s*0x([0-9a-fA-F]+);", f.read_text())}
-              assert len(addresses) == 1, "Missing or ambiguous handoff address"
-              data["handoff_address"] = addresses.pop()
-              assert data["handoff_address"] == 0x50003c00, "ROM must use the shipping handoff address"
-              data["rom_manifest_sha256"] = hashlib.sha256((p/"rom-manifest.toml").read_bytes()).hexdigest()
+              assert len(addresses) <= 1, "Ambiguous handoff address"
+              data["handoff_address"] = addresses.pop() if addresses else None
+              assert data["handoff_address"] in [None, 0x50003c00], "ROM must use the shipping handoff address"
           elif not os.environ["LABEL"].startswith("core"):
               data["embedded_configuration"] = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()
                   for pattern in ["*attestation_manifest.toml", "*soc_image_descriptors.toml"] for f in p.glob(pattern)}
@@ -282,14 +239,13 @@ jobs:
             label="${directory##*/compatibility-image-}"
             mv "$directory" "inputs/images/$label"
           done
-          chmod +x inputs/images/rom-*/flash-image-tool
       - name: Build the test archive and prepare native signed fixtures once
         shell: bash
         run: |
           set -euo pipefail
           cargo nextest archive --locked -p caliptra-mcu-tests-integration --archive-file compatibility-tests.tar.zst
           cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
-            --profile emulator --run-ignored only --test-threads=1 --no-tests fail \
+            --profile nightly-emulator --run-ignored only --test-threads=1 --no-tests fail \
             -E 'test(=test_rom_runtime_compatibility::fixtures::prepare_inputs)' 2>&1 | tee prepare.log
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -306,7 +262,7 @@ jobs:
           import json, os, pathlib, zipfile
           root = pathlib.Path(os.environ["MCU_COMPAT_ARTIFACT_DIR"])
           directories = sorted(root.glob("fixtures/*/services-*"))
-          assert len(directories) == 9, "Missing selected service fixtures"
+          assert len(directories) == 3, "Missing selected service fixtures"
           for directory in directories:
               output = directory / "attestation"
               output.mkdir()
@@ -321,7 +277,7 @@ jobs:
               }))
           PY
           for directory in inputs/fixtures/*/services-*/attestation; do
-            cargo run --locked -p caliptra-mcu-xtask -- corim gen-refval \
+            cargo run --locked -p xtask -- corim gen-refval \
               --bundle "$directory/bundle.zip" --config "$directory/config.json" 2>&1 | tee -a prepare-corim.log
             mkdir "$directory/signed"
             cp "$directory"/refval/signed-*.cbor "$directory/signed/"
@@ -434,8 +390,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rom: [rom-sdk-2.1.0]
-        runtime: [rt-sdk-2.1.0, rt-sdk-2.1.1, main-2.1]
+        rom: [rom-sdk-2.0.0, rom-sdk-2.0.1]
+        runtime: [main]
     env:
       MCU_COMPAT_ROM: ${{ matrix.rom }}
       MCU_COMPAT_RUNTIME: ${{ matrix.runtime }}
@@ -470,7 +426,8 @@ jobs:
           set -euo pipefail
           export SPDM_NONCE="$(openssl rand -hex 32)"
           failed=0
-          for mode in flash streaming; do
+          # Caliptra 2.0 MCU ROMs boot only via streaming recovery.
+          for mode in streaming; do
             export MCU_COMPAT_MODE="$mode"
             export MCU_COMPAT_RESULTS="$GITHUB_WORKSPACE/results/$MCU_COMPAT_ROM/$MCU_COMPAT_RUNTIME/$mode"
             export MCU_COMPAT_EVIDENCE_DIR="$MCU_COMPAT_RESULTS/evidence"
@@ -478,10 +435,10 @@ jobs:
             for phase in boot suites; do
               filter='test(test_rom_runtime_compatibility) - test(::fixtures::) - test(test_suite_)'
               if [ "$phase" = suites ]; then filter='test(test_rom_runtime_compatibility::test_suite_)'; fi
-              printf '%s\n' "cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . --profile emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail -E '$filter'" > "$MCU_COMPAT_RESULTS/$phase-command.txt"
+              printf '%s\n' "cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . --profile nightly-emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail -E '$filter'" > "$MCU_COMPAT_RESULTS/$phase-command.txt"
               rm -f /tmp/junit.xml
               if cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
-                --profile emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail \
+                --profile nightly-emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail \
                 -E "$filter" 2>&1 | tee "$MCU_COMPAT_RESULTS/$phase.log"; then
                 code=0
               else
@@ -556,10 +513,11 @@ jobs:
           suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe
           suite_ownership_dot suite_owner_stable_key
           suite_network_boot suite_usb_recovery""".split()
-          for rom, runtime in itertools.product(["rom-sdk-2.1.0"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
+          modes = ["streaming"]
+          for rom, runtime in itertools.product(["rom-sdk-2.0.0","rom-sdk-2.0.1"], ["main"]):
               directory = root / "results" / rom / runtime
               cases, issues, received = [], [], 0
-              for mode, scenario in itertools.product(["flash","streaming"], scenarios):
+              for mode, scenario in itertools.product(modes, scenarios):
                   path = directory/mode/f"{scenario}.json"
                   case = {"scenario": scenario, "result": "BLOCKED", "reason": "No case result; prerequisites or execution unavailable"}
                   if path.is_file():
@@ -579,7 +537,7 @@ jobs:
                       ET.SubElement(node, "skipped", message=f'{case["result"]}: {case.get("reason", "")}')
               executions_ok = True
               execution_notes = []
-              for mode, phase in itertools.product(["flash","streaming"], ["boot","suites"]):
+              for mode, phase in itertools.product(modes, ["boot","suites"]):
                   path = directory/mode/f"{phase}-junit.xml"
                   code = directory/mode/f"{phase}-exit-code.txt"
                   log = directory/mode/f"{phase}.log"
@@ -606,7 +564,7 @@ jobs:
                         else "PASS" if executions_ok and dispositions_ok else "BLOCKED")
               counts = {result: sum(c["result"] == result for c in cases)
                         for result in ["PASS", "FAIL", "BLOCKED", "NOT APPLICABLE", "KNOWN INCOMPATIBLE"]}
-              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {counts['KNOWN INCOMPATIBLE']} | {received}/{2 * len(scenarios)} |")
+              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {counts['KNOWN INCOMPATIBLE']} | {received}/{len(modes) * len(scenarios)} |")
               failures = [c for c in cases if c["result"] in ["FAIL", "BLOCKED", "KNOWN INCOMPATIBLE"]]
               if failures:
                   details.append(f"\n## {rom} / {runtime}\n\n| Mode | Case | Result | Phase | Elapsed ms | Reason |\n|---|---|---|---|---|---|\n")

@@ -16,6 +16,12 @@ fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
 default-filter = "not test(test_defmt_logging_release)"
 
+[[profile.nightly-emulator.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(/^test_rom_runtime_compatibility::test_suite_/)"
+# Released-image SPDM conformance and OCP EAT appraisal run full ML-DSA
+# flows in the emulator and exceed the default 15-minute slow-timeout.
+slow-timeout = { period = "5m", terminate-after = 18 }
+
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
 store-success-output = true
