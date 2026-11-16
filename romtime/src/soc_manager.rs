@@ -91,10 +91,6 @@ impl CaliptraSoC {
         }
     }
 
-    pub fn is_mailbox_busy(&mut self) -> bool {
-        self.soc_mbox().status().read().status().cmd_busy()
-    }
-
     /// Send a command to the mailbox but don't wait for the response
     pub fn start_mailbox_req(
         &mut self,
@@ -199,15 +195,6 @@ impl CaliptraSoC {
         Ok(())
     }
 
-    pub fn lock_mailbox(&mut self) -> core::result::Result<(), CaliptraApiError> {
-        // Read a 0 to get the lock
-        if self.soc_mbox().lock().read().lock() {
-            Err(CaliptraApiError::UnableToLockMailbox)
-        } else {
-            Ok(())
-        }
-    }
-
     pub fn set_command(
         &mut self,
         cmd: u32,
@@ -239,11 +226,6 @@ impl CaliptraSoC {
         }
         self.soc_mbox().execute().write(|w| w.execute(true));
         Ok(())
-    }
-
-    /// Aborts a mailbox request by clearing the execute bit, releasing the HW lock.
-    pub fn abort_request(&mut self) {
-        self.soc_mbox().execute().write(|w| w.execute(false));
     }
 
     /// Wait for the mailbox response status. Returns `Ok(Some(dlen))` if
