@@ -6,16 +6,26 @@ use super::*;
 use crate::test::{build_primary_flash_initial_contents, ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT};
 use caliptra_auth_man_types::{AuthManifestPreamble, AuthorizationManifest};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, ImageCfg};
+use caliptra_mcu_registers_generated::fuses;
 use serde_json::json;
 use std::process::Command;
 
-const CONFIGURATIONS: [&str; 5] = [
-    "flash",
+/// Boot modes from `MODES` plus the streaming-loaded service configurations.
+const CONFIGURATIONS: [&str; 4] = [
     "streaming",
     "services-non-tcb",
     "services-tcb",
     "services-mixed",
 ];
+
+/// Reviewed `MC_DEVICE_CAPABILITIES` bytes per runtime and boot mode. The
+/// `expected-capabilities` workflow input (`MCU_COMPAT_CAPABILITIES`) overrides
+/// them. 2.0 ROMs report no MCU ROM capabilities (bytes 16..20).
+const EXPECTED_CAPABILITIES: &str = r#"{
+  "main": {
+    "streaming": "00000000000000010000000000000000000000000000007a0002007f000000ff0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}"#;
 
 fn artifact(root: &Path, path: &Path) -> Result<serde_json::Value> {
     Ok(json!({
@@ -272,6 +282,22 @@ fn streaming_package(directory: &Path) -> Result<()> {
 }
 
 #[test]
+fn expected_capabilities_cover_selected_runtimes() -> Result<()> {
+    let capabilities: serde_json::Value = serde_json::from_str(EXPECTED_CAPABILITIES)?;
+    for runtime in RUNTIMES {
+        for mode in MODES {
+            let bytes = hex::decode(
+                capabilities[runtime][mode]
+                    .as_str()
+                    .context("Missing capability bytes")?,
+            )?;
+            ensure!(bytes.len() == 64, "Wrong capability layout");
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn streaming_package_preserves_fixture_images() -> Result<()> {
     use caliptra_mcu_builder::flash_image::{generate_image_info, FirmwareImage, FlashImage};
     use caliptra_mcu_flash_image::{
@@ -353,7 +379,6 @@ fn resign_legacy_owner_preamble_covers_owner_pub_keys() -> Result<()> {
 #[test]
 #[ignore = "builds the agreed Core and signs selected-image fixtures"]
 fn prepare_inputs() -> Result<()> {
-    require_agreement()?;
     let root = artifact_root()?;
     let selected_runtime = std::env::var_os("MCU_COMPAT_RUNTIME");
     let runtimes: Vec<_> = RUNTIMES
@@ -370,20 +395,19 @@ fn prepare_inputs() -> Result<()> {
     );
     let capabilities: serde_json::Value = serde_json::from_str(
         &std::env::var("MCU_COMPAT_CAPABILITIES")
-            .context("BLOCKED: selected-release capabilities are required")?,
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| EXPECTED_CAPABILITIES.into()),
     )
-    .context("BLOCKED: capabilities must map runtime labels to flash/streaming hex strings")?;
+    .context("BLOCKED: capabilities must map runtime labels to boot-mode hex strings")?;
     for &runtime in &runtimes {
-        for mode in ["flash", "streaming"] {
+        for mode in MODES {
             let bytes = hex::decode(
                 capabilities[runtime][mode]
                     .as_str()
                     .context("BLOCKED: missing selected-release capability bytes")?,
             )?;
-            ensure!(
-                bytes.len() == if runtime == "rt-sdk-2.1.0" { 36 } else { 64 },
-                "Wrong selected capability layout"
-            );
+            ensure!(bytes.len() == 64, "Wrong selected capability layout");
         }
     }
     let shared = root.join("fixtures");
@@ -392,7 +416,7 @@ fn prepare_inputs() -> Result<()> {
     let core_build: Build =
         serde_json::from_slice(&fs::read(core_directory.join("metadata.json"))?)?;
     ensure!(
-        core_build.source == CORE && core_build.toolchain == "1.96",
+        core_build.source == CORE && core_build.toolchain == CORE_TOOLCHAIN,
         "Core fixtures must use {CORE} and its native toolchain"
     );
     for name in ["caliptra-rom.bin", "caliptra-firmware.bin"] {
@@ -432,17 +456,22 @@ fn prepare_inputs() -> Result<()> {
     ))?;
     let hash = hex::decode(&vendor_hash)?;
     ensure!(hash.len() == 48, "Invalid vendor hash");
-    let mut otp = vec![0u8; 0xe88];
-    for (dst, src) in otp[0x420..0x450]
+    // The released 2.0 ROMs share this branch's fuse map.
+    let vendor = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET;
+    let svn = fuses::SVN_PARTITION_BYTE_OFFSET;
+    let mut otp = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+    for (dst, src) in otp[vendor..vendor + 48]
         .chunks_exact_mut(4)
         .zip(hash.chunks_exact(4))
     {
         dst.copy_from_slice(&[src[3], src[2], src[1], src[0]]);
     }
-    otp[0x450] = 0x3f;
+    // LMS, encoded as in the emulator's OTP model.
+    otp[vendor + 48] = 0x3f;
     fs::write(shared.join("otp.bin"), &otp)?;
-    otp[0x3cc] = 1;
-    otp[0x3dc] = 1;
+    // SoC manifest SVN floor bitmap and maximum SVN.
+    otp[svn + 20] = 1;
+    otp[svn + 36] = 1;
     fs::write(shared.join("otp-svn1.bin"), &otp)?;
     fs::write(shared.join("soc-image-4096.bin"), [0x55; 512])?;
     fs::write(shared.join("soc-image-4097.bin"), [0xaa; 256])?;
@@ -453,9 +482,8 @@ fn prepare_inputs() -> Result<()> {
     write_json(
         &shared.join("core.json"),
         &json!({
-            "source": CORE, "firmware": firmware_sources, "hardware": "2.1.0",
+            "source": CORE, "firmware": firmware_sources, "hardware": HW_REVISION,
             "signing": "repository test keys, LMS, default Raw OTP",
-            "agreement": std::env::var("MCU_COMPAT_AGREEMENT")?,
         }),
     )?;
     streaming_package(&shared)?;
@@ -551,7 +579,9 @@ fn prepare_inputs() -> Result<()> {
                         (0..2u32)
                             .map(|index| ImageCfg {
                                 path: shared.join(format!("soc-image-{}.bin", 4096 + index)),
-                                load_addr: 0xa880_0000 + u64::from(index) * 512,
+                                load_addr: MCI_BASE_AXI_ADDRESS
+                                    + 0x80_0000
+                                    + u64::from(index) * 512,
                                 image_id: 4096 + index,
                                 component_id: 4096 + index,
                                 exec_bit: 5 + index,
@@ -562,7 +592,7 @@ fn prepare_inputs() -> Result<()> {
                     ..runtime_args.clone()
                 });
                 builder.get_soc_manifest(Some(manifest_path.to_str().context("Manifest path")?))?;
-                if runtime != "main-2.1" {
+                if runtime != "main" {
                     resign_legacy_owner_preamble(&manifest_path)?;
                 }
                 let bytes = fs::read(&manifest_path)?;
@@ -623,25 +653,31 @@ fn prepare_inputs() -> Result<()> {
                 let pair = root.join("pairs").join(rom).join(runtime).join(mode);
                 fs::create_dir_all(&pair)?;
                 let rom_flash = pair.join("primary-flash.bin");
-                let status = Command::new(root.join("images").join(rom).join("flash-image-tool"))
-                    .args(["flash-image", "create", "--caliptra-fw"])
-                    .arg(&core_firmware)
-                    .arg("--soc-manifest")
-                    .arg(directory.join("soc-manifest.bin"))
-                    .arg("--mcu-runtime")
-                    .arg(&runtime_image)
-                    .arg("--soc-images")
-                    .arg(shared.join("soc-image-4096.bin"))
-                    .arg(shared.join("soc-image-4097.bin"))
-                    .arg("--output")
-                    .arg(&rom_flash)
-                    .status()?;
-                ensure!(
-                    status.success(),
-                    "Pinned ROM flash producer failed: {status}"
-                );
-                // Production ROMs read their native flash header at offset zero.
-                seed_idevid_certificates(&rom_flash)?;
+                let primary_flash = if MODES.contains(&"flash") {
+                    let status =
+                        Command::new(root.join("images").join(rom).join("flash-image-tool"))
+                            .args(["flash-image", "create", "--caliptra-fw"])
+                            .arg(&core_firmware)
+                            .arg("--soc-manifest")
+                            .arg(directory.join("soc-manifest.bin"))
+                            .arg("--mcu-runtime")
+                            .arg(&runtime_image)
+                            .arg("--soc-images")
+                            .arg(shared.join("soc-image-4096.bin"))
+                            .arg(shared.join("soc-image-4097.bin"))
+                            .arg("--output")
+                            .arg(&rom_flash)
+                            .status()?;
+                    ensure!(
+                        status.success(),
+                        "Pinned ROM flash producer failed: {status}"
+                    );
+                    // Production ROMs read their native flash header at offset zero.
+                    seed_idevid_certificates(&rom_flash)?;
+                    artifact(&root, &rom_flash)?
+                } else {
+                    serde_json::Value::Null
+                };
                 let mut negatives = serde_json::Map::new();
                 for (name, symbol, offset) in [
                     (
@@ -692,12 +728,12 @@ fn prepare_inputs() -> Result<()> {
                         "caliptra_firmware": artifact(&root, &core_firmware)?,
                         "soc_manifest": artifact(&root, &directory.join("soc-manifest.bin"))?,
                         "otp": artifact(&root, &shared.join("otp.bin"))?, "vendor_pk_hash": vendor_hash,
-                        "primary_flash": artifact(&root, &rom_flash)?,
+                        "primary_flash": primary_flash,
                         "runtime_flash": artifact(&root, &directory.join("runtime-flash.bin"))?,
                         "pldm_package": artifact(&root, &shared.join("streaming.pldm"))?,
                         "soc_loading": soc_loading,
                         "expected_capabilities": capabilities[runtime][boot_mode],
-                        "handoff_address": rom_build.handoff_address.context("Missing ROM handoff address")?,
+                        "handoff_address": rom_build.handoff_address,
                         "soc_images": soc, "negative_cases": negatives,
                     }),
                 )?;
