@@ -765,12 +765,19 @@ pub unsafe fn main() {
             "[mcu-runtime] Active I3C core for MCTP: {}",
             MCU_STRAPS.active_i3c
         );
-        #[cfg(feature = "i3c-mctp-mdb-only")]
-        active_i3c_core
-            .set_pending_read_ibi_mdb_only(true)
-            .expect("I3C must be idle during MCTP initialization");
+        // MDB-only IBI as DSP0233 defines (e.g. Linux `mctp-i3c`).
+        const PENDING_READ_IBI_LEN_BYTES_MDB_ONLY: usize = 0;
+        // MDB followed by the 2-byte big-endian private-read length, for
+        // controllers that need the length in advance (e.g. Xilinx CI).
+        const PENDING_READ_IBI_LEN_BYTES_BE16: usize = 2;
+        let pending_read_ibi_len_bytes = if cfg!(feature = "i3c-mctp-mdb-only") {
+            PENDING_READ_IBI_LEN_BYTES_MDB_ONLY
+        } else {
+            PENDING_READ_IBI_LEN_BYTES_BE16
+        };
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
             .with_uuid(mctp_endpoint_uuid)
+            .with_pending_read_ibi_len_bytes(pending_read_ibi_len_bytes)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))
     };
     #[cfg(any(

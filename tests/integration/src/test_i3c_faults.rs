@@ -179,7 +179,7 @@ mod test {
     #[test]
     fn test_linux_i3c_contract_mctp_control() {
         run_i3c_test(
-            "test-mctp-linux-i3c",
+            "test-mctp-ctrl-cmds",
             "[mcu-runtime] Entering main loop.",
             |stream, addr, target| {
                 let initial_attempts = target.ibi_attempts();

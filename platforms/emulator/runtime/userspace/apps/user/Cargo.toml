@@ -272,5 +272,4 @@ test-doe-spdm-tdisp-ide-validator = ["spdm", "doe"]
 # --- Test features: pass-through (no cfg in source, host-side only) ---
 test-doe-discovery = []
 test-mctp-ctrl-cmds = []
-test-mctp-linux-i3c = []
 active-i3c1 = []
