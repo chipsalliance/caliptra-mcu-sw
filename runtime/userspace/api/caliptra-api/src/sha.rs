@@ -86,7 +86,7 @@ impl<B: Deref<Target = [u8]> + DerefMut> HashState<B> {
     }
 }
 
-/// Hash algorithms supported by Caliptra's `CM_SHA_*` and `SHA_DMA` commands.
+/// Hash algorithms supported by Caliptra's `CM_SHA_*` and `CM_SHA_DMA` commands.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum HashAlgo {
     /// SHA-384 (48-byte digest).

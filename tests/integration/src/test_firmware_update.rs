@@ -1086,7 +1086,7 @@ mod test {
     }
 
     // Stages the update in SRAM that Caliptra's DMA can read, so verification
-    // hashes each image with SHA_DMA. The firmware stops after verification.
+    // hashes each image with CM_SHA_DMA. The firmware stops after verification.
     fn run_axi_staging_update(soc_images: Option<Vec<PathBuf>>) -> (Option<i32>, String) {
         let feature = "test-firmware-update-axi-staging";
         env::set_var(
@@ -1116,7 +1116,7 @@ mod test {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(
-            log.contains("[FW Upd] Hashing staged images with SHA_DMA"),
+            log.contains("[FW Upd] Hashing staged images with CM_SHA_DMA"),
             "{log}"
         );
         assert!(!log.contains("hashing with CM_SHA"), "{log}");

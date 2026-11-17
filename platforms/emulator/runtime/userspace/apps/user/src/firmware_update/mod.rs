@@ -249,7 +249,7 @@ fn get_reset_reason() -> Result<u32, ErrorCode> {
 }
 
 /// Update staging in the external SRAM. The MCU and Caliptra DMA engines both
-/// reach it at the same AXI address, so verification can hash it with SHA_DMA.
+/// reach it at the same AXI address, so verification can hash it with CM_SHA_DMA.
 #[cfg(feature = "test-firmware-update-axi-staging")]
 mod external_memory {
     extern crate alloc;

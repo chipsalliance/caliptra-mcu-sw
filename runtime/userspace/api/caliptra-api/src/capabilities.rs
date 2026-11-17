@@ -22,7 +22,7 @@ pub async fn core_capabilities() -> McuResult<[u8; CORE_CAPABILITIES_SIZE]> {
     parse_capabilities_response(&rsp, len)
 }
 
-/// Whether the Caliptra runtime advertises `SHA_DMA` (`RT_SHA_DMA`).
+/// Whether the Caliptra runtime advertises `CM_SHA_DMA` (`RT_SHA_DMA`).
 ///
 /// Tests the raw bit: `Capabilities::try_from` rejects bits it does not know,
 /// so a strict parse would fail once a newer runtime adds one.

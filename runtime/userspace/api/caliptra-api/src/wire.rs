@@ -57,9 +57,9 @@ pub(crate) const CMD_POPULATE_IDEV_MLDSA87_CERT: u32 = 0x4944_4D50; // "IDMP"
 /// Mirrored from `caliptra-api::CommandId::SET_OWNER_AUTH_MANIFEST`.
 pub(crate) const CMD_SET_OWNER_AUTH_MANIFEST: u32 = 0x4F41_4D4E; // "OAMN"
 
-/// Caliptra mailbox command ID for `SHA_DMA`.
-/// Mirrored from `caliptra-api::CommandId::SHA_DMA`.
-pub(crate) const CMD_SHA_DMA: u32 = 0x5348_4144; // "SHAD"
+/// Caliptra mailbox command ID for `CM_SHA_DMA`.
+/// Mirrored from `caliptra-api::CommandId::CM_SHA_DMA`.
+pub(crate) const CMD_CM_SHA_DMA: u32 = 0x434D_5341; // "CMSA"
 
 // ---- DPE (Caliptra `InvokeDpeCommand`) ------------------------------------
 

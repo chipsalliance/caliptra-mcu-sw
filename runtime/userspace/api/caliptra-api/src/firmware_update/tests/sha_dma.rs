@@ -3,8 +3,8 @@
 use super::svn::{run_with_upcalls, TestAlloc, TestDmaMapping, TestMailbox, TestOtp};
 use super::*;
 use caliptra_api::mailbox::{
-    CapabilitiesResp, CmShaInitResp, CmShaUpdateReq, MailboxRespHeader, MailboxRespHeaderVarSize,
-    ShaDmaReq,
+    CapabilitiesResp, CmShaDmaReq, CmShaInitResp, CmShaUpdateReq, MailboxRespHeader,
+    MailboxRespHeaderVarSize,
 };
 use caliptra_api::Capabilities;
 use caliptra_mcu_libsyscall_caliptra::system;
@@ -25,7 +25,7 @@ const MCU_LEN: usize = 2 * SHA_CHUNK_SIZE + 76;
 const MCU_TOC_ENTRY_OFFSET: usize = size_of::<FlashHeaderV1>() + 2 * size_of::<ImageHeaderV1V2>();
 
 const CAPS: u32 = CommandId::CAPABILITIES.0;
-const SHAD: u32 = CommandId::SHA_DMA.0;
+const CMSA: u32 = CommandId::CM_SHA_DMA.0;
 const CMSI: u32 = CommandId::CM_SHA_INIT.0;
 const CMSU: u32 = CommandId::CM_SHA_UPDATE.0;
 const CMSF: u32 = CommandId::CM_SHA_FINAL.0;
@@ -148,7 +148,7 @@ fn capabilities_response(sha_dma: bool) -> Vec<u8> {
     rsp.as_bytes().to_vec()
 }
 
-/// `SHA_DMA` and `CM_SHA_FINAL` share this variable-size digest response.
+/// `CM_SHA_DMA` and `CM_SHA_FINAL` share this variable-size digest response.
 fn digest_response(digest: &[u8; 48]) -> Vec<u8> {
     let hdr = MailboxRespHeaderVarSize {
         data_len: digest.len() as u32,
@@ -288,13 +288,13 @@ fn verify_hashes_an_axi_staged_image_with_one_sha_dma() {
         .respond(CommandId::CAPABILITIES, &capabilities_response(true));
     fixture
         .mailbox
-        .respond(CommandId::SHA_DMA, &digest_response(&DIGEST));
+        .respond(CommandId::CM_SHA_DMA, &digest_response(&DIGEST));
     fixture.verify().unwrap();
-    assert_eq!(fixture.hashing_commands(), [CAPS, SHAD]);
+    assert_eq!(fixture.hashing_commands(), [CAPS, CMSA]);
 
     let requests = fixture.mailbox.requests.borrow();
-    let (_, request) = requests.iter().find(|(cmd, _)| *cmd == SHAD).unwrap();
-    let request = ShaDmaReq::read_from_bytes(request).unwrap();
+    let (_, request) = requests.iter().find(|(cmd, _)| *cmd == CMSA).unwrap();
+    let request = CmShaDmaReq::read_from_bytes(request).unwrap();
     let axi_addr = AXI_BASE + MCU_OFFSET as u64;
     assert_eq!(request.flags, 0);
     assert_eq!(request.hash_algorithm, 1);
@@ -365,9 +365,9 @@ fn sha_dma_failure_or_mismatch_fails_verification_without_cm_sha() {
         fixture
             .mailbox
             .respond(CommandId::CAPABILITIES, &capabilities_response(true));
-        fixture.mailbox.respond(CommandId::SHA_DMA, &response);
+        fixture.mailbox.respond(CommandId::CM_SHA_DMA, &response);
         assert!(matches!(fixture.verify(), Err(ErrorCode::Fail)));
-        assert_eq!(fixture.hashing_commands(), [CAPS, SHAD]);
+        assert_eq!(fixture.hashing_commands(), [CAPS, CMSA]);
     }
 }
 
@@ -384,14 +384,14 @@ fn running_image_match_hashes_with_sha_dma() {
         .respond(CommandId::CAPABILITIES, &capabilities_response(true));
     fixture
         .mailbox
-        .respond(CommandId::SHA_DMA, &digest_response(&DIGEST));
+        .respond(CommandId::CM_SHA_DMA, &digest_response(&DIGEST));
     assert_eq!(
         run_with_upcalls(fixture.updater.verify_running_image_match(&header)),
         Ok(())
     );
     assert_eq!(
         *fixture.mailbox.commands.borrow(),
-        [CommandId::FW_INFO.0, CAPS, SHAD]
+        [CommandId::FW_INFO.0, CAPS, CMSA]
     );
 }
 

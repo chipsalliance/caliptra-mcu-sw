@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-//! Caliptra `SHA_DMA` mailbox helper.
+//! Caliptra `CM_SHA_DMA` mailbox helper.
 //!
 //! Caliptra reads an AXI range with its DMA engine, hashes it with the SHA
 //! accelerator and returns the digest, so the data never passes through the
 //! mailbox.
 
-use caliptra_api::mailbox::{CommandId, MailboxRespHeaderVarSize, ShaDmaReq, ShaDmaResp};
+use caliptra_api::mailbox::{CmShaDmaReq, CmShaDmaResp, CommandId, MailboxRespHeaderVarSize};
 use core::mem::{offset_of, size_of};
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
@@ -14,7 +14,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::sha::algo_code;
 use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
-use crate::wire::{mbox_execute, populate_checksum, CMD_SHA_DMA};
+use crate::wire::{mbox_execute, populate_checksum, CMD_CM_SHA_DMA};
 use crate::{HashAlgo, ScratchAlloc};
 
 #[repr(C)]
@@ -41,22 +41,24 @@ const RESP_HEADER_LEN: usize = size_of::<ShaDmaWireRespHeader>();
 const RESP_MAX_LEN: usize = RESP_HEADER_LEN + HashAlgo::Sha512.hash_size();
 
 // Anchor the command ID and the slim wire structs to Caliptra's own types.
-const _: () = assert!(CMD_SHA_DMA == CommandId::SHA_DMA.0);
-const _: () = assert!(REQ_LEN == size_of::<ShaDmaReq>());
-const _: () = assert!(offset_of!(ShaDmaReq, flags) == offset_of!(ShaDmaWireReq, flags));
+const _: () = assert!(CMD_CM_SHA_DMA == CommandId::CM_SHA_DMA.0);
+const _: () = assert!(REQ_LEN == size_of::<CmShaDmaReq>());
+const _: () = assert!(offset_of!(CmShaDmaReq, flags) == offset_of!(ShaDmaWireReq, flags));
 const _: () =
-    assert!(offset_of!(ShaDmaReq, hash_algorithm) == offset_of!(ShaDmaWireReq, hash_algorithm));
-const _: () = assert!(offset_of!(ShaDmaReq, axi_addr_lo) == offset_of!(ShaDmaWireReq, axi_addr_lo));
-const _: () = assert!(offset_of!(ShaDmaReq, axi_addr_hi) == offset_of!(ShaDmaWireReq, axi_addr_hi));
-const _: () = assert!(offset_of!(ShaDmaReq, length) == offset_of!(ShaDmaWireReq, length));
+    assert!(offset_of!(CmShaDmaReq, hash_algorithm) == offset_of!(ShaDmaWireReq, hash_algorithm));
+const _: () =
+    assert!(offset_of!(CmShaDmaReq, axi_addr_lo) == offset_of!(ShaDmaWireReq, axi_addr_lo));
+const _: () =
+    assert!(offset_of!(CmShaDmaReq, axi_addr_hi) == offset_of!(ShaDmaWireReq, axi_addr_hi));
+const _: () = assert!(offset_of!(CmShaDmaReq, length) == offset_of!(ShaDmaWireReq, length));
 const _: () = assert!(RESP_HEADER_LEN == size_of::<MailboxRespHeaderVarSize>());
 const _: () = assert!(
     offset_of!(MailboxRespHeaderVarSize, data_len) == offset_of!(ShaDmaWireRespHeader, data_len)
 );
-const _: () = assert!(offset_of!(ShaDmaResp, hash) == RESP_HEADER_LEN);
-const _: () = assert!(RESP_MAX_LEN == size_of::<ShaDmaResp>());
+const _: () = assert!(offset_of!(CmShaDmaResp, hash) == RESP_HEADER_LEN);
+const _: () = assert!(RESP_MAX_LEN == size_of::<CmShaDmaResp>());
 
-/// Hash `len` bytes at `axi_addr` with Caliptra's `SHA_DMA` and write the
+/// Hash `len` bytes at `axi_addr` with Caliptra's `CM_SHA_DMA` and write the
 /// digest to `out`, which must be exactly `algo.hash_size()` bytes.
 ///
 /// `axi_addr` is the address as seen by Caliptra's DMA. Caliptra requires a
@@ -74,7 +76,7 @@ pub async fn sha_dma<A: ScratchAlloc>(
     }
     let req = build_sha_dma_req(alloc, algo, axi_addr, len)?;
     let mut rsp = alloc.alloc(RESP_MAX_LEN)?;
-    let rsp_len = mbox_execute(CMD_SHA_DMA, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(CMD_CM_SHA_DMA, &req, &mut rsp).await?;
     parse_sha_dma_resp(&rsp, rsp_len, algo, out)
 }
 
@@ -94,7 +96,7 @@ fn build_sha_dma_req<A: ScratchAlloc>(
         cmd.axi_addr_hi = U32::new((axi_addr >> 32) as u32);
         cmd.length = U32::new(len);
     }
-    populate_checksum(CMD_SHA_DMA, &mut req)?;
+    populate_checksum(CMD_CM_SHA_DMA, &mut req)?;
     Ok(req)
 }
 
@@ -152,7 +154,7 @@ mod tests {
             assert_eq!(cmd.axi_addr_lo.get(), 0x2345_6780);
             assert_eq!(cmd.axi_addr_hi.get(), 1);
             assert_eq!(cmd.length.get(), 0x1004);
-            assert_eq!(cmd.chksum.get(), calc_checksum(CMD_SHA_DMA, &req[4..]));
+            assert_eq!(cmd.chksum.get(), calc_checksum(CMD_CM_SHA_DMA, &req[4..]));
         }
     }
 

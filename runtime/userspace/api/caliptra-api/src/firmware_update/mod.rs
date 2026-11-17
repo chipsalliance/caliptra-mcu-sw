@@ -1066,14 +1066,14 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
     }
 
     /// Caliptra's AXI address of the staging memory if staged images can be
-    /// hashed with `SHA_DMA`, else `None` for `CM_SHA`.
+    /// hashed with `CM_SHA_DMA`, else `None` for `CM_SHA`.
     async fn sha_dma_base(&self) -> Option<u64> {
         let base = self.staging_memory.caliptra_axi_base()?;
         let reason = match core_capabilities().await {
             Ok(caps) if supports_sha_dma(&caps) => {
                 console_writeln!(
                     Console::<DefaultSyscalls>::writer(),
-                    "[FW Upd] Hashing staged images with SHA_DMA"
+                    "[FW Upd] Hashing staged images with CM_SHA_DMA"
                 );
                 return Some(base);
             }
@@ -1082,7 +1082,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         };
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] SHA_DMA {}, hashing with CM_SHA",
+            "[FW Upd] CM_SHA_DMA {}, hashing with CM_SHA",
             reason
         );
         None
@@ -1090,8 +1090,8 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
     /// SHA-384 of the `len` staged bytes at `offset`, which must end within `limit`.
     ///
-    /// Uses `SHA_DMA` when `sha_dma_base` is set and Caliptra accepts the range,
-    /// else streams the bytes through `CM_SHA`. A `SHA_DMA` error is not retried
+    /// Uses `CM_SHA_DMA` when `sha_dma_base` is set and Caliptra accepts the range,
+    /// else streams the bytes through `CM_SHA`. A `CM_SHA_DMA` error is not retried
     /// with `CM_SHA`, so a wrong staging address fails verification.
     async fn hash_staged_image(
         &self,
@@ -1120,7 +1120,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                         .map_err(|error| {
                             console_writeln!(
                                 Console::<DefaultSyscalls>::writer(),
-                                "[FW Upd] ERROR: SHA_DMA at offset {} failed: {:?}",
+                                "[FW Upd] ERROR: CM_SHA_DMA at offset {} failed: {:?}",
                                 offset,
                                 error
                             );
@@ -1275,7 +1275,7 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
 }
 
 /// Caliptra's AXI range for the staged bytes `[offset, offset + len)`, or why
-/// `SHA_DMA` cannot hash it: Caliptra needs a non-empty, 4-byte aligned range
+/// `CM_SHA_DMA` cannot hash it: Caliptra needs a non-empty, 4-byte aligned range
 /// inside one 4 GiB block.
 fn sha_dma_range(base: u64, offset: usize, len: usize) -> Result<(u64, u32), &'static str> {
     let len = u32::try_from(len).map_err(|_| "is too large")?;

@@ -144,7 +144,7 @@ sequenceDiagram
     opt Owner Auth Manifest present
         API->>API: Verify Owner Auth Manifest using VERIFY_OWNER_AUTH_MANIFEST mbox command
     end
-    Note over API: Caliptra hashes the staged images with SHA_DMA when it can read<br/>the staging memory, otherwise the MCU streams them through CM_SHA
+    Note over API: Caliptra hashes the staged images with CM_SHA_DMA when it can read<br/>the staging memory, otherwise the MCU streams them through CM_SHA
     API->>API: Hash MCU Image and verify with SOC Manifest Digest
     loop for all SOC Images
         API->>API: Hash SOC Image and verify with SOC Manifest Digest
@@ -279,15 +279,15 @@ The PLDM package only contains a single component which contains a full flash im
 
 To support full image updates, a SoC-defined staging memory must be provided to store the incoming payload. The designated staging area for the Component must be accessible by the Caliptra ROM to fetch and authorize the image. This staging area could be located in MCU SRAM or MCI mailbox SRAM, as defined in Caliptra 2.1. If the SoC-defined staging memory does not meet this requirement, the image must be copied to the compliant region, which may slightly impact performance. For other components, if the staging memory (e.g., a staging partition on flash) is not directly accessible by the Caliptra core's DMA engine for reading and hashing the image, the MCU must perform the cryptographic operations to compute the hash. The computed hash is then sent via a mailbox command for authorization.
 
-If Caliptra's DMA can read the staging memory, its `StagingMemory` implementation can return the staging base address, as Caliptra sees it, from `caliptra_axi_base()`. When the Caliptra runtime also reports the `RT_SHA_DMA` capability, the MCU hashes each staged image with one `SHA_DMA` mailbox command and the image data does not pass through the MCU. An image that is empty, does not start and end on a 4-byte boundary, or crosses a 4 GiB boundary is still hashed with `CM_SHA`. A staging window reported through `caliptra_axi_base()` has these constraints:
+If Caliptra's DMA can read the staging memory, its `StagingMemory` implementation can return the staging base address, as Caliptra sees it, from `caliptra_axi_base()`. When the Caliptra runtime also reports the `RT_SHA_DMA` capability, the MCU hashes each staged image with one `CM_SHA_DMA` mailbox command and the image data does not pass through the MCU. An image that is empty, does not start and end on a 4-byte boundary, or crosses a 4 GiB boundary is still hashed with `CM_SHA`. A staging window reported through `caliptra_axi_base()` has these constraints:
 
 - Caliptra's DMA must read at that address the same bytes that `read()` returns, with no buffering or translation in between.
-- Caliptra's DMA must be able to read the whole window with burst reads, since `SHA_DMA` has no single-DWORD mode. A read the DMA cannot complete stops Caliptra until it is reset, and the kernel mailbox driver does not time out a command in progress.
-- On debug-locked devices each `SHA_DMA` command must finish within the Caliptra [command watchdog](https://github.com/chipsalliance/caliptra-sw/blob/main/runtime/README.md#command-watchdog). Image sizes come from the package's table of contents, which is not authenticated, so `CPTRA_WDT_CFG` must allow hashing `size()` bytes in one command.
+- Caliptra's DMA must be able to read the whole window with burst reads, since `CM_SHA_DMA` has no single-DWORD mode. A read the DMA cannot complete stops Caliptra until it is reset, and the kernel mailbox driver does not time out a command in progress.
+- On debug-locked devices each `CM_SHA_DMA` command must finish within the Caliptra [command watchdog](https://github.com/chipsalliance/caliptra-sw/blob/main/runtime/README.md#command-watchdog). Image sizes come from the package's table of contents, which is not authenticated, so `CPTRA_WDT_CFG` must allow hashing `size()` bytes in one command.
 - The window must not overlap the SRAM the kernel mailbox driver uses to stage large mailbox requests.
 - Unlike the staging area described above, the window cannot be in MCU SRAM, which Caliptra's DMA cannot read while MCU firmware runs, or in MCI mailbox SRAM that has not been granted to Caliptra.
 
-`SHA_DMA` is a PL0 command, and any MCU process that can use the Caliptra mailbox can send it.
+`CM_SHA_DMA` is a PL0 command, and any MCU process that can use the Caliptra mailbox can send it.
 
 **Detailed steps**:
 *Note: Actions below are performed by MCU RT Firmware*
@@ -300,7 +300,7 @@ If Caliptra's DMA can read the staging memory, its `StagingMemory` implementatio
     a. For the Caliptra FW Bundle, the MCU verifies the bundle thorugh the `FIRMWARE_VERIFY` mailbox command.
     b. For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `VERIFY_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
     c. If the package contains an Owner Auth Manifest subcomponent, the MCU sends it to the Caliptra core using the `VERIFY_OWNER_AUTH_MANIFEST` mailbox command. This verifies the manifest without replacing the active Owner Auth Manifest.
-    d. For MCU RT or SoC Image subcomponents, the MCU hashes the MCU RT image, with `SHA_DMA` when the staging memory supports it and with `CM_SHA` otherwise, and verifies it against the digest in the verified SoC Manifest. The same is done with the SoC Image subcomponents. Owner SoC Images and the Owner Measurement Policy are verified against the digests in the verified Owner Auth Manifest. Subcomponents are matched to manifest entries by `component_id`.
+    d. For MCU RT or SoC Image subcomponents, the MCU hashes the MCU RT image, with `CM_SHA_DMA` when the staging memory supports it and with `CM_SHA` otherwise, and verifies it against the digest in the verified SoC Manifest. The same is done with the SoC Image subcomponents. Owner SoC Images and the Owner Measurement Policy are verified against the digests in the verified Owner Auth Manifest. Subcomponents are matched to manifest entries by `component_id`.
 6. After verification, the PLDM stack notifies the API to apply the image. If the staging area is not flash, the MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
 7. When the Update Agent issues the `ActivateFirmware` command:
     a. The MCU activates the Caliptra core FW using the `FIRMWARE_LOAD ` mailbox command. This will also reset Caliptra core and boot up with the updated image.
