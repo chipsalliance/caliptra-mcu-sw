@@ -58,6 +58,7 @@ pub struct MCTPMuxComponent<A: Alarm<'static> + 'static> {
     i3c_target: &'static dyn caliptra_mcu_i3c_driver::hil::I3CTarget<'static>,
     mux_alarm: &'static MuxAlarm<'static, A>,
     uuid: [u8; 16],
+    pending_read_len_bytes: usize,
 }
 
 impl<A: Alarm<'static>> MCTPMuxComponent<A> {
@@ -69,11 +70,18 @@ impl<A: Alarm<'static>> MCTPMuxComponent<A> {
             i3c_target,
             mux_alarm,
             uuid: [0; 16],
+            pending_read_len_bytes: 0,
         }
     }
 
     pub fn with_uuid(mut self, uuid: [u8; 16]) -> Self {
         self.uuid = uuid;
+        self
+    }
+
+    /// See `MCTPI3CBinding::with_pending_read_len_bytes`. Defaults to 0 (MDB-only IBI).
+    pub fn with_pending_read_len_bytes(mut self, len_bytes: usize) -> Self {
+        self.pending_read_len_bytes = len_bytes;
         self
     }
 }
@@ -92,7 +100,10 @@ impl<A: Alarm<'static>> Component for MCTPMuxComponent<A> {
         &'static MuxMCTPDriver<'static, VirtualMuxAlarm<'static, A>, MCTPI3CBinding<'static>>;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
-        let mctp_device = static_buffer.3.write(MCTPI3CBinding::new(self.i3c_target));
+        let mctp_device = static_buffer.3.write(
+            MCTPI3CBinding::new(self.i3c_target)
+                .with_pending_read_len_bytes(self.pending_read_len_bytes),
+        );
         mctp_device.setup_mctp_i3c();
         self.i3c_target.set_tx_client(mctp_device);
         self.i3c_target.set_rx_client(mctp_device);
