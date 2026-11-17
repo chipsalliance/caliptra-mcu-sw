@@ -33,6 +33,7 @@ static MEASUREMENT_API: Mutex<
 
 pub const ATTESTATION_KID_SIZE: usize = 48;
 pub const ATTESTATION_P384_DIGEST_SIZE: usize = ATTESTATION_KID_SIZE;
+pub const ATTESTATION_MLDSA87_DIGEST_SIZE: usize = mcu_caliptra_api::HashAlgo::Sha512.hash_size();
 pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
 pub const ATTESTATION_MLDSA87_SIGNATURE_SIZE: usize = mcu_caliptra_api::DPE_MLDSA87_SIGNATURE_SIZE;
 
@@ -84,8 +85,8 @@ pub trait EvidenceBuilder<A: ScratchAlloc> {
     }
 
     /// Build the evidence payload and signing input from concise evidence.
-    /// Writes the SHA-384 digest for EccP384 or the raw COSE Sig_structure for
-    /// MlDsa87 into `signing_input`, and returns their lengths.
+    /// Writes the SHA-384 digest for EccP384 or the producer-defined raw
+    /// message for MlDsa87 into `signing_input`, and returns their lengths.
     async fn prepare_signing_input(
         &mut self,
         alloc: &A,
@@ -364,11 +365,7 @@ where
             .await?
     };
 
-    let signing_input_capacity = match algo {
-        MeasurementSigningAlgo::EccP384 => ATTESTATION_P384_DIGEST_SIZE,
-        MeasurementSigningAlgo::MlDsa87 => mcu_caliptra_api::DPE_MLDSA87_RAW_MAX_SIZE,
-    };
-    let mut signing_input_buf = alloc.alloc(signing_input_capacity)?;
+    let mut signing_input_buf = [0u8; ATTESTATION_MLDSA87_DIGEST_SIZE];
     let (payload_len, signing_input_len) = evidence_builder
         .prepare_signing_input(alloc, concise_evidence_len, &mut signing_input_buf)
         .await?;
@@ -389,6 +386,9 @@ where
             )
         }
         MeasurementSigningAlgo::MlDsa87 => {
+            if signing_input_len != ATTESTATION_MLDSA87_DIGEST_SIZE {
+                return Err(mcu_error::codes::INTERNAL_BUG);
+            }
             let message = signing_input_buf
                 .get(..signing_input_len)
                 .ok_or(mcu_error::codes::INTERNAL_BUG)?;

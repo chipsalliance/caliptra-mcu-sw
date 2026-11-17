@@ -1262,16 +1262,26 @@ impl Emulator {
             self.state.tick_cond.notify_all();
             let milestones =
                 McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);
-            self.state.set_spdm_responder_ready(
-                SpdmResponderTransport::Mctp,
-                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),
-            );
-            self.state.set_spdm_responder_ready(
-                SpdmResponderTransport::Doe,
-                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
-            );
+            let mctp_ready = milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY);
+            let doe_ready = milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY);
+            let pldm_ready = milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY);
+            let changed = self
+                .state
+                .is_spdm_responder_ready(SpdmResponderTransport::Mctp)
+                != mctp_ready
+                || self
+                    .state
+                    .is_spdm_responder_ready(SpdmResponderTransport::Doe)
+                    != doe_ready
+                || self.state.is_pldm_ready() != pldm_ready;
             self.state
-                .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
+                .set_spdm_responder_ready(SpdmResponderTransport::Mctp, mctp_ready);
+            self.state
+                .set_spdm_responder_ready(SpdmResponderTransport::Doe, doe_ready);
+            self.state.set_pldm_ready(pldm_ready);
+            if changed {
+                eprintln!("{}", self.state.responder_readiness_report());
+            }
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {

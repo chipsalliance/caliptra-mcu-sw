@@ -1325,6 +1325,7 @@ mod test {
     fn pump_child_output<R: std::io::Read + Send + 'static>(
         reader: R,
         output: Arc<SpawnedRuntimeOutput>,
+        state: Arc<EmulatorState>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut reader = BufReader::new(reader);
@@ -1334,6 +1335,7 @@ mod test {
                 match reader.read_line(&mut line) {
                     Ok(0) => break,
                     Ok(_) => {
+                        state.apply_responder_readiness_report(&line);
                         print!("{line}");
                         let _ = std::io::stdout().flush();
                         let mut text = output.text.lock().unwrap();
@@ -1369,7 +1371,8 @@ mod test {
         primary_flash_file: Option<tempfile::NamedTempFile>,
         secondary_flash_file: Option<tempfile::NamedTempFile>,
     ) -> SpawnedRuntime {
-        caliptra_mcu_testing_common::init_emulator_state(EmulatorState::new_arc());
+        let state = EmulatorState::new_arc();
+        caliptra_mcu_testing_common::init_emulator_state(state.clone());
         caliptra_mcu_testing_common::set_emulator_running(true);
         caliptra_mcu_testing_common::set_runtime_started(false);
 
@@ -1400,11 +1403,11 @@ mod test {
         let stdout_thread = child
             .stdout
             .take()
-            .map(|stdout| pump_child_output(stdout, output.clone()));
+            .map(|stdout| pump_child_output(stdout, output.clone(), state.clone()));
         let stderr_thread = child
             .stderr
             .take()
-            .map(|stderr| pump_child_output(stderr, output.clone()));
+            .map(|stderr| pump_child_output(stderr, output.clone(), state.clone()));
         let tick_thread = Some(caliptra_mcu_testing_common::spawn_with_emulator_state(
             || {
                 let mut ticks = 0u64;
@@ -1568,7 +1571,31 @@ mod test {
         Some(output)
     }
 
-    /// Get prebuilt runtime from FirmwareBinaries if available, writing it to a temp file.
+    fn write_prebuilt_runtime(output: &Path, runtime_bytes: &[u8]) {
+        if std::fs::read(output).is_ok_and(|contents| contents == runtime_bytes) {
+            return;
+        }
+        let parent = output.parent().expect("runtime output has a parent");
+        std::fs::create_dir_all(parent).expect("failed to create runtime output directory");
+        let mut file =
+            tempfile::NamedTempFile::new_in(parent).expect("failed to create runtime temp file");
+        file.write_all(runtime_bytes)
+            .expect("failed to write prebuilt runtime");
+        file.persist(output)
+            .expect("failed to replace prebuilt runtime");
+    }
+
+    #[test]
+    fn prebuilt_runtime_is_refreshed_when_bundle_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("runtime/image.bin");
+        write_prebuilt_runtime(&output, b"previous bundle runtime");
+        assert_eq!(std::fs::read(&output).unwrap(), b"previous bundle runtime");
+        write_prebuilt_runtime(&output, b"new runtime");
+        assert_eq!(std::fs::read(&output).unwrap(), b"new runtime");
+    }
+
+    /// Get prebuilt runtime from FirmwareBinaries if available, refreshing its cached file.
     /// Returns the path to the runtime binary.
     fn get_or_compile_runtime(feature: &str, example_app: bool) -> PathBuf {
         // Try to get prebuilt runtime from the firmware bundle
@@ -1576,22 +1603,7 @@ mod test {
             if let Ok(runtime_bytes) = binaries.test_runtime(feature) {
                 // Write prebuilt runtime to target directory
                 let output = target_binary(&format!("runtime-{}-emulator.bin", feature));
-                if !output.exists() {
-                    if let Some(parent) = output.parent() {
-                        std::fs::create_dir_all(parent).ok();
-                    }
-                    let temp_output = output.with_extension(format!(
-                        "tmp.{}.{}",
-                        std::process::id(),
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_nanos()
-                    ));
-                    if std::fs::write(&temp_output, runtime_bytes).is_ok() {
-                        let _ = std::fs::rename(&temp_output, &output);
-                    }
-                }
+                write_prebuilt_runtime(&output, &runtime_bytes);
                 println!("Using prebuilt test firmware {}", feature);
                 return output;
             }

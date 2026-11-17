@@ -8,7 +8,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use ocptoken::cose_verify::{CoseSign1Verifier, CryptoBackend, DecodedCoseSign1};
-use ocptoken::token::evidence::OCP_EAT_TAGS;
+use ocptoken::token::evidence::{verify_eat_signature, OCP_EAT_TAGS};
 
 use crate::common::{extract_signing_leaf, load_evidence};
 
@@ -87,7 +87,7 @@ pub(crate) fn run(args: &VerifyArgs, verifier: &CoseSign1Verifier<impl CryptoBac
     };
 
     // 5. Verify the COSE_Sign1 signature
-    match verifier.verify_ref(&decoded, &leaf_cert) {
+    match verify_eat_signature(&decoded, &leaf_cert, verifier) {
         Ok(()) => {
             println!("Signature verification successful");
         }

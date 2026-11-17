@@ -16,6 +16,8 @@ use std::time::Duration;
 /// `update_ticks()` every `TICK_NOTIFY_TICKS` cycles to wake consumers.
 pub const TICK_NOTIFY_TICKS: u64 = 1000;
 
+const RESPONDER_READINESS_PREFIX: &str = "[emulator] responder readiness: ";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpdmResponderTransport {
     Mctp,
@@ -97,6 +99,33 @@ impl EmulatorState {
 
     pub fn is_pldm_ready(&self) -> bool {
         self.pldm_ready.load(Ordering::Acquire)
+    }
+
+    /// Report MCTP, DOE, and PLDM readiness to a subprocess parent.
+    pub fn responder_readiness_report(&self) -> String {
+        format!(
+            "{RESPONDER_READINESS_PREFIX}{} {} {}",
+            self.is_spdm_responder_ready(SpdmResponderTransport::Mctp),
+            self.is_spdm_responder_ready(SpdmResponderTransport::Doe),
+            self.is_pldm_ready(),
+        )
+    }
+
+    /// Apply a complete readiness report, ignoring unrelated or malformed output.
+    pub fn apply_responder_readiness_report(&self, line: &str) -> bool {
+        let Some(report) = line.trim_end().strip_prefix(RESPONDER_READINESS_PREFIX) else {
+            return false;
+        };
+        let mut values = report.split_whitespace().map(str::parse::<bool>);
+        let (Some(Ok(mctp)), Some(Ok(doe)), Some(Ok(pldm)), None) =
+            (values.next(), values.next(), values.next(), values.next())
+        else {
+            return false;
+        };
+        self.set_spdm_responder_ready(SpdmResponderTransport::Mctp, mctp);
+        self.set_spdm_responder_ready(SpdmResponderTransport::Doe, doe);
+        self.set_pldm_ready(pldm);
+        true
     }
 }
 
@@ -298,6 +327,41 @@ pub fn update_ticks(ticks: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn responder_readiness_reports_forward_boot_and_reset_without_inference() {
+        let child = EmulatorState::new();
+        let parent = EmulatorState::new();
+        assert!(!parent.apply_responder_readiness_report("ATTESTATION_EVIDENCE_READY\n"));
+        assert!(!parent.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+
+        child.set_spdm_responder_ready(SpdmResponderTransport::Mctp, true);
+        child.set_pldm_ready(true);
+        assert!(parent.apply_responder_readiness_report(&child.responder_readiness_report()));
+        assert!(parent.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+        assert!(!parent.is_spdm_responder_ready(SpdmResponderTransport::Doe));
+        assert!(parent.is_pldm_ready());
+        assert!(!parent.runtime_started.load(Ordering::Relaxed));
+
+        for report in [
+            "[emulator] responder readiness: false true invalid",
+            "[emulator] responder readiness: false true",
+            "[emulator] responder readiness: false true false extra",
+        ] {
+            assert!(!parent.apply_responder_readiness_report(report));
+            assert!(parent.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+            assert!(!parent.is_spdm_responder_ready(SpdmResponderTransport::Doe));
+            assert!(parent.is_pldm_ready());
+        }
+
+        child.set_spdm_responder_ready(SpdmResponderTransport::Mctp, false);
+        child.set_spdm_responder_ready(SpdmResponderTransport::Doe, true);
+        child.set_pldm_ready(false);
+        assert!(parent.apply_responder_readiness_report(&child.responder_readiness_report()));
+        assert!(!parent.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+        assert!(parent.is_spdm_responder_ready(SpdmResponderTransport::Doe));
+        assert!(!parent.is_pldm_ready());
+    }
 
     #[test]
     fn spdm_responder_readiness_is_transport_specific() {

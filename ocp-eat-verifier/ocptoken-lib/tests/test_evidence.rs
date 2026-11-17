@@ -124,7 +124,15 @@ fn generate_key_and_cert(cn: &str) -> (PKey<openssl::pkey::Private>, Vec<u8>) {
     let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
     let ec_key = EcKey::generate(&group).unwrap();
     let pkey = PKey::from_ec_key(ec_key).unwrap();
+    let cert_der = generate_self_signed_cert(cn, &pkey, MessageDigest::sha384());
+    (pkey, cert_der)
+}
 
+fn generate_self_signed_cert(
+    cn: &str,
+    pkey: &PKey<openssl::pkey::Private>,
+    digest: MessageDigest,
+) -> Vec<u8> {
     let mut name = X509NameBuilder::new().unwrap();
     name.append_entry_by_text("CN", cn).unwrap();
     let name = name.build();
@@ -146,11 +154,10 @@ fn generate_key_and_cert(cn: &str) -> (PKey<openssl::pkey::Private>, Vec<u8>) {
     builder
         .set_not_after(&Asn1Time::days_from_now(365).unwrap())
         .unwrap();
-    builder.set_pubkey(&pkey).unwrap();
-    builder.sign(&pkey, MessageDigest::sha384()).unwrap();
+    builder.set_pubkey(pkey).unwrap();
+    builder.sign(pkey, digest).unwrap();
 
-    let cert_der = builder.build().to_der().unwrap();
-    (pkey, cert_der)
+    builder.build().to_der().unwrap()
 }
 
 /// Build a COSE_Sign1 (CBOR bytes) with the given payload, signed with `pkey`,
@@ -353,6 +360,154 @@ mod appraisal_tests {
 
 mod cose_verify_tests {
     use super::*;
+    use ocptoken::corim::SignedCorim;
+    use ocptoken::cose_verify::{CoseSign1Error, DecodedCoseSign1};
+    use ocptoken::token::evidence::verify_eat_signature;
+    use openssl::{pkey::KeyType, rand::rand_bytes, sha::sha512};
+
+    fn generate_mldsa_key_and_cert(key_type: KeyType) -> (PKey<openssl::pkey::Private>, Vec<u8>) {
+        let mut seed = [0; 32];
+        rand_bytes(&mut seed).unwrap();
+        let pkey = PKey::private_key_from_seed(None, key_type, None, &seed).unwrap();
+        let cert_der = generate_self_signed_cert("mldsa-test", &pkey, MessageDigest::null());
+        (pkey, cert_der)
+    }
+
+    fn build_mldsa_eat(
+        payload: &[u8],
+        pkey: &PKey<openssl::pkey::Private>,
+        cert_der: &[u8],
+        signing_input: impl FnOnce(&[u8]) -> Vec<u8>,
+    ) -> coset::CoseSign1 {
+        CoseSign1Builder::new()
+            .payload(payload.to_vec())
+            .protected(HeaderBuilder::new().algorithm(Algorithm::ML_DSA_87).build())
+            .unprotected(
+                HeaderBuilder::new()
+                    .value(33, Value::Bytes(cert_der.to_vec()))
+                    .build(),
+            )
+            .create_signature(&[], |tbs| {
+                let mut signer = Signer::new_without_digest(pkey).unwrap();
+                signer.sign_oneshot_to_vec(&signing_input(tbs)).unwrap()
+            })
+            .build()
+    }
+
+    #[test]
+    fn verify_large_mldsa_eat_with_sha512_sig_structure() {
+        let (pkey, cert_der) = generate_mldsa_key_and_cert(KeyType::ML_DSA_87);
+        let ta_store = TestTrustAnchorStore::new(vec![cert_der.clone()]);
+        let payload =
+            build_cwt_payload_with(None, None, None, Some(Value::Bytes(vec![0xBB; 2048])));
+        let cose = build_mldsa_eat(&payload, &pkey, &cert_der, |tbs| {
+            assert!(tbs.len() > 1024);
+            sha512(tbs).to_vec()
+        });
+        let encoded = cose.to_vec().unwrap();
+        let evidence = Evidence::decode(&encoded, &ta_store).unwrap();
+        let verifier = CoseSign1Verifier::new(OpenSslBackend);
+
+        evidence.verify(&[], &verifier).unwrap();
+        let decoded = DecodedCoseSign1::decode(&encoded, &[]).unwrap();
+        verify_eat_signature(&decoded, &cert_der, &verifier).unwrap();
+    }
+
+    #[test]
+    fn reject_mldsa_eat_wrong_signing_input_and_tampering() {
+        let (pkey, cert_der) = generate_mldsa_key_and_cert(KeyType::ML_DSA_87);
+        let ta_store = TestTrustAnchorStore::new(vec![cert_der.clone()]);
+        let payload = build_valid_cwt_payload();
+        let cose = build_mldsa_eat(&payload, &pkey, &cert_der, |tbs| sha512(tbs).to_vec());
+        let pure = build_mldsa_eat(&payload, &pkey, &cert_der, |tbs| tbs.to_vec());
+        let claims_only =
+            build_mldsa_eat(&payload, &pkey, &cert_der, |_| sha512(&payload).to_vec());
+        let mut bad_payload = cose.clone();
+        *bad_payload.payload.as_mut().unwrap().last_mut().unwrap() ^= 1;
+        let mut bad_header = cose.clone();
+        bad_header.protected.header.key_id = b"changed".to_vec();
+        let mut bad_signature = cose;
+        bad_signature.signature[0] ^= 1;
+        let verifier = CoseSign1Verifier::new(OpenSslBackend);
+
+        for (case, token) in [
+            ("pure ML-DSA", pure),
+            ("claims-only hash", claims_only),
+            ("modified payload", bad_payload),
+            ("modified protected header", bad_header),
+            ("modified signature", bad_signature),
+        ] {
+            let encoded = token.to_vec().unwrap();
+            let evidence = Evidence::decode(&encoded, &ta_store).unwrap();
+            assert!(
+                matches!(
+                    evidence.verify(&[], &verifier),
+                    Err(OcpEatError::Verification(
+                        CoseSign1Error::SignatureVerification
+                    ))
+                ),
+                "{case} must fail signature verification"
+            );
+        }
+    }
+
+    #[test]
+    fn reject_sha512_eat_signed_with_wrong_mldsa_key_type() {
+        let (pkey, cert_der) = generate_mldsa_key_and_cert(KeyType::ML_DSA_65);
+        let ta_store = TestTrustAnchorStore::new(vec![cert_der.clone()]);
+        let payload = build_valid_cwt_payload();
+        let encoded = build_mldsa_eat(&payload, &pkey, &cert_der, |tbs| sha512(tbs).to_vec())
+            .to_vec()
+            .unwrap();
+        let evidence = Evidence::decode(&encoded, &ta_store).unwrap();
+        let verifier = CoseSign1Verifier::new(OpenSslBackend);
+
+        assert!(matches!(
+            evidence.verify(&[], &verifier),
+            Err(OcpEatError::Verification(
+                CoseSign1Error::SignatureVerification
+            ))
+        ));
+    }
+
+    #[test]
+    fn generic_cose_and_corim_keep_pure_mldsa_signatures() {
+        let (pkey, cert_der) = generate_mldsa_key_and_cert(KeyType::ML_DSA_87);
+        let ta_store = TestTrustAnchorStore::new(vec![cert_der.clone()]);
+        let verifier = CoseSign1Verifier::new(OpenSslBackend);
+
+        for prehash in [false, true] {
+            let encoded = CoseSign1Builder::new()
+                .payload(Value::Map(vec![]).to_vec().unwrap())
+                .protected(
+                    HeaderBuilder::new()
+                        .algorithm(Algorithm::ML_DSA_87)
+                        .value(33, Value::Bytes(cert_der.clone()))
+                        .build(),
+                )
+                .create_signature(&[], |tbs| {
+                    let input = if prehash {
+                        sha512(tbs).to_vec()
+                    } else {
+                        tbs.to_vec()
+                    };
+                    Signer::new_without_digest(&pkey)
+                        .unwrap()
+                        .sign_oneshot_to_vec(&input)
+                        .unwrap()
+                })
+                .build()
+                .to_vec()
+                .unwrap();
+            let decoded = DecodedCoseSign1::decode(&encoded, &[]).unwrap();
+            assert_eq!(verifier.verify_ref(&decoded, &cert_der).is_ok(), !prehash);
+            assert_eq!(verifier.verify(decoded, &cert_der).is_ok(), !prehash);
+
+            let corim =
+                SignedCorim::decode(&encoded, "mldsa-corim.cbor".into(), &ta_store).unwrap();
+            assert_eq!(corim.verify(&verifier).is_ok(), !prehash);
+        }
+    }
 
     #[test]
     fn decode_and_verify_ecc_p384_cose_sign1() {

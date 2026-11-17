@@ -40,6 +40,7 @@ use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process::exit;
+use std::sync::{Arc, Mutex};
 use std::vec;
 use zerocopy::{transmute, FromBytes};
 
@@ -143,6 +144,8 @@ struct Packet {
 pub struct BufferedStream {
     stream: TcpStream,
     read_buffer: VecDeque<Packet>,
+    // TCP clones share both blocking mode and the outgoing byte stream.
+    io_lock: Arc<Mutex<()>>,
 }
 
 impl BufferedStream {
@@ -150,6 +153,7 @@ impl BufferedStream {
         Self {
             stream,
             read_buffer: VecDeque::new(),
+            io_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -157,6 +161,7 @@ impl BufferedStream {
         self.stream.try_clone().map(|stream| Self {
             stream,
             read_buffer: VecDeque::new(),
+            io_lock: self.io_lock.clone(),
         })
     }
 
@@ -183,8 +188,8 @@ impl BufferedStream {
 
     /// Writes to the socket, reporting `false` instead of panicking once the
     /// connection has been closed.
-    fn write_all_tolerant(&mut self, buf: &[u8]) -> bool {
-        match self.stream.write_all(buf) {
+    fn write_all_tolerant(&self, buf: &[u8]) -> bool {
+        match (&self.stream).write_all(buf) {
             Ok(()) => true,
             Err(ref e) if Self::is_peer_gone(e) => false,
             Err(e) => panic!("Error writing message to socket: {}", e),
@@ -193,7 +198,7 @@ impl BufferedStream {
 
     /// Switches the socket's blocking mode, reporting `false` instead of
     /// panicking once the connection has been closed.
-    fn set_blocking_tolerant(&mut self, blocking: bool) -> bool {
+    fn set_blocking_tolerant(&self, blocking: bool) -> bool {
         match self.stream.set_nonblocking(!blocking) {
             Ok(()) => true,
             Err(ref e) if Self::is_peer_gone(e) => false,
@@ -202,12 +207,15 @@ impl BufferedStream {
     }
 
     fn write_private_cmd(&mut self, cmd: &[u8]) -> bool {
+        let _io = self.io_lock.lock().unwrap();
         self.set_blocking_tolerant(true)
             && self.write_all_tolerant(cmd)
             && self.set_blocking_tolerant(false)
     }
 
     fn read_packet(&mut self) -> Option<Packet> {
+        let _io = self.io_lock.lock().unwrap();
+        self.stream.set_nonblocking(true).unwrap();
         let mut out_header_bytes: [u8; 6] = [0u8; 6];
         match self.stream.read_exact(&mut out_header_bytes) {
             Ok(()) => {
@@ -249,13 +257,11 @@ impl BufferedStream {
         pkt.push(pec);
 
         let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
-        if !self.set_blocking_tolerant(true) || !self.write_all_tolerant(&pvt_write_cmd) {
-            return false;
-        }
-        if !self.set_blocking_tolerant(false) {
-            return false;
-        }
-        self.write_all_tolerant(&pkt)
+        let _io = self.io_lock.lock().unwrap();
+        self.set_blocking_tolerant(true)
+            && self.write_all_tolerant(&pvt_write_cmd)
+            && self.write_all_tolerant(&pkt)
+            && self.set_blocking_tolerant(false)
     }
 
     /// Send a command with payload using the packetized protocol.
@@ -371,6 +377,7 @@ impl BufferedStream {
     }
 
     pub fn set_nonblocking(&self, blocking: bool) -> std::io::Result<()> {
+        let _io = self.io_lock.lock().unwrap();
         self.stream.set_nonblocking(blocking)
     }
 }
@@ -439,6 +446,48 @@ mod tests {
         // to_addr = 0x10, cmd_desc = [0x00000000, 0x00200000]
         let cmd = prepare_private_write_cmd(0x10, 0x20);
         assert_eq!("100000000000002000", hex::encode(cmd));
+    }
+
+    #[test]
+    fn cloned_private_writes_preserve_framing() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let stream = BufferedStream::new(socket);
+        let start = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let writers: Vec<_> = [0x5a, 0xa5]
+            .into_iter()
+            .map(|value| {
+                let mut stream = stream.try_clone().unwrap();
+                let start = start.clone();
+                std::thread::spawn(move || {
+                    start.wait();
+                    for _ in 0..256 {
+                        assert!(stream.send_private_write(0x10, vec![value; 64]));
+                    }
+                })
+            })
+            .collect();
+        start.wait();
+        let mut counts = [0; 2];
+        for _ in 0..512 {
+            let mut header = [0; 9];
+            peer.read_exact(&mut header).unwrap();
+            assert_eq!(header, prepare_private_write_cmd(0x10, 65));
+            let mut payload = [0; 65];
+            peer.read_exact(&mut payload).unwrap();
+            let value = payload[0];
+            assert!(value == 0x5a || value == 0xa5);
+            assert_eq!(&payload[..64], &[value; 64]);
+            assert_eq!(payload[64], calculate_crc8(0x20, &payload[..64]));
+            counts[usize::from(value == 0xa5)] += 1;
+        }
+        for writer in writers {
+            writer.join().unwrap();
+        }
+        assert_eq!(counts, [256, 256]);
     }
 
     #[test]

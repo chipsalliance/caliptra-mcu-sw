@@ -14,7 +14,6 @@ include!(concat!(env!("OUT_DIR"), "/eat_cose_template.rs"));
 
 pub const PAYLOAD_HEADER_OFFSET: usize = COSE_PREAMBLE_LEN + KID_LEN;
 pub const PAYLOAD_OFFSET: usize = PAYLOAD_HEADER_OFFSET + PAYLOAD_BSTR_HEADER_LEN;
-pub const SHA384_DIGEST_SIZE: usize = 48;
 
 /// Supported COSE signing algorithm for OCP EAT.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -207,8 +206,8 @@ impl SignedEat {
         Ok((cose_len, sig_slot))
     }
 
-    /// Calculate the Sig_structure digest (P-384) or encode the raw
-    /// Sig_structure (ML-DSA-87) into `signing_input`.
+    /// Hash the complete Sig_structure with SHA-384 for P-384 or SHA-512
+    /// for the native 2.0 raw ML-DSA-87 EAT signing convention.
     #[inline(never)]
     pub async fn sig_context_input<A: ScratchAlloc>(
         &self,
@@ -219,36 +218,18 @@ impl SignedEat {
         let mut payload_header = [0u8; 9];
         let payload_header_len = write_cose_payload_bstr_len(&mut payload_header, payload.len())?;
         let payload_header = payload_header.get(..payload_header_len).ok_or(INVARIANT)?;
-        match self.algo {
-            OcpEatAlgorithm::Esp384 => {
-                let digest_out = signing_input
-                    .get_mut(..SHA384_DIGEST_SIZE)
-                    .and_then(|s| s.first_chunk_mut::<SHA384_DIGEST_SIZE>())
-                    .ok_or(INVARIANT)?;
-                let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
-                let mut state =
-                    sha_init(alloc, sha_buf, HashAlgo::Sha384, self.algo.sig_preamble()).await?;
-                sha_update(alloc, &mut state, payload_header).await?;
-                sha_update(alloc, &mut state, payload).await?;
-                sha_finish(alloc, &mut state, digest_out).await?;
-                Ok(SHA384_DIGEST_SIZE)
-            }
-            OcpEatAlgorithm::Mldsa87 => {
-                let preamble = self.algo.sig_preamble();
-                let message_len = preamble
-                    .len()
-                    .checked_add(payload_header.len())
-                    .and_then(|len| len.checked_add(payload.len()))
-                    .ok_or(INVARIANT)?;
-                let message = signing_input.get_mut(..message_len).ok_or(INVARIANT)?;
-                let (preamble_slot, rest) = message.split_at_mut(preamble.len());
-                preamble_slot.copy_from_slice(preamble);
-                let (header_slot, payload_slot) = rest.split_at_mut(payload_header.len());
-                header_slot.copy_from_slice(payload_header);
-                payload_slot.copy_from_slice(payload);
-                Ok(message_len)
-            }
-        }
+        let hash_algo = match self.algo {
+            OcpEatAlgorithm::Esp384 => HashAlgo::Sha384,
+            OcpEatAlgorithm::Mldsa87 => HashAlgo::Sha512,
+        };
+        let digest_len = hash_algo.hash_size();
+        let digest_out = signing_input.get_mut(..digest_len).ok_or(INVARIANT)?;
+        let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
+        let mut state = sha_init(alloc, sha_buf, hash_algo, self.algo.sig_preamble()).await?;
+        sha_update(alloc, &mut state, payload_header).await?;
+        sha_update(alloc, &mut state, payload).await?;
+        sha_finish(alloc, &mut state, digest_out).await?;
+        Ok(digest_len)
     }
 }
 

@@ -443,6 +443,10 @@ pub(crate) mod test {
         port: u16,
         target_addr: DynamicI3cAddress,
     ) -> PldmUpdateAgent {
+        let _ = simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Info)
+            .with_module_level("caliptra_mcu_pldm_ua", log::LevelFilter::Debug)
+            .init();
         let (activated_tx, activated_rx) = mpsc::channel();
         let (stopped_tx, stopped_rx) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));

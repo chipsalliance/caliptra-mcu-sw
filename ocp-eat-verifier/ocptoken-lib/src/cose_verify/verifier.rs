@@ -13,10 +13,9 @@ use crate::cose_verify::{CoseSign1Error, CoseSign1Result, CryptoBackend, Signing
 ///
 /// ```rust,ignore
 /// use ocptoken::cose_verify::{CoseSign1Verifier, DecodedCoseSign1, OpenSslBackend};
-/// use ocptoken::token::evidence::OCP_EAT_TAGS;
 ///
 /// let verifier = CoseSign1Verifier::new(OpenSslBackend);
-/// let decoded = DecodedCoseSign1::decode(&bytes, OCP_EAT_TAGS)?;
+/// let decoded = DecodedCoseSign1::decode(&bytes, &[])?;
 /// let verified = verifier.verify(decoded, &signing_cert_der)?;
 /// let payload = verified.payload();
 /// ```
@@ -37,17 +36,30 @@ impl<C: CryptoBackend> CoseSign1Verifier<C> {
         decoded: DecodedCoseSign1,
         cert_der: &[u8],
     ) -> CoseSign1Result<VerifiedCoseSign1> {
-        self.verify_inner(&decoded, cert_der)?;
+        self.verify_inner(&decoded, cert_der, false)?;
         Ok(VerifiedCoseSign1::new(decoded.inner))
     }
 
     /// Verify the signature without consuming the decoded token.
     /// Returns `Ok(())` on success.
     pub fn verify_ref(&self, decoded: &DecodedCoseSign1, cert_der: &[u8]) -> CoseSign1Result<()> {
-        self.verify_inner(decoded, cert_der)
+        self.verify_inner(decoded, cert_der, false)
     }
 
-    fn verify_inner(&self, decoded: &DecodedCoseSign1, cert_der: &[u8]) -> CoseSign1Result<()> {
+    pub(crate) fn verify_ref_with_mldsa87_sha512(
+        &self,
+        decoded: &DecodedCoseSign1,
+        cert_der: &[u8],
+    ) -> CoseSign1Result<()> {
+        self.verify_inner(decoded, cert_der, true)
+    }
+
+    fn verify_inner(
+        &self,
+        decoded: &DecodedCoseSign1,
+        cert_der: &[u8],
+        mldsa87_sha512: bool,
+    ) -> CoseSign1Result<()> {
         // 1. Extract and validate algorithm
         let cose_alg = decoded
             .protected_header()
@@ -55,6 +67,11 @@ impl<C: CryptoBackend> CoseSign1Verifier<C> {
             .as_ref()
             .ok_or(CoseSign1Error::MissingAlgorithm)?;
         let algorithm = SigningAlgorithm::from_cose_algorithm(cose_alg)?;
+        let algorithm = if mldsa87_sha512 && algorithm == SigningAlgorithm::MLDSA87 {
+            SigningAlgorithm::MLDSA87Sha512
+        } else {
+            algorithm
+        };
 
         // 2. Verify signature using coset's Sig_structure construction
         let crypto = &self.crypto;
