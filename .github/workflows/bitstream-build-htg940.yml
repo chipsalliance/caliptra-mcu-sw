@@ -1,0 +1,162 @@
+# Licensed under the Apache-2.0 license
+
+name: HTG-940 FPGA Bitstream build
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: htg940-bitstream-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-bitstream:
+    runs-on: [bitstream-builder]
+    timeout-minutes: 1440
+    defaults:
+      run:
+        shell: bash
+    env:
+      VIVADO_DIR: /vck190-tools/Vivado/2024.2
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Initialize build paths
+        env:
+          STAGING_DIR: ${{ runner.temp }}/htg940-bitstream-${{ github.run_id }}-${{ github.run_attempt }}
+          FW_IMAGE_DIR: ${{ runner.temp }}/htg940-firmware-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p "$STAGING_DIR"
+          printf 'STAGING_DIR=%s\nFW_IMAGE_DIR=%s\n' "$STAGING_DIR" "$FW_IMAGE_DIR" >> "$GITHUB_ENV"
+
+      - name: Check Vivado and HTG-940 device support
+        run: |
+          mkdir -p "$STAGING_DIR"
+          source "$VIVADO_DIR/settings64.sh"
+          "$VIVADO_DIR/bin/vivado" -mode batch \
+            -log "$STAGING_DIR/preflight.log" \
+            -journal "$STAGING_DIR/preflight.jou" \
+            -source hw/htg940/fpga/check_tools.tcl
+
+      - name: Install Python for RTL preparation and ROM conversion
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Prepare pinned HTG-940 RTL
+        run: bash hw/htg940/prepare_sources.sh
+
+      - name: Install Tcl for build-input validation
+        run: |
+          if ! command -v tclsh >/dev/null 2>&1; then
+            tcl_dir="$RUNNER_TEMP/htg940-tcl-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            mkdir -p "$tcl_dir/lists/partial" "$tcl_dir/cache" "$tcl_dir/packages" "$tcl_dir/bin"
+            apt-get -o "Dir::State::lists=$tcl_dir/lists" \
+              -o "Dir::Cache=$tcl_dir/cache" \
+              -o APT::Get::List-Cleanup=0 update
+            (
+              cd "$tcl_dir/packages"
+              apt-get -o "Dir::State::lists=$tcl_dir/lists" \
+                -o "Dir::Cache=$tcl_dir/cache" download tcl8.6 libtcl8.6
+              for package in ./*.deb; do
+                dpkg-deb --extract "$package" "$tcl_dir/root"
+              done
+            )
+            library=$(find "$tcl_dir/root/usr/lib" -name libtcl8.6.so -print -quit)
+            if [[ -z "$library" ]]; then
+              echo "Error: downloaded Tcl packages contain no libtcl8.6.so." >&2
+              exit 1
+            fi
+            printf '#!/usr/bin/env bash\nexport TCL_LIBRARY=%q\nexport LD_LIBRARY_PATH=%q"${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexec %q "$@"\n' \
+              "$tcl_dir/root/usr/share/tcltk/tcl8.6" "$(dirname "$library")" \
+              "$tcl_dir/root/usr/bin/tclsh8.6" > "$tcl_dir/bin/tclsh"
+            chmod +x "$tcl_dir/bin/tclsh"
+            echo "$tcl_dir/bin" >> "$GITHUB_PATH"
+            export PATH="$tcl_dir/bin:$PATH"
+          fi
+          tclsh <<< 'puts "Tcl validation interpreter: [info patchlevel]"'
+
+      - name: Validate HTG-940 build inputs and debug generation
+        run: |
+          python3 -m unittest discover -s hw/htg940/tests -p 'test_*.py'
+          python3 -m unittest discover -s hw/htg940/fpga/htg940_usb_min_ila -p 'test_*.py'
+
+      - name: Create all-zero firmware placeholders (not bootable)
+        run: |
+          echo "::warning::All-zero ROM and flash placeholders: this bitstream is NOT bootable and does not validate USB recovery."
+          mkdir -p "$FW_IMAGE_DIR"
+          dd if=/dev/zero of="$FW_IMAGE_DIR/caliptra_rom.bin" bs=98304 count=1 status=none
+          dd if=/dev/zero of="$FW_IMAGE_DIR/mcu_rom.bin" bs=131072 count=1 status=none
+          dd if=/dev/zero of="$FW_IMAGE_DIR/flash_image.bin" bs=2097152 count=1 status=none
+          {
+            echo "Board: HTG-940 / xcvu13p-fhgb2104-3-e"
+            echo "Hardware profile: Caliptra 2.2 snapshot, full core/crypto, 40 MHz, USB2, dual ILAs"
+            echo "Firmware: ALL-ZERO PLACEHOLDERS; NOT BOOTABLE"
+            echo "USB recovery: NOT VALIDATED"
+            echo "Source commit: $GITHUB_SHA"
+            echo "FPGA integration origin: faydn23/caliptra-mcu-sw@1d79b4a636438d3bdfcf7b273e81ea4a93ae739a"
+            echo "RTL revisions: see submodule_pins.json (upstream caliptra-ss/main, USB Hub 2.6)"
+            sha256sum "$FW_IMAGE_DIR/"*.bin
+          } | tee "$STAGING_DIR/build-info.txt"
+          cp hw/htg940/fpga/htg940/submodule_pins.json "$STAGING_DIR/"
+          cp hw/htg940/fpga/htg940_usb_min_ila/probe_schema.tcl "$STAGING_DIR/"
+          {
+            echo "## HTG-940 bitstream"
+            echo "**All-zero ROM/flash inputs: NOT BOOTABLE. USB recovery is not validated.**"
+            echo "Full 40 MHz Caliptra/MCU/USB profile with dual ILAs; no crypto stubs."
+            echo "Inspect the uploaded timing and DRC reports before using any generated image."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build HTG-940 bitstream
+        id: build
+        run: |
+          export HTG_PYTHON="$pythonLocation/bin/python3"
+          source "$VIVADO_DIR/settings64.sh"
+          cd hw/htg940/fpga
+          "$VIVADO_DIR/bin/vivado" -mode batch \
+            -log "$STAGING_DIR/vivado.log" \
+            -journal "$STAGING_DIR/vivado.jou" \
+            -source htg940/run_full.tcl \
+            -tclargs BUILD_NAME=build_full_ci FW_IMAGE_DIR="$FW_IMAGE_DIR" IMPLEMENT \
+            | tee "$STAGING_DIR/build-console.log"
+          result_dir=htg940_usb_min_ila/build_full_ci/caliptra_htg940_project.runs/impl_1
+          for output in htg940_board_top.bit htg940_usb_dual_ila.ltx htg940_board_top.mmi; do
+            if [[ ! -s "$result_dir/$output" ]]; then
+              echo "Error: expected nonempty HTG-940 output $result_dir/$output" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload HTG-940 bitstream and debug files
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: htg940-bitstream-zero-firmware-${{ github.run_id }}
+          path: |
+            hw/htg940/fpga/htg940_usb_min_ila/build_full_ci/caliptra_htg940_project.runs/impl_1/htg940_board_top.bit
+            hw/htg940/fpga/htg940_usb_min_ila/build_full_ci/caliptra_htg940_project.runs/impl_1/htg940_usb_dual_ila.ltx
+            hw/htg940/fpga/htg940_usb_min_ila/build_full_ci/caliptra_htg940_project.runs/impl_1/htg940_board_top.mmi
+            ${{ env.STAGING_DIR }}/build-info.txt
+            ${{ env.STAGING_DIR }}/submodule_pins.json
+            ${{ env.STAGING_DIR }}/probe_schema.tcl
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload HTG-940 build logs and reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: htg940-build-reports-${{ github.run_id }}
+          path: |
+            ${{ env.STAGING_DIR }}
+            hw/htg940/fpga/htg940_usb_min_ila/build_full_ci/**/*.log
+            hw/htg940/fpga/htg940_usb_min_ila/build_full_ci/**/*.rpt
+          if-no-files-found: warn
+          retention-days: 7

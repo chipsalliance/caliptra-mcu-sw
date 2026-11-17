@@ -1,0 +1,11 @@
+*.bit
+*.dcp
+*.xpr
+*.jou
+*.log
+*.rpt
+*.str
+.Xil/
+/htg940_usb_min_ila/build*/
+/htg940_40mhz_20260928/build*/
+/htg940_usb_min_ila/__pycache__/

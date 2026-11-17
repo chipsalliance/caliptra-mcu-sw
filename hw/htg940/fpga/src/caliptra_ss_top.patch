@@ -1,0 +1,130 @@
+diff --git a/caliptra_ss_top.sv b/caliptra_ss_top.sv
+index f523b769..76911e1b 100644
+--- a/caliptra_ss_top.sv
++++ b/caliptra_ss_top.sv
+@@ -24,0 +25,2 @@
++`include "css_mcu0_common_defines.vh"
++`include "css_mcu0_el2_pdef.vh"
+@@ -31,0 +34,3 @@ module caliptra_ss_top
++    import lc_ctrl_pkg::*;
++    import lc_ctrl_state_pkg::*;
++    import otp_ctrl_pkg::*;
+@@ -52,0 +58 @@ module caliptra_ss_top
++    ,parameter USB_AXI_USER_WIDTH = 32
+@@ -60,0 +67 @@ module caliptra_ss_top
++    input logic cptra_i3c_clk_i,
+@@ -127 +134 @@ module caliptra_ss_top
+-    input  lc_ctrl_state_pkg::lc_token_t cptra_ss_raw_unlock_token_hashed_i,
++    input  lc_token_t cptra_ss_raw_unlock_token_hashed_i,
+@@ -258,2 +265,2 @@ module caliptra_ss_top
+-    input  lc_ctrl_pkg::lc_tx_t cptra_ss_lc_clk_byp_ack_i,
+-    output lc_ctrl_pkg::lc_tx_t cptra_ss_lc_clk_byp_req_o,
++    input  lc_tx_t cptra_ss_lc_clk_byp_ack_i,
++    output lc_tx_t cptra_ss_lc_clk_byp_req_o,
+@@ -268 +275 @@ module caliptra_ss_top
+-    output lc_ctrl_state_pkg::lc_state_e caliptra_ss_life_cycle_steady_state_o,
++    output lc_state_e caliptra_ss_life_cycle_steady_state_o,
+@@ -280,2 +287,2 @@ module caliptra_ss_top
+-    output lc_ctrl_pkg::lc_tx_t cptra_ss_lc_escalate_en_o,
+-    output lc_ctrl_pkg::lc_tx_t cptra_ss_lc_check_byp_en_o,
++    output lc_tx_t cptra_ss_lc_escalate_en_o,
++    output lc_tx_t cptra_ss_lc_check_byp_en_o,
+@@ -284,2 +291,2 @@ module caliptra_ss_top
+-    input otp_ctrl_pkg::prim_generic_otp_outputs_t      cptra_ss_fuse_macro_outputs_i,
+-    output otp_ctrl_pkg::prim_generic_otp_inputs_t      cptra_ss_fuse_macro_inputs_o,
++    input prim_generic_otp_outputs_t      cptra_ss_fuse_macro_outputs_i,
++    output prim_generic_otp_inputs_t      cptra_ss_fuse_macro_inputs_o,
+@@ -370 +377 @@ module caliptra_ss_top
+-    input  logic [$bits(cptra_ss_usb_combo_s_axi_if_w_sub.awuser)-1:0] cptra_ss_usb_combo_priv_axi_users_i [USB_COMBO_NUM_PRIV_AXI_USERS],
++    input  logic [USB_AXI_USER_WIDTH-1:0] cptra_ss_usb_combo_priv_axi_users_i [USB_COMBO_NUM_PRIV_AXI_USERS],
+@@ -372 +379 @@ module caliptra_ss_top
+-    input  logic [$bits(cptra_ss_usb_dev1_csr_s_axi_if_w_sub.awuser)-1:0] cptra_ss_usb_dev1_priv_axi_users_i [USB_DEV1_NUM_PRIV_AXI_USERS],
++    input  logic [USB_AXI_USER_WIDTH-1:0] cptra_ss_usb_dev1_priv_axi_users_i [USB_DEV1_NUM_PRIV_AXI_USERS],
+@@ -1177,5 +1184,61 @@ module caliptra_ss_top
+-    // Spare slots repeat authorized users; a zero entry would authorize AXI USER 0
+-    assign priv_ids[0] = cptra_ss_strap_caliptra_dma_axi_user_i;
+-    assign priv_ids[1] = cptra_ss_strap_mcu_lsu_axi_user_i;
+-    assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i;
+-    assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i;
++    logic i3c_rst_sync;
++    xpm_cdc_async_rst #(
++        .DEST_SYNC_FF(4),
++        .INIT_SYNC_FF(0),
++        .RST_ACTIVE_HIGH(0)
++    ) xpm_cdc_i3c_rst (
++        .dest_arst(i3c_rst_sync),
++        .dest_clk (cptra_i3c_clk_i),
++        .src_arst (cptra_ss_rst_b_o)
++    );
++
++    logic cptra_ss_i3c_recovery_payload_available_o_presync;
++    logic cptra_ss_i3c_recovery_image_activated_o_presync;
++    logic i3c_peripheral_reset_presync;
++    logic i3c_escalated_reset_presync;
++    logic i3c_irq_o_presync;
++    xpm_cdc_array_single #(
++        .DEST_SYNC_FF(4),
++        .INIT_SYNC_FF(0),
++        .SIM_ASSERT_CHK(0),
++        .SRC_INPUT_REG(1),
++        .WIDTH(5)
++    ) xpm_cdc_i3c_outputs_inst (
++        .src_clk (cptra_i3c_clk_i),
++        .dest_clk(cptra_ss_clk_i),
++        .src_in  ({cptra_ss_i3c_recovery_payload_available_o_presync,
++                   cptra_ss_i3c_recovery_image_activated_o_presync,
++                   i3c_peripheral_reset_presync,
++                   i3c_escalated_reset_presync,
++                   i3c_irq_o_presync}),
++        .dest_out({cptra_ss_i3c_recovery_payload_available_o,
++                   cptra_ss_i3c_recovery_image_activated_o,
++                   i3c_peripheral_reset,
++                   i3c_escalated_reset,
++                   i3c_irq_o})
++    );
++
++    logic [31:0] cptra_ss_strap_caliptra_dma_axi_user_i_synch;
++    logic [31:0] cptra_ss_strap_mcu_lsu_axi_user_i_synch;
++    logic disable_id_filtering_i_synch;
++    xpm_cdc_array_single #(
++        .DEST_SYNC_FF(4),
++        .INIT_SYNC_FF(0),
++        .SIM_ASSERT_CHK(0),
++        .SRC_INPUT_REG(1),
++        .WIDTH(65)
++    ) xpm_cdc_i3c_inputs_inst (
++        .src_clk (cptra_ss_clk_i),
++        .dest_clk(cptra_i3c_clk_i),
++        .src_in  ({cptra_ss_strap_caliptra_dma_axi_user_i,
++                   cptra_ss_strap_mcu_lsu_axi_user_i,
++                   disable_id_filtering_i}),
++        .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch,
++                   cptra_ss_strap_mcu_lsu_axi_user_i_synch,
++                   disable_id_filtering_i_synch})
++    );
++
++    assign priv_ids[0] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
++    assign priv_ids[1] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
++    assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
++    assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
+@@ -1209,2 +1272,2 @@ module caliptra_ss_top
+-        .clk_i                          (cptra_ss_clk_i),
+-        .rst_ni                         (cptra_ss_rst_b_o),
++        .clk_i                          (cptra_i3c_clk_i),
++        .rst_ni                         (i3c_rst_sync),
+@@ -1241,3 +1304,3 @@ module caliptra_ss_top
+-        .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o),
+-        .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o),
+-        .peripheral_reset_o             (i3c_peripheral_reset),
++        .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o_presync),
++        .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o_presync),
++        .peripheral_reset_o             (i3c_peripheral_reset_presync),
+@@ -1245 +1308 @@ module caliptra_ss_top
+-        .escalated_reset_o              (i3c_escalated_reset),
++        .escalated_reset_o              (i3c_escalated_reset_presync),
+@@ -1248 +1311 @@ module caliptra_ss_top
+-        .irq_o                          (i3c_irq_o),
++        .irq_o                          (i3c_irq_o_presync),
+@@ -1251 +1314 @@ module caliptra_ss_top
+-        .disable_id_filtering_i         (disable_id_filtering_i),
++        .disable_id_filtering_i         (disable_id_filtering_i_synch),

@@ -1,0 +1,54 @@
+[
+  {
+    "path": "caliptra-ss",
+    "commit": "b9909edc83eefbbbd01d1616720dd2500a807eac"
+  },
+  {
+    "path": "caliptra-ss/third_party/caliptra-rtl",
+    "commit": "f9bc5ab97b885b5e31ccb062eca16634a8e61b5a",
+    "patch": "hw__caliptra-ss__third_party__caliptra-rtl.patch",
+    "patch_sha256": "27b8102481ec21934d9af9002bc24efa68417cec41005336ce7f0230984416ac"
+  },
+  {
+    "path": "caliptra-ss/third_party/caliptra-rtl/submodules/adams-bridge",
+    "commit": "1d85b8e0df62cbb2f91228f68815f02295ac668a"
+  },
+  {
+    "path": "caliptra-ss/third_party/cocotbext-i3c",
+    "commit": "6ac073dbfcc61bb58b3d4d2949756445685e3c3b"
+  },
+  {
+    "path": "caliptra-ss/third_party/i3c-core",
+    "commit": "9a8a322582444fed63ae3fe9a86230f32b478375"
+  },
+  {
+    "path": "caliptra-ss/third_party/i3c-core/third_party/axi-vip",
+    "commit": "6aeb0a5ba7810dafd96145f0e569db6996464b0e"
+  },
+  {
+    "path": "caliptra-ss/third_party/i3c-core/third_party/caliptra-rtl",
+    "commit": "f216cee1e3945949b16b7b2d410907d56355ae1d"
+  },
+  {
+    "path": "caliptra-ss/third_party/i3c-core/third_party/caliptra-rtl/submodules/adams-bridge",
+    "commit": "e59eba955eac2a1adcb059f250641ede78e304be"
+  },
+  {
+    "path": "caliptra-ss/third_party/i3c-core/third_party/cocotbext-i3c",
+    "commit": "6456315697d980ba59ff09448b89941346a3ce16"
+  },
+  {
+    "path": "caliptra-ss/third_party/usb2",
+    "commit": "97aa9616f50d6adfb17e45053d1f16feb44792d7",
+    "patch": "hw__caliptra-ss__third_party__usb2.patch",
+    "patch_sha256": "bc1f2d9ff38e9df2a5657ef9d4d939445ae1971692e4ef96887a181f830c3bfa"
+  },
+  {
+    "path": "caliptra-ss/third_party/usb2/submodules/caliptra-rtl",
+    "commit": "1f272de5be683cce9146614a1537bb0db45ec392"
+  },
+  {
+    "path": "caliptra-ss/third_party/usb2/submodules/caliptra-rtl/submodules/adams-bridge",
+    "commit": "2f15ffb1a2e9bd99652fa04d434a48ffcdc23f42"
+  }
+]
