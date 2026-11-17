@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_emulator_state::spawn_with_emulator_state;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
-/// A oneshot timer that executes a callback after a specified duration.
+/// A timer that cancels its pending callbacks when dropped.
 pub struct Timer {
     cancel_tx: Option<mpsc::Sender<()>>,
 }
@@ -46,13 +46,9 @@ impl Timer {
         self.cancel_tx = Some(tx);
 
         spawn_with_emulator_state(move || {
-            let result = rx.recv_timeout(duration);
-            if result.is_err() {
-                // Timer expired, execute callback
+            if let Err(RecvTimeoutError::Timeout) = rx.recv_timeout(duration) {
                 callback(context);
             }
-            // Otherwise, the timer was cancelled
-            // and we do nothing.
         });
     }
 
@@ -76,15 +72,8 @@ impl Timer {
         self.cancel_tx = Some(tx);
 
         spawn_with_emulator_state(move || {
-            loop {
-                let result = rx.recv_timeout(duration);
-                if result.is_err() {
-                    // Timer expired, execute callback
-                    callback(&mut context);
-                } else {
-                    // Timer was cancelled, exit loop
-                    break;
-                }
+            while let Err(RecvTimeoutError::Timeout) = rx.recv_timeout(duration) {
+                callback(&mut context);
             }
         });
     }
@@ -106,6 +95,32 @@ mod tests {
 
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
+
+    #[test]
+    fn dropping_one_shot_timer_cancels_callback() {
+        init_emulator_state(EmulatorState::new_arc());
+        let mut timer = Timer::new();
+        let (tx, rx) = mpsc::channel();
+        timer.schedule(Duration::from_secs(60), tx, |tx| tx.send(()).unwrap());
+        drop(timer);
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(1)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn dropping_periodic_timer_cancels_callback() {
+        init_emulator_state(EmulatorState::new_arc());
+        let mut timer = Timer::new();
+        let (tx, rx) = mpsc::channel();
+        timer.schedule_periodic(Duration::from_secs(60), tx, |tx| tx.send(()).unwrap());
+        drop(timer);
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(1)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        );
+    }
 
     #[test]
     fn test_timer_executes_successfully() {

@@ -1068,15 +1068,32 @@ pub async fn dpe_certify_key_pubkey<A: ScratchAlloc>(
     Ok(chunk.next_handle)
 }
 
-/// Return the raw ML-DSA-87 public key emitted by DPE `CertifyKey`, along
-/// with the rotated context handle.
+fn extract_certify_key_mldsa87_pubkey(
+    response: &[u8],
+) -> McuResult<&[u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE]> {
+    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
+    internal_slice(
+        response,
+        CERTIFY_KEY_RESP_PUBKEY_X_OFF,
+        CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    )?
+    .first_chunk::<CERTIFY_KEY_MLDSA87_PUBKEY_SIZE>()
+    .ok_or(INTERNAL_BUG)
+}
+
+/// Borrow the raw ML-DSA-87 public key emitted by DPE `CertifyKey` in-place
+/// from the mailbox response buffer, and return the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_mldsa87_pubkey<A: ScratchAlloc>(
+pub async fn dpe_certify_key_mldsa87_pubkey<A, F>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
-) -> McuResult<DpeContextHandle> {
+    on_pubkey: F,
+) -> McuResult<DpeContextHandle>
+where
+    A: ScratchAlloc,
+    F: FnOnce(&[u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE]),
+{
     let chunk = certify_key_chunks_response(
         alloc,
         DpeProfile::Mldsa87,
@@ -1087,15 +1104,8 @@ pub async fn dpe_certify_key_mldsa87_pubkey<A: ScratchAlloc>(
     )
     .await?;
     let response = chunk.chunk()?;
-    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
-    copy_bytes(
-        public_key,
-        internal_slice(
-            response,
-            CERTIFY_KEY_RESP_PUBKEY_X_OFF,
-            CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-        )?,
-    )?;
+    let pubkey = extract_certify_key_mldsa87_pubkey(response)?;
+    on_pubkey(pubkey);
     Ok(chunk.next_handle)
 }
 

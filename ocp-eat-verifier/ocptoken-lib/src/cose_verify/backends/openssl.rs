@@ -5,29 +5,31 @@ use crate::cose_verify::{CoseSign1Error, CryptoBackend, SigningAlgorithm};
 use openssl::{
     bn::BigNum,
     ecdsa::EcdsaSig,
-    hash::MessageDigest,
+    hash::{hash, MessageDigest},
     nid::Nid,
-    pkey::{Id, PKey},
+    pkey::{Id, KeyType, PKey},
     sign::Verifier,
     x509::X509,
 };
 
 /// OpenSSL-based implementation of `CryptoBackend`.
 ///
-/// Algorithm-agnostic: detects key type from the certificate and
+/// Detects key type from the certificate and
 /// dispatches to the appropriate verification path.
 ///
 /// - ECDSA (ESP384): converts COSE raw r||s signature to DER, then
 ///   verifies via EVP.
 /// - ML-DSA-87: passes the signature directly to EVP (no conversion
 ///   needed).
+/// - MLDSA87Sha512: hashes the full Sig_structure before raw ML-DSA-87
+///   verification.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OpenSslBackend;
 
 impl CryptoBackend for OpenSslBackend {
     fn verify_signature(
         &self,
-        _algorithm: SigningAlgorithm,
+        algorithm: SigningAlgorithm,
         cert_der: &[u8],
         signature: &[u8],
         to_be_signed: &[u8],
@@ -40,6 +42,19 @@ impl CryptoBackend for OpenSslBackend {
         let pubkey: PKey<openssl::pkey::Public> = cert.public_key().map_err(|e| {
             CoseSign1Error::CertificateError(format!("Failed to extract public key: {}", e))
         })?;
+
+        let sha512_digest = if algorithm == SigningAlgorithm::MLDSA87Sha512 {
+            if !pubkey.is_a(KeyType::ML_DSA_87) {
+                return Err(CoseSign1Error::SignatureVerification);
+            }
+            Some(
+                hash(MessageDigest::sha512(), to_be_signed)
+                    .map_err(|e| CoseSign1Error::CryptoError(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+        let to_be_signed = sha512_digest.as_deref().unwrap_or(to_be_signed);
 
         // Detect key type and prepare the signature for OpenSSL
         let key_id = pubkey.id();

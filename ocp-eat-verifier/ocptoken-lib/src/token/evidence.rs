@@ -2,7 +2,8 @@
 
 use crate::cose_verify::authenticate::{HeaderSelection, SignerIdMethod};
 use crate::cose_verify::{
-    authenticate_signer, AuthenticateOptions, CoseSign1Verifier, CryptoBackend, DecodedCoseSign1,
+    authenticate_signer, AuthenticateOptions, CoseSign1Result, CoseSign1Verifier, CryptoBackend,
+    DecodedCoseSign1,
 };
 use crate::error::{OcpEatError, OcpEatResult};
 use crate::ta_store::TrustAnchorStore;
@@ -18,6 +19,20 @@ pub const CBOR_TAG_COSE_SIGN1: u64 = 18;
 
 /// OCP EAT profile: CBOR self-describe (55799) -> CWT (61) -> COSE_Sign1 (18)
 pub const OCP_EAT_TAGS: &[u64] = &[CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1];
+
+/// Verify an EAT signature using the Caliptra 2.0 profile.
+///
+/// ML-DSA-87 signs SHA-512 of the full COSE Sig_structure, including
+/// protected headers, rather than just the claims. This is raw ML-DSA
+/// over a digest, not HashML-DSA. ECC verification is unchanged.
+/// The caller is responsible for authenticating the signing certificate.
+pub fn verify_eat_signature(
+    decoded: &DecodedCoseSign1,
+    cert_der: &[u8],
+    verifier: &CoseSign1Verifier<impl CryptoBackend>,
+) -> CoseSign1Result<()> {
+    verifier.verify_ref_with_mldsa87_sha512(decoded, cert_der)
+}
 
 /// Parsed and verified EAT evidence.
 ///
@@ -93,14 +108,14 @@ impl<'a> Evidence<'a> {
     /// the COSE_Sign1 signature.
     ///
     /// Equivalent to calling [`authenticate`](Self::authenticate)
-    /// followed by signature verification with the returned leaf cert.
+    /// followed by [`verify_eat_signature`] with the returned leaf cert.
     pub fn verify(
         &self,
         cert_chain_blob: &[u8],
         verifier: &CoseSign1Verifier<impl CryptoBackend>,
     ) -> OcpEatResult<()> {
         let authenticated_leaf = self.authenticate(cert_chain_blob)?;
-        verifier.verify_ref(&self.decoded, &authenticated_leaf)?;
+        verify_eat_signature(&self.decoded, &authenticated_leaf, verifier)?;
         Ok(())
     }
 }

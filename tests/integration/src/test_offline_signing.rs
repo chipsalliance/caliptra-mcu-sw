@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod test {
-    use caliptra_auth_man_types::AuthorizationManifest;
+    use caliptra_auth_man_types::{AuthorizationManifest, AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE};
     use caliptra_image_crypto::RustCrypto as Crypto;
     use caliptra_image_gen::ImageGeneratorCrypto;
     use caliptra_mcu_builder::offline_signing::{
@@ -194,7 +194,8 @@ mod test {
         )
         .expect("Vendor pub keys signature verification failed");
 
-        let owner_bytes = manifest.preamble.owner_pub_keys.as_bytes();
+        let mut owner_bytes = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+        manifest.preamble.owner_signed_data(&mut owner_bytes);
         let owner_digest: [u8; 48] = sha2::Sha384::digest(owner_bytes).into();
 
         verify_ecdsa384_signature(
@@ -428,7 +429,8 @@ mod test {
         )
         .expect("Vendor pub keys signature verification failed");
 
-        let owner_bytes = manifest.preamble.owner_pub_keys.as_bytes();
+        let mut owner_bytes = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+        manifest.preamble.owner_signed_data(&mut owner_bytes);
         let owner_digest: [u8; 48] = sha2::Sha384::digest(owner_bytes).into();
 
         verify_ecdsa384_signature(

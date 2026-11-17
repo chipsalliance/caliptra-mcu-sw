@@ -77,7 +77,7 @@ pub trait CryptoBackend {
     /// Verify a COSE_Sign1 signature using the public key from a
     /// DER-encoded X.509 certificate.
     ///
-    /// - `algorithm`: the signing algorithm from the COSE protected header
+    /// - `algorithm`: the verification scheme selected from the header and profile
     /// - `cert_der`: DER-encoded X.509 certificate of the signer
     /// - `signature`: raw COSE signature bytes
     /// - `to_be_signed`: the COSE Sig_structure bytes
@@ -90,7 +90,7 @@ pub trait CryptoBackend {
     ) -> CoseSign1Result<()>;
 }
 
-/// Supported COSE signing algorithms.
+/// Supported signature verification schemes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SigningAlgorithm {
     /// ECDSA w/ SHA-384 (RFC 8152 / RFC 9053, algorithm ID -35)
@@ -99,6 +99,9 @@ pub enum SigningAlgorithm {
     ESP384,
     /// ML-DSA-87 (post-quantum, FIPS 204, algorithm ID -50)
     MLDSA87,
+    /// Raw ML-DSA-87 over SHA-512(Sig_structure), not HashML-DSA.
+    /// Internal scheme selector, not an assigned COSE algorithm.
+    MLDSA87Sha512,
 }
 
 impl SigningAlgorithm {

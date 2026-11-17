@@ -64,6 +64,14 @@ Both supported Evidence formats are self-contained: each binds to a requester-su
 - **Signed OCP EAT (default)**: A `COSE_Sign1`-signed CBOR Web Token (CWT) carrying the OCP EAT profile OID, requester nonce, debug state, and structured `concise-evidence-map` measurements (`svn`, current digest, and journey digest per target environment), signed by the DPE leaf attestation key (`AK`) (see [OCP IETF EAT Profile](https://opencomputeproject.github.io/Security/ietf-eat-profile/HEAD/)).
 - **Signed PCR Quote**: Hardware PCR values (`PCR[0..31]`), PCR reset counters, requester nonce, and aggregate digest, signed by the Caliptra `AliasFMC` key (see Caliptra Runtime [`QUOTE_PCRS_ECC384`](https://github.com/chipsalliance/caliptra-sw/blob/caliptra-2.0/runtime/README.md#quote_pcrs_ecc384) and [`QUOTE_PCRS_MLDSA87`](https://github.com/chipsalliance/caliptra-sw/blob/caliptra-2.0/runtime/README.md#quote_pcrs_mldsa87)).
 
+The Caliptra 2.0 OCP EAT profile uses raw ML-DSA-87 signing over
+`SHA-512(COSE Sig_structure)`, with an empty ML-DSA context. The digest covers
+the complete signing structure, not only the claims payload. This is a
+2.0-specific convention, not HashML-DSA or external-mu signing; verifiers must
+apply the same convention. The COSE algorithm identifier remains ML-DSA-87.
+ECDSA P-384 EAT signatures, certificate and CoRIM authentication, and standard
+SPDM protocol signing are unchanged.
+
 Platforms can optionally include live FE status as raw HW-configuration
 evidence in OCP EAT, separate from firmware measurements. See
 [OCP EAT Hardware Configuration Evidence](./attestation_configuration.md#6-ocp-eat-hardware-configuration-evidence)
