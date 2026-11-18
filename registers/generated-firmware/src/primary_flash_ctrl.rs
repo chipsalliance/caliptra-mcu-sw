@@ -9,9 +9,7 @@ pub mod bits {
     register_bitfields! {
         u32,
             pub CtrlRegwen [
-                /// This register ensures the contents of OP_CONTROL cannot be changed by software once a flash operation has begun. \
-                /// This bit defaults to 1 and is set to 0 by hardware when flash operation is initiated. When the controller completes the flash operation, \
-                /// It unlocks whenever the existing flash operation completes, regardless of success or error.
+                /// This register ensures the contents of OP_CONTROL cannot be changed by software once a flash operation has begun. This bit defaults to 1 and is set to 0 by hardware when flash operation is initiated. When the controller completes the flash operation, it unlocks whenever the existing flash operation completes, regardless of success or error.
                 En OFFSET(0) NUMBITS(1) [],
             ],
             pub FlControl [

@@ -48,6 +48,24 @@ jobs:
       - name: Run precheckin
         run: cargo xtask precheckin
 
+  peakrdl-tock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install peakrdl-tock
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -e './peakrdl-tock[cli,test]'
+
+      - name: Run tests
+        run: .venv/bin/pytest peakrdl-tock
+
   caliptra-util-host-precheckin:
     uses: ./.github/workflows/caliptra-util-host-validator.yml
     with:
