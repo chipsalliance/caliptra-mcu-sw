@@ -414,6 +414,17 @@ regfile fifo_regs {
         field { sw=r; hw=rw; desc = "RSVD in core"; } msg_fifo_empty = 1'b0;
         field { sw=r; hw=rw; desc = "RSVD in core"; } msg_fifo_full = 1'b0;
     } msg_fifo_status;
+
+    reg {
+        field { sw=rw; hw=r; wr_swacc=true; } itrng_data[32] = 32'b0;
+        desc = "Secondary entropy input for dual-iTRNG lab builds";
+    } itrng1_fifo_data @ 0x28;
+
+    reg {
+        field { sw=r; hw=rw; } itrng_fifo_empty = 1'b1;
+        field { sw=r; hw=rw; } itrng_fifo_full = 1'b0;
+        field { sw=rw; hw=r; } itrng_fifo_reset = 1'b0;
+    } itrng1_fifo_status @ 0x2C;
 };
 
 addrmap caliptra_fpga_realtime_regs {

@@ -9,6 +9,11 @@ on:
       - ".github/workflows/bitstream-build_2.2.yml"
       - "hw/latest/**"
   workflow_dispatch:
+    inputs:
+      dual-itrng:
+        description: Build the standard dual-iTRNG lab image
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -24,3 +29,4 @@ jobs:
       fpga-path: hw/latest/fpga
       rtl-path: hw/latest/caliptra-ss
       target-branch: ${{ github.base_ref || github.ref_name }}
+      dual-itrng: ${{ inputs.dual-itrng || github.head_ref == 'lab/fpga-2.2-dual-itrng' }}

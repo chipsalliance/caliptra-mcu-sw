@@ -7,6 +7,8 @@ package caliptra_fpga_realtime_regs_pkg;
     localparam CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH = 32;
     localparam CALIPTRA_FPGA_REALTIME_REGS_SIZE = 'ha4013200;
 
+    
+
     typedef struct {
         logic [31:0] next;
     } interface_regs__fpga_version__fpga_version__in_t;
@@ -241,6 +243,19 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__msg_fifo_status__in_t;
 
     typedef struct {
+        logic next;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_empty__in_t;
+
+    typedef struct {
+        logic next;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_full__in_t;
+
+    typedef struct {
+        fifo_regs__itrng1_fifo_status__itrng_fifo_empty__in_t itrng_fifo_empty;
+        fifo_regs__itrng1_fifo_status__itrng_fifo_full__in_t itrng_fifo_full;
+    } fifo_regs__itrng1_fifo_status__in_t;
+
+    typedef struct {
         fifo_regs__log_fifo_data__in_t log_fifo_data;
         fifo_regs__log_fifo_status__in_t log_fifo_status;
         fifo_regs__itrng_fifo_status__in_t itrng_fifo_status;
@@ -248,6 +263,7 @@ package caliptra_fpga_realtime_regs_pkg;
         fifo_regs__dbg_fifo_status__in_t dbg_fifo_status;
         fifo_regs__msg_fifo_pop__in_t msg_fifo_pop;
         fifo_regs__msg_fifo_status__in_t msg_fifo_status;
+        fifo_regs__itrng1_fifo_status__in_t itrng1_fifo_status;
     } fifo_regs__in_t;
 
     typedef struct {
@@ -831,6 +847,33 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__msg_fifo_status__out_t;
 
     typedef struct {
+        logic [31:0] value;
+        logic wr_swacc;
+    } fifo_regs__itrng1_fifo_data__itrng_data__out_t;
+
+    typedef struct {
+        fifo_regs__itrng1_fifo_data__itrng_data__out_t itrng_data;
+    } fifo_regs__itrng1_fifo_data__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_empty__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_full__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_reset__out_t;
+
+    typedef struct {
+        fifo_regs__itrng1_fifo_status__itrng_fifo_empty__out_t itrng_fifo_empty;
+        fifo_regs__itrng1_fifo_status__itrng_fifo_full__out_t itrng_fifo_full;
+        fifo_regs__itrng1_fifo_status__itrng_fifo_reset__out_t itrng_fifo_reset;
+    } fifo_regs__itrng1_fifo_status__out_t;
+
+    typedef struct {
         fifo_regs__log_fifo_data__out_t log_fifo_data;
         fifo_regs__log_fifo_status__out_t log_fifo_status;
         fifo_regs__itrng_fifo_data__out_t itrng_fifo_data;
@@ -841,6 +884,8 @@ package caliptra_fpga_realtime_regs_pkg;
         fifo_regs__msg_fifo_pop__out_t msg_fifo_pop;
         fifo_regs__msg_fifo_push__out_t msg_fifo_push;
         fifo_regs__msg_fifo_status__out_t msg_fifo_status;
+        fifo_regs__itrng1_fifo_data__out_t itrng1_fifo_data;
+        fifo_regs__itrng1_fifo_status__out_t itrng1_fifo_status;
     } fifo_regs__out_t;
 
     typedef struct {

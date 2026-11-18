@@ -80,7 +80,10 @@ register_structs! {
         (0x10 => pub dbg_fifo_data_pop: ReadOnly<u32, FifoData::Register>),
         (0x14 => pub dbg_fifo_data_push: WriteOnly<u32, FifoData::Register>),
         (0x18 => pub dbg_fifo_status: ReadOnly<u32, FifoStatus::Register>),
-        (0x1c => @END),
+        (0x1c => _msg_fifo_regs),
+        (0x28 => pub itrng1_fifo_data: ReadWrite<u32>),
+        (0x2c => pub itrng1_fifo_status: ReadWrite<u32, ItrngFifoStatus::Register>),
+        (0x30 => @END),
     },
     pub FlashCtrlRegs {
         (0x00 => pub fl_interrupt_state: ReadWrite<u32>),

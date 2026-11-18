@@ -31,9 +31,9 @@ module caliptra_fpga_realtime_regs (
 
     `ifndef SYNTHESIS
         initial begin
-            assert_bad_addr_width: assert($bits(s_axil.ARADDR) >= caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH)
+            assert($bits(s_axil.ARADDR) >= caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH)
                 else $error("Interface address width of %0d is too small. Shall be at least %0d bits", $bits(s_axil.ARADDR), caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH);
-            assert_bad_data_width: assert($bits(s_axil.WDATA) == caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH)
+            assert($bits(s_axil.WDATA) == caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH)
                 else $error("Interface data width of %0d is incorrect. Shall be %0d bits", $bits(s_axil.WDATA), caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH);
         end
     `endif
@@ -268,6 +268,8 @@ module caliptra_fpga_realtime_regs (
             logic msg_fifo_pop;
             logic msg_fifo_push;
             logic msg_fifo_status;
+            logic itrng1_fifo_data;
+            logic itrng1_fifo_status;
         } fifo_regs;
         struct {
             logic FL_INTERRUPT_STATE;
@@ -374,6 +376,8 @@ module caliptra_fpga_realtime_regs (
         decoded_reg_strb.fifo_regs.msg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha401101c);
         decoded_reg_strb.fifo_regs.msg_fifo_push = cpuif_req_masked & (cpuif_addr == 32'ha4011020);
         decoded_reg_strb.fifo_regs.msg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011024);
+        decoded_reg_strb.fifo_regs.itrng1_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011028);
+        decoded_reg_strb.fifo_regs.itrng1_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha401102c);
         decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE = cpuif_req_masked & (cpuif_addr == 32'ha4012000);
         decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE = cpuif_req_masked & (cpuif_addr == 32'ha4012004);
         decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE = cpuif_req_masked & (cpuif_addr == 32'ha4012008);
@@ -837,6 +841,26 @@ module caliptra_fpga_realtime_regs (
                     logic load_next;
                 } msg_fifo_full;
             } msg_fifo_status;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } itrng_data;
+            } itrng1_fifo_data;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } itrng_fifo_empty;
+                struct {
+                    logic next;
+                    logic load_next;
+                } itrng_fifo_full;
+                struct {
+                    logic next;
+                    logic load_next;
+                } itrng_fifo_reset;
+            } itrng1_fifo_status;
         } fifo_regs;
         struct {
             struct {
@@ -1342,6 +1366,22 @@ module caliptra_fpga_realtime_regs (
                     logic value;
                 } msg_fifo_full;
             } msg_fifo_status;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } itrng_data;
+            } itrng1_fifo_data;
+            struct {
+                struct {
+                    logic value;
+                } itrng_fifo_empty;
+                struct {
+                    logic value;
+                } itrng_fifo_full;
+                struct {
+                    logic value;
+                } itrng_fifo_reset;
+            } itrng1_fifo_status;
         } fifo_regs;
         struct {
             struct {
@@ -3415,6 +3455,99 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.fifo_regs.msg_fifo_status.msg_fifo_full.value = field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.itrng1_fifo_data.itrng_data
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.itrng1_fifo_data.itrng_data.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.fifo_regs.itrng1_fifo_data && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.fifo_regs.itrng1_fifo_data.itrng_data.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.fifo_regs.itrng1_fifo_data.itrng_data.next = next_c;
+        field_combo.fifo_regs.itrng1_fifo_data.itrng_data.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.itrng1_fifo_data.itrng_data.value <= 32'h0;
+        end else begin
+            if(field_combo.fifo_regs.itrng1_fifo_data.itrng_data.load_next) begin
+                field_storage.fifo_regs.itrng1_fifo_data.itrng_data.value <= field_combo.fifo_regs.itrng1_fifo_data.itrng_data.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.itrng1_fifo_data.itrng_data.value = field_storage.fifo_regs.itrng1_fifo_data.itrng_data.value;
+    assign hwif_out.fifo_regs.itrng1_fifo_data.itrng_data.wr_swacc = decoded_reg_strb.fifo_regs.itrng1_fifo_data && decoded_req_is_wr;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.itrng1_fifo_status.itrng_fifo_empty
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next;
+        load_next_c = '1;
+        field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next = next_c;
+        field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.value <= 1'h1;
+        end else begin
+            if(field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.load_next) begin
+                field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.value <= field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.value = field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.value;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.itrng1_fifo_status.itrng_fifo_full
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_full.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next;
+        load_next_c = '1;
+        field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next = next_c;
+        field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_full.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_full.value <= 1'h0;
+        end else begin
+            if(field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_full.load_next) begin
+                field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_full.value <= field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.itrng1_fifo_status.itrng_fifo_full.value = field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_full.value;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.itrng1_fifo_status.itrng_fifo_reset
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.fifo_regs.itrng1_fifo_status && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value & ~decoded_wr_biten[2:2]) | (decoded_wr_data[2:2] & decoded_wr_biten[2:2]);
+            load_next_c = '1;
+        end
+        field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.next = next_c;
+        field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value <= 1'h0;
+        end else begin
+            if(field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.load_next) begin
+                field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value <= field_combo.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value = field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value;
     // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR
     always_comb begin
         automatic logic [0:0] next_c;
@@ -4060,7 +4193,7 @@ module caliptra_fpga_realtime_regs (
     logic [31:0] readback_data;
 
     // Assign readback values to a flattened array
-    logic [31:0] readback_array[273];
+    logic [31:0] readback_array[275];
     assign readback_array[0][31:0] = (decoded_reg_strb.interface_regs.fpga_magic && !decoded_req_is_wr) ? 32'h52545043 : '0;
     assign readback_array[1][31:0] = (decoded_reg_strb.interface_regs.fpga_version && !decoded_req_is_wr) ? field_storage.interface_regs.fpga_version.fpga_version.value : '0;
     assign readback_array[2][0:0] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_pwrgood.value : '0;
@@ -4184,47 +4317,52 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[126][0:0] = (decoded_reg_strb.fifo_regs.msg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value : '0;
     assign readback_array[126][1:1] = (decoded_reg_strb.fifo_regs.msg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value : '0;
     assign readback_array[126][31:2] = '0;
-    assign readback_array[127][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value : '0;
-    assign readback_array[127][1:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value : '0;
-    assign readback_array[127][31:2] = '0;
-    assign readback_array[128][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value : '0;
-    assign readback_array[128][1:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value : '0;
-    assign readback_array[128][31:2] = '0;
-    assign readback_array[129][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value : '0;
-    assign readback_array[130][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_NUM && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value : '0;
-    assign readback_array[131][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_ADDR && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value : '0;
-    assign readback_array[132][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value : '0;
-    assign readback_array[132][2:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value : '0;
-    assign readback_array[132][31:3] = '0;
-    assign readback_array[133][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value : '0;
-    assign readback_array[133][3:1] = (decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value : '0;
-    assign readback_array[133][31:4] = '0;
-    assign readback_array[134][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.CTRL_REGWEN && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value : '0;
-    assign readback_array[134][31:1] = '0;
-    assign readback_array[135][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FLASH_SIZE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value : '0;
+    assign readback_array[127][31:0] = (decoded_reg_strb.fifo_regs.itrng1_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng1_fifo_data.itrng_data.value : '0;
+    assign readback_array[128][0:0] = (decoded_reg_strb.fifo_regs.itrng1_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.value : '0;
+    assign readback_array[128][1:1] = (decoded_reg_strb.fifo_regs.itrng1_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_full.value : '0;
+    assign readback_array[128][2:2] = (decoded_reg_strb.fifo_regs.itrng1_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value : '0;
+    assign readback_array[128][31:3] = '0;
+    assign readback_array[129][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value : '0;
+    assign readback_array[129][1:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value : '0;
+    assign readback_array[129][31:2] = '0;
+    assign readback_array[130][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value : '0;
+    assign readback_array[130][1:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value : '0;
+    assign readback_array[130][31:2] = '0;
+    assign readback_array[131][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value : '0;
+    assign readback_array[132][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_NUM && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value : '0;
+    assign readback_array[133][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_ADDR && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value : '0;
+    assign readback_array[134][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value : '0;
+    assign readback_array[134][2:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value : '0;
+    assign readback_array[134][31:3] = '0;
+    assign readback_array[135][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value : '0;
+    assign readback_array[135][3:1] = (decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value : '0;
+    assign readback_array[135][31:4] = '0;
+    assign readback_array[136][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.CTRL_REGWEN && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value : '0;
+    assign readback_array[136][31:1] = '0;
+    assign readback_array[137][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FLASH_SIZE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value : '0;
     for(genvar i0=0; i0<64; i0++) begin
-        assign readback_array[i0 * 1 + 136][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FLASH_BUF[i0] && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value : '0;
+        assign readback_array[i0 * 1 + 138][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FLASH_BUF[i0] && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value : '0;
     end
-    assign readback_array[200][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value : '0;
-    assign readback_array[200][1:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value : '0;
-    assign readback_array[200][31:2] = '0;
-    assign readback_array[201][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value : '0;
-    assign readback_array[201][1:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value : '0;
-    assign readback_array[201][31:2] = '0;
-    assign readback_array[202][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_SIZE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value : '0;
-    assign readback_array[203][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_NUM && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value : '0;
-    assign readback_array[204][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_ADDR && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value : '0;
-    assign readback_array[205][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value : '0;
-    assign readback_array[205][2:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value : '0;
-    assign readback_array[205][31:3] = '0;
-    assign readback_array[206][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value : '0;
-    assign readback_array[206][3:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value : '0;
-    assign readback_array[206][31:4] = '0;
-    assign readback_array[207][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.CTRL_REGWEN && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value : '0;
-    assign readback_array[207][31:1] = '0;
-    assign readback_array[208][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_SIZE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value : '0;
+    assign readback_array[202][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value : '0;
+    assign readback_array[202][1:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value : '0;
+    assign readback_array[202][31:2] = '0;
+    assign readback_array[203][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value : '0;
+    assign readback_array[203][1:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value : '0;
+    assign readback_array[203][31:2] = '0;
+    assign readback_array[204][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_SIZE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value : '0;
+    assign readback_array[205][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_NUM && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value : '0;
+    assign readback_array[206][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_ADDR && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value : '0;
+    assign readback_array[207][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value : '0;
+    assign readback_array[207][2:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value : '0;
+    assign readback_array[207][31:3] = '0;
+    assign readback_array[208][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value : '0;
+    assign readback_array[208][3:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value : '0;
+    assign readback_array[208][31:4] = '0;
+    assign readback_array[209][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.CTRL_REGWEN && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value : '0;
+    assign readback_array[209][31:1] = '0;
+    assign readback_array[210][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_SIZE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value : '0;
     for(genvar i0=0; i0<64; i0++) begin
-        assign readback_array[i0 * 1 + 209][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_BUF[i0] && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value : '0;
+        assign readback_array[i0 * 1 + 211][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_BUF[i0] && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value : '0;
     end
 
     // Reduce the array
@@ -4233,7 +4371,7 @@ module caliptra_fpga_realtime_regs (
         readback_done = decoded_req & ~decoded_req_is_wr;
         readback_err = '0;
         readback_data_var = '0;
-        for(int i=0; i<273; i++) readback_data_var |= readback_array[i];
+        for(int i=0; i<275; i++) readback_data_var |= readback_array[i];
         readback_data = readback_data_var;
     end
 

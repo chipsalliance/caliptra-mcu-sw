@@ -1909,20 +1909,22 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 - Absolute Address: 0xA4011000
 - Base Offset: 0xA4011000
-- Size: 0x28
+- Size: 0x30
 
-|Offset|    Identifier   |Name|
-|------|-----------------|----|
-| 0x00 |  log_fifo_data  |  — |
-| 0x04 | log_fifo_status |  — |
-| 0x08 | itrng_fifo_data |  — |
-| 0x0C |itrng_fifo_status|  — |
-| 0x10 |   dbg_fifo_pop  |  — |
-| 0x14 |  dbg_fifo_push  |  — |
-| 0x18 | dbg_fifo_status |  — |
-| 0x1C |   msg_fifo_pop  |  — |
-| 0x20 |  msg_fifo_push  |  — |
-| 0x24 | msg_fifo_status |  — |
+|Offset|    Identifier    |Name|
+|------|------------------|----|
+| 0x00 |   log_fifo_data  |  — |
+| 0x04 |  log_fifo_status |  — |
+| 0x08 |  itrng_fifo_data |  — |
+| 0x0C | itrng_fifo_status|  — |
+| 0x10 |   dbg_fifo_pop   |  — |
+| 0x14 |   dbg_fifo_push  |  — |
+| 0x18 |  dbg_fifo_status |  — |
+| 0x1C |   msg_fifo_pop   |  — |
+| 0x20 |   msg_fifo_push  |  — |
+| 0x24 |  msg_fifo_status |  — |
+| 0x28 | itrng1_fifo_data |  — |
+| 0x2C |itrng1_fifo_status|  — |
 
 ### log_fifo_data register
 
@@ -2061,6 +2063,30 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### msg_fifo_full field
 
 <p>RSVD in core</p>
+
+### itrng1_fifo_data register
+
+- Absolute Address: 0xA4011028
+- Base Offset: 0x28
+- Size: 0x4
+
+<p>Secondary entropy input for dual-iTRNG lab builds</p>
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|itrng_data|  rw  | 0x0 |  — |
+
+### itrng1_fifo_status register
+
+- Absolute Address: 0xA401102C
+- Base Offset: 0x2C
+- Size: 0x4
+
+|Bits|   Identifier   |Access|Reset|Name|
+|----|----------------|------|-----|----|
+|  0 |itrng_fifo_empty|   r  | 0x1 |  — |
+|  1 | itrng_fifo_full|   r  | 0x0 |  — |
+|  2 |itrng_fifo_reset|  rw  | 0x0 |  — |
 
 ## primary_flash_ctrl_regs register file
 
