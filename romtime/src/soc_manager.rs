@@ -30,6 +30,10 @@ impl SocManager for CaliptraSoC {
     /// Maximum number of wait cycles.
     const MAX_WAIT_CYCLES: u32 = 400_000;
 
+    /// The MCU only talks to a Caliptra in subsystem mode, where the mailbox is
+    /// 16 KiB. Larger requests have to use the external mailbox (AXI staging).
+    const MAILBOX_SIZE_LIMIT: usize = SUBSYSTEM_MAILBOX_SIZE_LIMIT;
+
     /// Type alias for mutable memory-mapped I/O.
     type TMmio<'a> = RealMmioMut<'a>;
 
