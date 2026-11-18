@@ -22,6 +22,7 @@ use caliptra_emu_cpu::{Cpu, CpuArgs, CpuOrgArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_periph::SocToCaliptraBus;
+use caliptra_emu_periph::TbServicesCb;
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
@@ -94,6 +95,7 @@ pub struct ModelEmulated {
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
+    otp_dai_log: Option<Rc<RefCell<Vec<String>>>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
     mcu_mailbox0: caliptra_mcu_emulator_periph::McuMailbox0Internal,
     mcu_mailbox1: caliptra_mcu_emulator_periph::McuMailbox0Internal,
@@ -258,7 +260,7 @@ impl McuHwModel for ModelEmulated {
             None
         };
 
-        let otp = Otp::new(
+        let mut otp = Otp::new(
             &clock.clone(),
             OtpArgs {
                 fips_zeroization_cmd: fips_zeroization_cmd.clone(),
@@ -273,6 +275,7 @@ impl McuHwModel for ModelEmulated {
 
         // Get the partitions reference before passing OTP to the bus
         let otp_partitions = otp.partitions_ref();
+        let otp_dai_log = params.log_otp_dai.then(|| otp.enable_dai_log());
 
         // Share OTP partition data with the LC controller for transitions.
         let mut lc = lc;
@@ -280,7 +283,15 @@ impl McuHwModel for ModelEmulated {
 
         let create_flash_controller =
             |default_path: &str, error_irq: u8, event_irq: u8, initial_content: Option<&[u8]>| {
-                // Use a temporary file for flash storage if we're running a test
+                // Use a temporary file for flash storage if we're running a test.
+                // wasm32 has no filesystem; DummyFlashCtrl keeps the contents
+                // in memory when no file is given.
+                #[cfg(target_arch = "wasm32")]
+                let flash_file = {
+                    let _ = default_path;
+                    None
+                };
+                #[cfg(not(target_arch = "wasm32"))]
                 let flash_file = Some(PathBuf::from(default_path));
 
                 DummyFlashCtrl::new(
@@ -352,12 +363,26 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface when flash-based boot or network boot is enabled
         let use_mcu_recovery_interface = params.flash_boot || params.network_boot;
 
+        // wasm32 cannot set environment variables, so set the offset in the
+        // Caliptra emulator directly there.
+        #[cfg(target_arch = "wasm32")]
+        caliptra_emu_periph::dma::axi_root_bus::set_ss_mci_offset(0x0000_0000_a800_0000);
+        #[cfg(not(target_arch = "wasm32"))]
         if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
             std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
         }
 
+        let caliptra_tb_services_cb = params.caliptra_uart_to_output.then(|| {
+            let output_sink = output.sink().clone();
+            let timer = clock.timer();
+            TbServicesCb::new(move |ch| {
+                output_sink.set_now(timer.now());
+                output_sink.push_uart_char(ch);
+            })
+        });
+
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
-            start_caliptra(&StartCaliptraArgs {
+            start_caliptra(StartCaliptraArgs {
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
                 device_lifecycle,
                 req_idevid_csr,
@@ -367,6 +392,7 @@ impl McuHwModel for ModelEmulated {
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
                 cptra_obf_key: params.cptra_obf_key,
+                tb_services_cb: caliptra_tb_services_cb,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
@@ -566,6 +592,7 @@ impl McuHwModel for ModelEmulated {
             i3c_controller_join_handle: None,
             dot_flash,
             otp_partitions,
+            otp_dai_log,
             mci_regs,
             mcu_mailbox0,
             mcu_mailbox1,
@@ -741,6 +768,17 @@ impl McuHwModel for ModelEmulated {
 
     fn read_otp_memory(&self) -> Vec<u8> {
         self.otp_partitions.borrow().clone()
+    }
+
+    fn key_vault_snapshot(&self) -> Option<caliptra_emu_periph::KeyVaultSnapshot> {
+        Some(self.caliptra_cpu.bus.key_vault.snapshot())
+    }
+
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        self.otp_dai_log
+            .as_ref()
+            .map(|log| std::mem::take(&mut *log.borrow_mut()))
+            .unwrap_or_default()
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {
