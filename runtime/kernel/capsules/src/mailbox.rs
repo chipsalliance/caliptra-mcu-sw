@@ -267,7 +267,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             // payload length is delimited by `dlen` (= `app_buffer.len()`), so the
             // final partial word (if any) must be zero-padded into a u32 rather
             // than rejected or truncated.
-            match driver.start_mailbox_req(
+            match driver.start_mailbox_exec_words(
                 command,
                 app_buffer.len(),
                 app_buffer.chunks(4).map(|chunk| {
@@ -314,7 +314,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             // If not using staging SRAM, then the mailbox command can be initiated directly.
             self.driver
                 .map(
-                    |driver| match driver.initiate_request(command, payload_size) {
+                    |driver| match driver.begin_mailbox_req(command, payload_size) {
                         Ok(()) => {
                             self.schedule_initiate_timeout();
                             Ok(())
@@ -370,8 +370,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
     fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
         if !self.use_external_mailbox.get() {
-            let _: Result<(), ErrorCode> = self
-                .driver
+            self.driver
                 .map(|driver| {
                     let mut pending_bytes = self.pending_bytes.get() as usize;
                     let mut pending_word = self.pending_word.get();
@@ -380,10 +379,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         pending_word |= u32::from(byte.get()) << (pending_bytes * 8);
                         pending_bytes += 1;
                         if pending_bytes == 4 {
-                            if driver.write_data(pending_word).is_err() {
-                                self.abort_and_reset(driver);
-                                return Err(ErrorCode::FAIL);
-                            }
+                            driver.write_mailbox_word(pending_word);
                             pending_bytes = 0;
                             pending_word = 0;
                         }
@@ -391,7 +387,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
                     self.pending_bytes.set(pending_bytes as u8);
                     self.pending_word.set(pending_word);
-                    Ok(())
                 })
                 .ok_or(ErrorCode::RESERVE)?;
         } else {
@@ -474,21 +469,14 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         } else {
             self.driver
                 .map(|driver| {
-                    if self.pending_bytes.get() != 0
-                        && driver.write_data(self.pending_word.get()).is_err()
-                    {
-                        self.abort_and_reset(driver);
-                        return Err(ErrorCode::FAIL);
+                    if self.pending_bytes.get() != 0 {
+                        driver.write_mailbox_word(self.pending_word.get());
                     }
-                    if driver.execute_command().is_err() {
-                        self.abort_and_reset(driver);
-                        return Err(ErrorCode::FAIL);
-                    }
+                    driver.execute_mailbox();
                     self.clear_pending();
                     self.schedule_alarm();
-                    Ok(())
                 })
-                .unwrap_or(Err(ErrorCode::FAIL))?;
+                .ok_or(ErrorCode::FAIL)?;
         }
         Ok(())
     }

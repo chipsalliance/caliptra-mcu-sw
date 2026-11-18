@@ -16,17 +16,12 @@ use zerocopy::{transmute, FromBytes, IntoBytes};
 
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
-    soc_ifc_addr: *mut u32,
-    soc_ifc_trng_addr: *mut u32,
-    soc_mbox_addr: *mut u32,
+    soc_ifc_addr: u32,
+    soc_ifc_trng_addr: u32,
+    soc_mbox_addr: u32,
 }
 
 impl SocManager for CaliptraSoC {
-    // we override the methods that use these
-    const SOC_MBOX_ADDR: u32 = 0;
-    const SOC_IFC_ADDR: u32 = 0;
-    const SOC_IFC_TRNG_ADDR: u32 = 0;
-
     /// Maximum number of wait cycles.
     const MAX_WAIT_CYCLES: u32 = 400_000;
 
@@ -47,37 +42,17 @@ impl SocManager for CaliptraSoC {
         core::hint::spin_loop();
     }
 
-    /// A register block that can be used to manipulate the soc_ifc peripheral
-    /// over the simulated SoC->Caliptra APB bus.
-    fn soc_ifc(&mut self) -> caliptra_registers::soc_ifc::RegisterBlock<Self::TMmio<'_>> {
-        unsafe {
-            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
-                self.soc_ifc_addr,
-                self.mmio_mut(),
-            )
-        }
+    // The register blocks live at the addresses passed to `CaliptraSoC::new`.
+    fn soc_ifc_addr(&self) -> u32 {
+        self.soc_ifc_addr
     }
 
-    /// A register block that can be used to manipulate the soc_ifc peripheral TRNG registers
-    /// over the simulated SoC->Caliptra APB bus.
-    fn soc_ifc_trng(&mut self) -> caliptra_registers::soc_ifc_trng::RegisterBlock<Self::TMmio<'_>> {
-        unsafe {
-            caliptra_registers::soc_ifc_trng::RegisterBlock::new_with_mmio(
-                self.soc_ifc_trng_addr,
-                self.mmio_mut(),
-            )
-        }
+    fn soc_ifc_trng_addr(&self) -> u32 {
+        self.soc_ifc_trng_addr
     }
 
-    /// A register block that can be used to manipulate the mbox peripheral
-    /// over the simulated SoC->Caliptra APB bus.
-    fn soc_mbox(&mut self) -> caliptra_registers::mbox::RegisterBlock<Self::TMmio<'_>> {
-        unsafe {
-            caliptra_registers::mbox::RegisterBlock::new_with_mmio(
-                self.soc_mbox_addr,
-                self.mmio_mut(),
-            )
-        }
+    fn soc_mbox_addr(&self) -> u32 {
+        self.soc_mbox_addr
     }
 }
 
@@ -89,70 +64,10 @@ impl CaliptraSoC {
     ) -> Self {
         CaliptraSoC {
             _private: (),
-            soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
-            soc_ifc_trng_addr: soc_ifc_trng_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
-            soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR) as *mut u32,
+            soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR),
+            soc_ifc_trng_addr: soc_ifc_trng_addr.unwrap_or(soc::SOC_IFC_REG_ADDR),
+            soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR),
         }
-    }
-
-    /// Send a command to the mailbox but don't wait for the response
-    pub fn start_mailbox_req(
-        &mut self,
-        cmd: u32,
-        len_bytes: usize,
-        buf: impl Iterator<Item = u32>,
-    ) -> core::result::Result<(), CaliptraApiError> {
-        if len_bytes > SUBSYSTEM_MAILBOX_SIZE_LIMIT {
-            return Err(CaliptraApiError::BufferTooLargeForMailbox);
-        }
-
-        self.lock_mailbox()?;
-
-        self.set_command(cmd, len_bytes)?;
-
-        for word in buf {
-            self.soc_mbox().datain().write(|_| word);
-        }
-
-        // Ask Caliptra to execute this command
-        self.soc_mbox().execute().write(|w| w.execute(true));
-
-        Ok(())
-    }
-
-    /// Send a command to the mailbox from a byte buffer. The bytes are written
-    /// as native-endian dwords; a partial trailing chunk is zero-padded.
-    pub fn start_mailbox_req_bytes(
-        &mut self,
-        cmd: u32,
-        req: &[u8],
-    ) -> core::result::Result<(), CaliptraApiError> {
-        let len = req.len();
-        let dword_count = len.div_ceil(4);
-        self.start_mailbox_req(
-            cmd,
-            len,
-            (0..dword_count).map(|i| {
-                let offset = i * 4;
-                let remaining = len - offset;
-                let mut word_bytes = [0u8; 4];
-                let valid = remaining.min(4);
-                // Safety: offset and valid are bounded by len (the slice length),
-                // so this is always in-bounds.  We use get() + copy_nonoverlapping
-                // instead of direct indexing + copy_from_slice to avoid the
-                // compiler emitting a panic path that pulls in panic_is_possible.
-                if let Some(src) = req.get(offset..offset + valid) {
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            src.as_ptr(),
-                            word_bytes.as_mut_ptr(),
-                            src.len(),
-                        );
-                    }
-                }
-                u32::from_ne_bytes(word_bytes)
-            }),
-        )
     }
 
     pub fn execute_ext_mailbox_req(
@@ -161,12 +76,6 @@ impl CaliptraSoC {
         len_bytes: usize,
         staging_axi_addr: u64,
     ) -> core::result::Result<(), CaliptraApiError> {
-        self.lock_mailbox()?;
-        self.set_command(
-            ExternalMailboxCmdReq::ID.into(),
-            core::mem::size_of::<ExternalMailboxCmdReq>(),
-        )?;
-
         let mut req = ExternalMailboxCmdReq {
             command_id: cmd,
             command_size: len_bytes as u32,
@@ -174,62 +83,14 @@ impl CaliptraSoC {
             axi_address_start_high: (staging_axi_addr >> 32) as u32,
             ..Default::default()
         };
-        let chksum = caliptra_api::calc_checksum(ExternalMailboxCmdReq::ID.into(), req.as_bytes());
+        let chksum = calc_checksum(ExternalMailboxCmdReq::ID.into(), req.as_bytes());
         req.hdr.chksum = chksum;
         let words: [u32; core::mem::size_of::<ExternalMailboxCmdReq>() / 4] = transmute!(req);
-        for word in words {
-            self.write_data(word)?;
-        }
-        self.execute_command()
-    }
-
-    pub fn initiate_request(
-        &mut self,
-        cmd: u32,
-        len_bytes: usize,
-    ) -> core::result::Result<(), CaliptraApiError> {
-        if len_bytes > SUBSYSTEM_MAILBOX_SIZE_LIMIT {
-            return Err(CaliptraApiError::BufferTooLargeForMailbox);
-        }
-
-        self.lock_mailbox()?;
-
-        self.set_command(cmd, len_bytes)?;
-
-        Ok(())
-    }
-
-    pub fn set_command(
-        &mut self,
-        cmd: u32,
-        payload_len_bytes: usize,
-    ) -> core::result::Result<(), CaliptraApiError> {
-        // Mailbox lock value should read 1 now
-        // If not, the reads are likely being blocked by the PAUSER check or some other issue
-        if !(self.soc_mbox().lock().read().lock()) {
-            return Err(CaliptraApiError::UnableToLockMailbox);
-        }
-
-        self.soc_mbox().cmd().write(|_| cmd);
-
-        self.soc_mbox().dlen().write(|_| payload_len_bytes as u32);
-        Ok(())
-    }
-
-    pub fn write_data(&mut self, data: u32) -> core::result::Result<(), CaliptraApiError> {
-        if !(self.soc_mbox().lock().read().lock()) {
-            return Err(CaliptraApiError::UnableToLockMailbox);
-        }
-        self.soc_mbox().datain().write(|_| data);
-        Ok(())
-    }
-
-    pub fn execute_command(&mut self) -> core::result::Result<(), CaliptraApiError> {
-        if !(self.soc_mbox().lock().read().lock()) {
-            return Err(CaliptraApiError::UnableToLockMailbox);
-        }
-        self.soc_mbox().execute().write(|w| w.execute(true));
-        Ok(())
+        self.start_mailbox_exec_words(
+            ExternalMailboxCmdReq::ID.into(),
+            core::mem::size_of::<ExternalMailboxCmdReq>(),
+            words,
+        )
     }
 
     /// Wait for the mailbox response status. Returns `Ok(Some(dlen))` if
@@ -361,7 +222,7 @@ impl CaliptraSoC {
             .iter()
             .copied()
             .chain(data_parts.iter().flat_map(|p| p.iter().copied()));
-        self.start_mailbox_req(cmd, total_bytes, iter)?;
+        self.start_mailbox_exec_words(cmd, total_bytes, iter)?;
         let resp_len_bytes = resp.len() * 4;
         match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
             Ok(Some(mut resp_iter)) => {
@@ -399,7 +260,7 @@ impl CaliptraSoC {
         let header = MailboxReqHeader::mut_from_bytes(header_bytes as &mut [u8]).unwrap();
         header.chksum = calc_checksum(cmd, payload_bytes);
 
-        self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
+        self.start_mailbox_exec_words(cmd, req.len() * 4, req.iter().copied())?;
         let resp_len_bytes = resp.len() * 4;
         match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
             Ok(Some(mut resp_iter)) => {
@@ -518,7 +379,7 @@ impl CaliptraSoC {
             }
         }
 
-        self.start_mailbox_req_bytes(cmd, req)?;
+        self.start_mailbox_exec(cmd, req)?;
         self.finish_mailbox_resp_bytes(resp)
     }
 
