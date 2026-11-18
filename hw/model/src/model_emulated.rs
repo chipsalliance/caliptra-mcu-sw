@@ -432,8 +432,6 @@ impl McuHwModel for ModelEmulated {
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
-            #[cfg(hw_rev = "latest")]
-            None,
             None,
             None,
             None,

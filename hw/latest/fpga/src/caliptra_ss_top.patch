@@ -10,7 +10,7 @@
 64a72,73
 >     // TODO: Hacking in this i3c clock
 >     input logic cptra_i3c_clk_i,
-1226a1235,1290
+1177a1186,1241
 >     logic i3c_rst_sync;
 >     xpm_cdc_async_rst #(
 >     .DEST_SYNC_FF(4),    // DECIMAL; range: 2-10
@@ -67,7 +67,7 @@
 >         .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch, cptra_ss_strap_mcu_lsu_axi_user_i_synch, disable_id_filtering_i_synch})
 >     );
 > 
-1228,1231c1292,1295
+1178,1181c1242,1245
 <     assign priv_ids[0] = cptra_ss_strap_caliptra_dma_axi_user_i;
 <     assign priv_ids[1] = cptra_ss_strap_mcu_lsu_axi_user_i;
 <     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i;
@@ -77,13 +77,13 @@
 >     assign priv_ids[1] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
 >     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
 >     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
-1259,1260c1323,1324
+1209,1210c1273,1274
 <         .clk_i                          (cptra_ss_clk_i),
 <         .rst_ni                         (cptra_ss_rst_b_o),
 ---
 >         .clk_i                          (cptra_i3c_clk_i),
 >         .rst_ni                         (i3c_rst_sync),
-1291,1293c1355,1357
+1241,1243c1305,1307
 <         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o),
 <         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o),
 <         .peripheral_reset_o             (i3c_peripheral_reset),
@@ -91,15 +91,15 @@
 >         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o_presync),
 >         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o_presync),
 >         .peripheral_reset_o             (i3c_peripheral_reset_presync),
-1295c1359
+1245c1309
 <         .escalated_reset_o              (i3c_escalated_reset),
 ---
 >         .escalated_reset_o              (i3c_escalated_reset_presync),
-1298c1362
+1248c1312
 <         .irq_o                          (i3c_irq_o),
 ---
 >         .irq_o                          (i3c_irq_o_presync),
-1301c1365
+1251c1315
 <         .disable_id_filtering_i         (disable_id_filtering_i),
 ---
 >         .disable_id_filtering_i         (disable_id_filtering_i_synch),
