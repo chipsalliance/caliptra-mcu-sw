@@ -2,7 +2,8 @@
 
 # Immutable caliptra-sw commits. The submodule gitlink defaults to latest.
 # 2.1 is the official baseline. This verification branch's latest pin includes
-# a temporary Core-ROM branch-prediction workaround on upstream 1a5ed709.
+# SHA operation zeroization and a temporary Core-ROM branch-prediction
+# workaround on upstream 04503344.
 [versions]
 "2.1" = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb"
-latest = "4d451b367974d6e17fd57ee6f5fabdae676929e0"
+latest = "850efeb4a2c474099aa839532a769d66d39ddf57"
