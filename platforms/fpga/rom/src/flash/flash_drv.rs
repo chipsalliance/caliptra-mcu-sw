@@ -4,14 +4,13 @@
 // This is a simplified version of the emulator's flash driver, but contains
 // only the parts that the FPGA model implements.
 
-use caliptra_mcu_registers_generated::primary_flash_ctrl::{
-    bits::{FlControl, OpStatus},
-    regs::PrimaryFlashCtrl,
-};
+use caliptra_mcu_registers_generated::primary_flash_ctrl::bits::{FlControl, OpStatus};
 use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use caliptra_mcu_romtime::StaticRef;
 use core::ops::{Index, IndexMut};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::register_structs;
+use tock_registers::registers::ReadWrite;
 
 /// FPGA wrapper primary flash controller address
 pub const FPGA_PRIMARY_FLASH_CTRL_ADDR: u32 = 0xA401_2000;
@@ -19,20 +18,47 @@ pub const FPGA_PRIMARY_FLASH_CTRL_ADDR: u32 = 0xA401_2000;
 /// FPGA wrapper secondary flash controller address
 pub const FPGA_SECONDARY_FLASH_CTRL_ADDR: u32 = 0xA401_3000;
 
-/// Fixed SRAM buffer for flash page operations
-pub const FLASH_PAGE_BUFFER_SRAM_OFFSET: u32 = 0xA401_2100;
-
-#[allow(dead_code)]
-pub const PRIMARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> =
-    unsafe { StaticRef::new(FPGA_PRIMARY_FLASH_CTRL_ADDR as *const PrimaryFlashCtrl) };
-
-#[allow(dead_code)]
-pub const SECONDARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> =
-    unsafe { StaticRef::new(FPGA_SECONDARY_FLASH_CTRL_ADDR as *const PrimaryFlashCtrl) };
-
 // FPGA uses a fixed page size of 256 bytes
 const PAGE_SIZE: usize = 256;
 const FLASH_MAX_PAGES: usize = 16 * 1024 * 1024 / PAGE_SIZE;
+
+/// Number of 32-bit `FLASH_BUF` registers that make up one page.
+const PAGE_WORDS: usize = PAGE_SIZE / 4;
+
+register_structs! {
+    /// FPGA wrapper flash controller register block.
+    ///
+    /// This is the `flash_ctrl_regs` regfile in
+    /// `hw/latest/fpga/src/caliptra_fpga_realtime_regs.rdl` (identical in
+    /// `hw/rev-2_1`). The first 0x20 bytes have the same layout as the
+    /// generated `PrimaryFlashCtrl`; the FPGA wrapper additionally exposes the
+    /// page buffer as an array of word registers, so each controller instance
+    /// has its own buffer at `base + 0x100`.
+    pub FpgaFlashCtrlRegs {
+        (0x000 => pub fl_interrupt_state: ReadWrite<u32>),
+        (0x004 => pub fl_interrupt_enable: ReadWrite<u32>),
+        (0x008 => pub page_size: ReadWrite<u32>),
+        (0x00c => pub page_num: ReadWrite<u32>),
+        (0x010 => pub page_addr: ReadWrite<u32>),
+        (0x014 => pub fl_control: ReadWrite<u32, FlControl::Register>),
+        (0x018 => pub op_status: ReadWrite<u32, OpStatus::Register>),
+        (0x01c => pub ctrl_regwen: ReadWrite<u32>),
+        (0x020 => pub flash_size: ReadWrite<u32>),
+        (0x024 => _reserved0),
+        /// Page buffer (`FLASH_BUF`). Page bytes are packed little-endian
+        /// into each word.
+        (0x100 => pub page_buf: [ReadWrite<u32>; PAGE_WORDS]),
+        (0x200 => @END),
+    }
+}
+
+#[allow(dead_code)]
+pub const PRIMARY_FLASH_CTRL_BASE: StaticRef<FpgaFlashCtrlRegs> =
+    unsafe { StaticRef::new(FPGA_PRIMARY_FLASH_CTRL_ADDR as *const FpgaFlashCtrlRegs) };
+
+#[allow(dead_code)]
+pub const SECONDARY_FLASH_CTRL_BASE: StaticRef<FpgaFlashCtrlRegs> =
+    unsafe { StaticRef::new(FPGA_SECONDARY_FLASH_CTRL_ADDR as *const FpgaFlashCtrlRegs) };
 
 #[derive(Debug, PartialEq)]
 #[allow(clippy::enum_variant_names)]
@@ -85,7 +111,7 @@ impl AsMut<[u8]> for FpgaFlashPage {
 }
 
 pub struct FpgaFlashCtrl {
-    registers: StaticRef<PrimaryFlashCtrl>,
+    registers: StaticRef<FpgaFlashCtrlRegs>,
 }
 
 impl FlashStorage for FpgaFlashCtrl {
@@ -188,7 +214,7 @@ impl FlashStorage for FpgaFlashCtrl {
 
 #[allow(dead_code)]
 impl FpgaFlashCtrl {
-    pub fn initialize_flash_ctrl(base: StaticRef<PrimaryFlashCtrl>) -> FpgaFlashCtrl {
+    pub fn initialize_flash_ctrl(base: StaticRef<FpgaFlashCtrlRegs>) -> FpgaFlashCtrl {
         let ctrl = FpgaFlashCtrl { registers: base };
         ctrl.init();
         ctrl
@@ -216,9 +242,6 @@ impl FpgaFlashCtrl {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
-        // Use the fixed SRAM buffer address for FPGA
-        let page_buf_addr = FLASH_PAGE_BUFFER_SRAM_OFFSET;
-
         // Program page_num, page_addr registers (page_size is fixed on FPGA)
         self.registers.page_num.set(page_number as u32);
 
@@ -230,12 +253,10 @@ impl FpgaFlashCtrl {
         // Polling for the operation to complete. This is a blocking call.
         self.poll_for_completion()?;
 
-        // Copy data from SRAM buffer to the provided buffer
-        let sram_ptr = page_buf_addr as *const u8;
-        unsafe {
-            for i in 0..PAGE_SIZE {
-                buf.0[i] = core::ptr::read_volatile(sram_ptr.add(i));
-            }
+        // Copy data from the page buffer to the provided buffer using 32-bit word reads
+        let (words, _) = buf.0.as_chunks_mut::<4>();
+        for (dst, reg) in words.iter_mut().zip(self.registers.page_buf.iter()) {
+            *dst = reg.get().to_le_bytes();
         }
 
         Ok(())
@@ -252,15 +273,10 @@ impl FpgaFlashCtrl {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
-        // Use the fixed SRAM buffer address for FPGA
-        let page_buf_addr = FLASH_PAGE_BUFFER_SRAM_OFFSET;
-
-        // Copy data from the provided buffer to SRAM buffer
-        let sram_ptr = page_buf_addr as *mut u8;
-        unsafe {
-            for i in 0..PAGE_SIZE {
-                core::ptr::write_volatile(sram_ptr.add(i), buf.0[i]);
-            }
+        // Copy data from the provided buffer to the page buffer using 32-bit word writes
+        let (words, _) = buf.0.as_chunks::<4>();
+        for (src, reg) in words.iter().zip(self.registers.page_buf.iter()) {
+            reg.set(u32::from_le_bytes(*src));
         }
 
         // Program page_num, page_addr registers (page_size is fixed on FPGA)
