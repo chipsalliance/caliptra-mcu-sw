@@ -31,6 +31,11 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         panic!("Must call runtime_run with Commands::Runtime");
     };
 
+    caliptra_mcu_hw_revision::HardwareRevision::from_env()
+        .map_err(anyhow::Error::msg)?
+        .validate_emulator_version(&hw_revision.to_string())
+        .map_err(anyhow::Error::msg)?;
+
     let mut features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
     if hw_revision >= semver::Version::new(2, 1, 0) && !features.contains(&"hw-2-1") {
         features.push("hw-2-1");
@@ -232,6 +237,12 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         cargo_run_args.push("--ocp-lock");
     }
     let status = Command::new("cargo")
+        .env(
+            caliptra_mcu_hw_revision::ENV,
+            caliptra_mcu_hw_revision::HardwareRevision::from_env()
+                .map_err(anyhow::Error::msg)?
+                .as_str(),
+        )
         .args(cargo_run_args)
         .current_dir(&*PROJECT_ROOT)
         .status()?;

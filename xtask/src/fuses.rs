@@ -3,21 +3,11 @@
 use crate::registers::{file_check_contents, rustfmt, write_file};
 use anyhow::Result;
 use caliptra_mcu_builder::PROJECT_ROOT;
-use caliptra_mcu_fusegen::{OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH};
+use caliptra_mcu_fusegen::{OtpMmap, HEADER_PREFIX, HEADER_SUFFIX};
+use caliptra_mcu_hw_revision::HardwareRevision;
 use caliptra_mcu_registers_generator::snake_case;
 use std::fmt::Write;
-use std::path::{Path, PathBuf};
-
-// Default in-field provisioning fuse configuration.
-const IFP_SPECIFIC_FUSES_DEFAULT_PATH: &str = "hw/fuses.hjson";
-
-fn get_file_path_or_default(input_path: Option<&Path>, default: &str) -> PathBuf {
-    if let Some(path) = input_path {
-        path.to_path_buf()
-    } else {
-        PROJECT_ROOT.join(default)
-    }
-}
+use std::path::Path;
 
 /// Autogenerate fuse code.
 pub(crate) fn autogen_fuses(
@@ -36,7 +26,10 @@ pub(crate) fn autogen_fuses(
     let mut header = HEADER_PREFIX.to_string();
 
     // Parse OTP mmap for partition info
-    let mmap_hjson = get_file_path_or_default(otp_mmap_hjson_path, OTP_CTRL_MMAP_DEFAULT_PATH);
+    let revision = HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+    let mmap_hjson = otp_mmap_hjson_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| revision.otp_mmap(&PROJECT_ROOT));
     let otp: OtpMmap = serde_hjson::from_str(std::fs::read_to_string(&mmap_hjson)?.as_str())?;
     let partition_mmap = build_partition_mmap(&otp);
 
@@ -44,7 +37,9 @@ pub(crate) fn autogen_fuses(
     let partition_output = generate_fuse_partitions_from_otp(&otp)?;
 
     // Generate detailed fuses output if the file exists
-    let fuses_hjson = get_file_path_or_default(fuses_hjson_path, IFP_SPECIFIC_FUSES_DEFAULT_PATH);
+    let fuses_hjson = fuses_hjson_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| revision.fuses_hjson(&PROJECT_ROOT));
     let fuse_config = if fuses_hjson.exists() {
         let hjson_content = std::fs::read_to_string(&fuses_hjson)?;
         Some(caliptra_mcu_fuses_generator::schema::parse_fuse_hjson_str(
