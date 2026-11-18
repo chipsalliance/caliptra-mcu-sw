@@ -19,56 +19,6 @@ use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{debug, ErrorCode, ProcessId};
 
-fn log_caliptra_error(err: &CaliptraApiError) {
-    match err {
-        CaliptraApiError::MailboxCmdFailed(code) => {
-            capsule_error!("MBOX", "Mailbox cmd failed: 0x{:08x}", code)
-        }
-        CaliptraApiError::UnknownCommandStatus(code) => {
-            capsule_error!("MBOX", "Unknown command status: 0x{:08x}", code)
-        }
-        CaliptraApiError::MailboxRespInvalidChecksum { expected, actual } => capsule_error!(
-            "MBOX",
-            "Invalid checksum: exp=0x{:08x} act=0x{:08x}",
-            expected,
-            actual
-        ),
-        CaliptraApiError::MailboxRespInvalidFipsStatus(status) => {
-            capsule_error!("MBOX", "Invalid FIPS status: 0x{:08x}", status)
-        }
-        CaliptraApiError::MailboxUnexpectedResponseLen {
-            expected_min,
-            expected_max,
-            actual,
-        } => capsule_error!(
-            "MBOX",
-            "Unexpected resp len: min={} max={} actual={}",
-            expected_min,
-            expected_max,
-            actual
-        ),
-        CaliptraApiError::UnexpectedMailboxFsmStatus { expected, actual } => capsule_error!(
-            "MBOX",
-            "Unexpected FSM status: exp=0x{:08x} act=0x{:08x}",
-            expected,
-            actual
-        ),
-        CaliptraApiError::BufferTooLargeForMailbox => {
-            capsule_error!("MBOX", "Buffer too large for mailbox")
-        }
-        CaliptraApiError::UnableToLockMailbox => capsule_error!("MBOX", "Unable to lock mailbox"),
-        CaliptraApiError::MailboxTimeout => capsule_error!("MBOX", "Mailbox timeout"),
-        CaliptraApiError::MailboxRespTypeTooSmall => {
-            capsule_error!("MBOX", "Response type too small")
-        }
-        CaliptraApiError::MailboxReqTypeTooSmall => {
-            capsule_error!("MBOX", "Request type too small")
-        }
-        CaliptraApiError::MailboxNoResponseData => capsule_error!("MBOX", "No response data"),
-        _ => capsule_error!("MBOX", "Mailbox error"),
-    }
-}
-
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
 
@@ -307,7 +257,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     Ok(())
                 }
                 Err(err) => {
-                    log_caliptra_error(&err);
+                    capsule_error!("MBOX", "{}", err);
                     self.reset_to_idle();
                     Err(ErrorCode::FAIL)
                 }
@@ -334,7 +284,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     Ok(())
                 }
                 Err(err) => {
-                    log_caliptra_error(&err);
+                    capsule_error!("MBOX", "{}", err);
                     self.reset_to_idle();
                     Err(ErrorCode::FAIL)
                 }
