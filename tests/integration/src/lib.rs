@@ -140,6 +140,8 @@ mod test {
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
         /// Assert the debug intent strap.
         pub debug_intent: bool,
+        /// MCU boot-policy straps to drive before starting ROM execution.
+        pub mcu_generic_input_wires: [u32; 2],
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
         pub use_strap_secrets: bool,
@@ -188,6 +190,7 @@ mod test {
                 caliptra_soc_axi_user: None,
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
                 debug_intent: false,
+                mcu_generic_input_wires: [0; 2],
                 prod_dbg_unlock_keypairs: Vec::new(),
                 use_strap_secrets: false,
                 seeded_log_entries: None,
@@ -955,6 +958,7 @@ mod test {
             fips_zeroization: params.fips_zeroization,
             force_fuse_owner_pk_hash: params.force_fuse_owner_pk_hash,
             debug_intent: params.debug_intent,
+            mcu_generic_input_wires: params.mcu_generic_input_wires,
             prod_dbg_unlock_keypairs: params
                 .prod_dbg_unlock_keypairs
                 .iter()

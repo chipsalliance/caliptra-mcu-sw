@@ -88,6 +88,7 @@ pub struct ModelFpgaRealtime {
     /// each IBI it sees. We must discard those stale client reads.
     i3c_ibi_reads_pending: u32,
     flash_boot: bool,
+    initial_mcu_generic_input_wires: [u32; 2],
     check_booted_to_runtime: bool,
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
@@ -530,29 +531,36 @@ impl McuHwModel for ModelFpgaRealtime {
         // standard fuses are preserved. The read-modify-write goes through a
         // heap Vec + `copy_from_slice` so LLVM emits a memcpy: byte-by-byte
         // writes to the FPGA block RAM fault with SIGBUS.
-        if let Some(otp_memory) = params.otp_memory {
+        // Custom straps must be stable before reset release: ROM can sample
+        // them before boot() enables fuse/runtime progress.
+        if params.otp_memory.is_some() || params.mcu_generic_input_wires != [0; 2] {
             base.set_subsystem_reset(true);
             std::thread::sleep(Duration::from_micros(1));
-            let mut otp_data = base.otp_slice().to_vec();
-            if otp_memory.len() > otp_data.len() {
-                bail!(
-                    "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
-                    otp_memory.len(),
-                    otp_data.len()
-                );
+            if let Some(otp_memory) = params.otp_memory {
+                let mut otp_data = base.otp_slice().to_vec();
+                if otp_memory.len() > otp_data.len() {
+                    bail!(
+                        "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
+                        otp_memory.len(),
+                        otp_data.len()
+                    );
+                }
+                // Zero the overlay region first, then copy test data on top.
+                // The FPGA OTP backing RAM is NOT zero-initialized (it may
+                // contain a counting pattern or other residual data).  A plain
+                // OR would merge test bits with that residual data, producing
+                // wrong fuse values.
+                for dst in otp_data[..otp_memory.len()].iter_mut() {
+                    *dst = 0;
+                }
+                for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
+                    *dst |= *src;
+                }
+                base.otp_slice().copy_from_slice(&otp_data);
             }
-            // Zero the overlay region first, then copy test data on top.
-            // The FPGA OTP backing RAM is NOT zero-initialized (it may
-            // contain a counting pattern or other residual data).  A plain
-            // OR would merge test bits with that residual data, producing
-            // wrong fuse values.
-            for dst in otp_data[..otp_memory.len()].iter_mut() {
-                *dst = 0;
+            for (i, wire) in params.mcu_generic_input_wires.into_iter().enumerate() {
+                base.wrapper.regs().mci_generic_input_wires[i].set(wire);
             }
-            for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
-                *dst |= *src;
-            }
-            base.otp_slice().copy_from_slice(&otp_data);
             base.set_subsystem_reset(false);
         }
 
@@ -633,6 +641,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_client_read_retries: 0,
             i3c_ibi_reads_pending: 0,
             flash_boot: params.flash_boot,
+            initial_mcu_generic_input_wires: params.mcu_generic_input_wires,
             check_booted_to_runtime: params.check_booted_to_runtime,
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
@@ -673,7 +682,10 @@ impl McuHwModel for ModelFpgaRealtime {
         } else {
             gpio1
         };
-        let mci_generic_input_wires = &[0, gpio1];
+        let mci_generic_input_wires = &[
+            self.initial_mcu_generic_input_wires[0],
+            self.initial_mcu_generic_input_wires[1] | gpio1,
+        ];
         println!(
             "Setting: MCI generic input wires: {:08x?}",
             mci_generic_input_wires
@@ -727,30 +739,9 @@ impl McuHwModel for ModelFpgaRealtime {
             }
             self.base.i3c_controller().unwrap().configure();
         } else {
-            // ROM-only mode: wait for recovery to deliver firmware, but don't
-            // assert FIRMWARE_BOOT_FLOW_COMPLETE since the ROM may stay in a
-            // service loop instead of booting the runtime.
-            const ROM_ONLY_WAIT_CYCLES: u64 = 800_000_000;
-            let start_cycle = self.cycle_count();
-            self.step_until(|hw| hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES);
-            println!(
-                "ROM-only boot wait completed at cycle count {}, flow status {}",
-                self.cycle_count(),
-                u32::from(self.mci_flow_status())
-            );
-            self.base.recovery_started = false;
-            // Reconfigure the I3C controller (RSTDAA+ENTDAA) so the bus
-            // transitions from recovery state to normal TTI operation.
-            // The RSTDAA strips the target's dynamic address, then ENTDAA
-            // re-assigns it. This ensures the controller and target are in
-            // sync for private write transactions.
-            println!("Resetting I3C controller for TTI mode");
-            {
-                let i3c_ctrl = self.base.i3c_controller().unwrap();
-                let ctrl = i3c_ctrl.controller.lock().unwrap();
-                ctrl.ready.set(false);
-            }
-            self.base.i3c_controller().unwrap().configure();
+            // ROM-only callers step to their own readiness checkpoint before
+            // start_i3c_controller() hands recovery over to services.
+            println!("ROM-only boot: recovery remains active until firmware readiness");
         }
 
         Ok(())
@@ -840,6 +831,7 @@ impl McuHwModel for ModelFpgaRealtime {
         while !self.base.i3c_target_configured() {
             self.step();
         }
+        self.base.recovery_started = false;
         {
             let i3c_ctrl = self.base.i3c_controller().unwrap();
             let ctrl = i3c_ctrl.controller.lock().unwrap();
