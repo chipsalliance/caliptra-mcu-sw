@@ -14,9 +14,16 @@
 < set_ulpi_req_low_power_mode <= '1' when suspendm_nxt = '0' and (ulpi_suspendm_r = '1' or -- enter into suspend ouside the ULPI reset cycle
 ---
 > set_ulpi_req_low_power_mode <= '1' when ULPI_SUPPORT and phy_mode = '1' and suspendm_nxt = '0' and (ulpi_suspendm_r = '1' or -- enter into suspend ouside the ULPI reset cycle
-4835a4842,4843
+4845,4847c4851,4855
+<          clear_ulpi_async_mode <= '1';
+<          ulpi_oper_state_nxt <= ULPI_OPER_IDLE;
+<       end if;
+---
+>          clear_ulpi_async_mode <= '1';
+>          ulpi_oper_state_nxt <= ULPI_OPER_IDLE;
 >       else
 >          ulpi_stp_nxt <= '1'; -- FPGA: registered STP replaces ulpi_stp_async (see usb_pie_sync_stp.patch)
+>       end if;
 4982c4990
 <       elsif clear_ulpi_req_txcmd = '1' and ulpi_arb_reg_r = ULPI_ARB_FCTCTRL_REG_SUSP then
 ---
