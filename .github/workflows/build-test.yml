@@ -93,7 +93,8 @@ jobs:
         with:
           name: xtask-binary
           path: /tmp/xtask
-          retention-days: 1
+          # Queued jobs and failed-job reruns can outlive a one-day retention.
+          retention-days: 7
 
   precheckin:
     runs-on: e2-standard-8
@@ -200,7 +201,7 @@ jobs:
         with:
           name: firmware-bundle-shard-${{ matrix.shard }}
           path: target/all-fw*.zip
-          retention-days: 1
+          retention-days: 7
 
   merge-firmware-bundles:
     needs: build-firmware
@@ -237,14 +238,14 @@ jobs:
         with:
           name: firmware-bundle
           path: target/all-fw.zip
-          retention-days: 1
+          retention-days: 7
 
       - name: Upload release firmware bundle
         uses: actions/upload-artifact@v7
         with:
           name: release-firmware-bundle
           path: target/all-fw-release.zip
-          retention-days: 1
+          retention-days: 7
 
   build-emulator:
     runs-on: e2-standard-16
@@ -286,7 +287,7 @@ jobs:
         with:
           name: emulator-bundle
           path: target/emulators.zip
-          retention-days: 1
+          retention-days: 7
 
   build-tests:
     runs-on: e2-standard-8
@@ -336,7 +337,7 @@ jobs:
         with:
           name: nextest-archive
           path: /tmp/nextest-archive.tar.zst
-          retention-days: 1
+          retention-days: 7
 
   test_emulator:
     runs-on: e2-standard-4
