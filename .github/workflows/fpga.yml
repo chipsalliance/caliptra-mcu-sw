@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
@@ -295,27 +294,9 @@ jobs:
         run: CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
 
       - name: Download bitstream
-        if: matrix.hw-revision == '2.1'
         run: |
           cargo xtask-fpga fpga download-bitstream
           mv caliptra-bitstream.pdi /tmp/caliptra-bitstream.pdi
-
-      - name: Download pinned 2.2 segmented bitstream bundle
-        if: matrix.hw-revision == 'latest'
-        uses: actions/download-artifact@v8
-        with:
-          github-token: ${{ github.token }}
-          run-id: 43534379286
-          artifact-ids: 14097800964
-          path: /tmp/latest-bitstream
-          merge-multiple: true
-
-      - name: Verify and extract 2.2 bitstream
-        if: matrix.hw-revision == 'latest'
-        run: |
-          tar -xzf /tmp/latest-bitstream/caliptra-bitstream.tar.gz -C /tmp/latest-bitstream
-          echo "d15fb675fec9e38db30267fcc99de9134087149bb4302e76d1dfac00dc2f9e48  /tmp/latest-bitstream/runtime_9117a1a.pdi" | sha256sum -c
-          mv /tmp/latest-bitstream/runtime_9117a1a.pdi /tmp/caliptra-bitstream.pdi
 
       - name: Build release profile and test binaries
         run: |
