@@ -848,7 +848,7 @@ pub trait McuHwModel {
 
         // `finish_mailbox_exec` reads the response into a caller-provided
         // buffer, so size it for the largest response the mailbox can hold.
-        let mut resp_buf = vec![0u8; api::mailbox::PASSIVE_MAILBOX_SIZE_LIMIT];
+        let mut resp_buf = vec![0u8; api::mailbox::SUBSYSTEM_MAILBOX_SIZE_LIMIT];
         let response = self
             .caliptra_soc_manager()
             .finish_mailbox_exec(&mut resp_buf)

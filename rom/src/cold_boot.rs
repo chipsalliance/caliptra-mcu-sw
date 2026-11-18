@@ -30,7 +30,7 @@ use caliptra_api::mailbox::{
 use caliptra_api::mailbox::{
     OcpLockReportHekMetadataReq, OcpLockReportHekMetadataResp, OcpLockReportHekMetadataRespFlags,
 };
-use caliptra_api::{calc_checksum, CaliptraApiError};
+use caliptra_api::{calc_checksum, CaliptraApiError, SocManager};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_cfi_lib::{
     cfi_assert, cfi_assert_bool, cfi_assert_eq_12_words, cfi_launder, CfiCounter, CfiError,
@@ -628,7 +628,7 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+        if let Err(err) = soc_manager.start_mailbox_exec(cmd, req.as_bytes()) {
             caliptra_mcu_romtime::println!(
                 "[mcu-rom] STASH_MEASUREMENT start error: {}",
                 HexWord(Self::err_code(&err))
@@ -682,10 +682,7 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if soc_manager
-            .start_mailbox_req_bytes(cmd, req.as_bytes())
-            .is_err()
-        {
+        if soc_manager.start_mailbox_exec(cmd, req.as_bytes()).is_err() {
             fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_KEY_IMPORT_START_FAILED);
         }
 
@@ -736,10 +733,7 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if soc_manager
-            .start_mailbox_req_bytes(cmd, req.as_bytes())
-            .is_err()
-        {
+        if soc_manager.start_mailbox_exec(cmd, req.as_bytes()).is_err() {
             fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_DMA_START_FAILED);
         }
 
@@ -791,10 +785,7 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if soc_manager
-            .start_mailbox_req_bytes(cmd, req.as_bytes())
-            .is_err()
-        {
+        if soc_manager.start_mailbox_exec(cmd, req.as_bytes()).is_err() {
             fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_FAILED);
         }
 
@@ -820,7 +811,7 @@ impl ColdBoot {
         req.chksum = chksum;
 
         if soc_manager
-            .start_mailbox_req_bytes(CMD_GET_MCU_FW_SIZE, req.as_bytes())
+            .start_mailbox_exec(CMD_GET_MCU_FW_SIZE, req.as_bytes())
             .is_err()
         {
             fatal_error(McuError::ROM_COLD_BOOT_GET_FW_SIZE_START_FAILED);
@@ -901,7 +892,7 @@ impl ColdBoot {
         req.hdr.chksum = chksum;
 
         if let Err(err) =
-            soc_manager.start_mailbox_req_bytes(CommandId::ZEROIZE_UDS_FE.into(), req.as_bytes())
+            soc_manager.start_mailbox_exec(CommandId::ZEROIZE_UDS_FE.into(), req.as_bytes())
         {
             caliptra_mcu_romtime::println!(
                 "[mcu-rom] FIPS zeroization: ZEROIZE_UDS_FE send failed: {}",
@@ -983,7 +974,7 @@ impl ColdBoot {
         );
         req.hdr.chksum = chksum;
 
-        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+        if let Err(err) = soc_manager.start_mailbox_exec(cmd, req.as_bytes()) {
             caliptra_mcu_romtime::println!(
                 "[mcu-rom] REPORT_HEK_METADATA start error: {}",
                 HexWord(Self::err_code(&err))
@@ -1756,7 +1747,7 @@ impl BootFlow for ColdBoot {
         };
 
         crate::call_hook(params.hooks, |h| h.pre_load_firmware());
-        if let Err(err) = env.soc_manager.start_mailbox_req_bytes(ri_cmd, &[]) {
+        if let Err(err) = env.soc_manager.start_mailbox_exec(ri_cmd, &[]) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
                     caliptra_mcu_romtime::println!(

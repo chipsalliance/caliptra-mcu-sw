@@ -996,10 +996,6 @@ impl SocManager for &mut ModelEmulated {
         writeln!(self.output().logger(), "{args}").unwrap()
     }
 
-    const SOC_IFC_ADDR: u32 = 0x3003_0000;
-    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
-    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
-
     const MAX_WAIT_CYCLES: u32 = 40_000_000; // 100ms @400MHz
 }
 
