@@ -12,6 +12,7 @@
 //! by the kernel DMA driver via a syscall, configured at boot time with the
 //! platform's memory map.
 
+use caliptra_api::mailbox::AxiResponseInfo;
 use caliptra_mcu_libsyscall_caliptra::dma::DMA;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use mcu_error::codes::INVARIANT;
@@ -30,23 +31,21 @@ impl AxiDmaTarget {
     /// Translates an MCU local SRAM buffer into an [`AxiDmaTarget`].
     #[inline]
     pub fn from_mcu_sram(buf: &[u8]) -> McuResult<Self> {
-        let (addr, max_size) = mcu_sram_to_axi_dma(buf)?;
+        let (addr, max_size) = DMA::<DefaultSyscalls>::new()
+            .mcu_sram_to_cptra_axi(buf)
+            .map_err(|_| INVARIANT)?;
         Ok(Self { addr, max_size })
-    }
-
-    /// Returns the `(axi_addr, max_size)` tuple format expected by DPE invoke commands.
-    #[inline]
-    pub fn as_tuple(&self) -> (u32, u32) {
-        (self.addr, self.max_size)
     }
 }
 
-/// Helper function to translate an MCU local SRAM buffer into an `(axi_addr, max_size)` tuple.
-#[inline]
-pub fn mcu_sram_to_axi_dma(buf: &[u8]) -> McuResult<(u32, u32)> {
-    DMA::<DefaultSyscalls>::new()
-        .mcu_sram_to_cptra_axi(buf)
-        .map_err(|_| INVARIANT)
+impl From<AxiDmaTarget> for AxiResponseInfo {
+    fn from(target: AxiDmaTarget) -> Self {
+        Self {
+            addr_lo: target.addr,
+            addr_hi: 0,
+            max_size: target.max_size,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -68,7 +67,6 @@ mod tests {
 
         let target = AxiDmaTarget::from_mcu_sram(bytes).unwrap();
         assert_eq!(target.max_size, 64);
-        assert_eq!(target.as_tuple(), (target.addr, 64));
     }
 
     #[test]
@@ -78,7 +76,7 @@ mod tests {
         kernel.add_driver(&dma_driver);
 
         let empty: &[u8] = &[];
-        assert!(mcu_sram_to_axi_dma(empty).is_err());
+        assert!(AxiDmaTarget::from_mcu_sram(empty).is_err());
     }
 
     #[test]
@@ -89,6 +87,6 @@ mod tests {
 
         let buf = [0u32; 16];
         let bytes: &[u8] = unsafe { core::slice::from_raw_parts(buf.as_ptr() as *const u8, 15) };
-        assert!(mcu_sram_to_axi_dma(bytes).is_err());
+        assert!(AxiDmaTarget::from_mcu_sram(bytes).is_err());
     }
 }
