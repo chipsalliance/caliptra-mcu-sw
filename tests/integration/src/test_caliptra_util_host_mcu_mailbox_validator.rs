@@ -321,6 +321,10 @@ pub mod test {
                         "GetCertChain(Vendor/ECC_P384)",
                         "SetCertChain(Vendor/readonly)",
                         "GetCertChainInfo(Owner/unprovisioned)",
+                        "AuthSetCertChain(Tenant/authority_rejected)",
+                        "SetCertChain(Owner/unauthenticated_rejected)",
+                        "AuthSetCertChain(Owner/ECC_P384)",
+                        "SetCertChain(Owner/digest_mismatch_rejected)",
                         "SetCertChain(Owner/ECC_P384)",
                         "GetCertChainInfo(Owner/ECC_P384)",
                         "GetCertChain(Owner/ECC_P384)",
@@ -328,6 +332,9 @@ pub mod test {
                         "SetCertChain(Tenant/ECC_P384)",
                         "GetCertChainInfo(Tenant/ECC_P384)",
                         "GetCertChain(Tenant/ECC_P384)",
+                        "DpeSignerContextCert(ECC_P384)",
+                        "DpeSignerContextSign(ECC_P384)",
+                        "DpeSignerContextSign(ECC_P384/invalid_len_rejected)",
                     ];
                     let all_cert_results_passed = fuse_only
                         || required_cert_results.iter().all(|test_name| {

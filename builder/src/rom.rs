@@ -33,7 +33,7 @@ fn rom_build_inner(
         "caliptra-mcu-rom-{}",
         platform.clone().unwrap_or_else(|| "emulator".to_string())
     );
-    let rom = format!("{target_name}{feature_suffix}");
+    let rom = crate::revisioned_name(&format!("{target_name}{feature_suffix}"))?;
     let manifest = manifest_file(platform.as_deref(), false)?;
     let common = Common {
         manifest,
@@ -66,6 +66,7 @@ fn rom_build_inner(
     assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
     append_rom_digest(&rom_binary, rom_size)?;
     write_legacy_rom_alias(&rom_binary)?;
+    crate::write_hardware_provenance(&rom_binary)?;
     Ok(rom_binary)
 }
 
@@ -130,7 +131,10 @@ pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
         ..Default::default()
     };
 
-    let platform_bin = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+    let platform_bin = crate::revisioned_name(&format!(
+        "mcu-test-rom-{}-{}.bin",
+        fwid.crate_name, fwid.bin_name
+    ))?;
     let rom_binary = common.release_dir().map(|t| t.join(&platform_bin))?;
 
     let mut features = fwid.features().to_vec();

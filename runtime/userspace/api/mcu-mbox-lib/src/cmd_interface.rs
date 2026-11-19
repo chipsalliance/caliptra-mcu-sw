@@ -148,8 +148,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         }
 
         // Receive a request from the transport.
-        let (cmd_id, req_len) = match self.transport.receive_request(req_buf).await {
-            Ok((c, slice)) => (c, slice.len()),
+        let (cmd_id, axi_user, req_len) = match self.transport.receive_request(req_buf).await {
+            Ok((c, axi_user, slice)) => (c, axi_user, slice.len()),
             Err(_) => {
                 let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
                 return Err(errors::TRANSPORT_ERROR);
@@ -157,7 +157,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         };
 
         let status = match self
-            .process_request(req_buf, req_len, cmd_id, resp_buf)
+            .process_request(req_buf, req_len, cmd_id, axi_user, resp_buf)
             .await
         {
             Ok((resp, status)) => {
@@ -191,8 +191,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
 
     pub async fn handle_responder_msg_from_scratch(&mut self) -> McuResult<()> {
         let mut req_buf = self.scratch.alloc_bytes(size_of::<McuMailboxReq>())?;
-        let (cmd_id, req_len) = match self.transport.receive_request(&mut req_buf).await {
-            Ok((c, slice)) => (c, slice.len()),
+        let (cmd_id, axi_user, req_len) = match self.transport.receive_request(&mut req_buf).await {
+            Ok((c, axi_user, slice)) => (c, axi_user, slice.len()),
             Err(_) => {
                 let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
                 return Err(errors::TRANSPORT_ERROR);
@@ -214,7 +214,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
             }
         };
         let status = match self
-            .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
+            .process_request(&mut req_buf, req_len, cmd_id, axi_user, &mut resp_buf)
             .await
         {
             Ok((resp, status)) => {
@@ -248,6 +248,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         req_buf: &mut [u8],
         req_len: usize,
         cmd: u32,
+        axi_user: u32,
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         if self.busy.load(Ordering::SeqCst) {
@@ -262,7 +263,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
             "MCU mailbox command called: 0x{}",
             Hex32(cmd)
         );
-        let result = if cmd_id.is_vendor_unique() {
+        let result = if requires_pl0_axi_user(cmd_id) && !self.transport.is_pl0_axi_user(axi_user) {
+            Err(errors::UNAUTHORIZED_COMMAND)
+        } else if cmd_id.is_vendor_unique() {
             Err(errors::UNSUPPORTED_COMMAND)
         } else if let Some(caliptra_cmd) = caliptra_passthrough_cmd(cmd_id) {
             self.handle_crypto_passthrough(req_buf, req_len, caliptra_cmd, resp_buf)
@@ -504,13 +507,13 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         McuFeStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let already_provisioned = self
+        let fe_status = self
             .non_crypto_cmds_handler
-            .field_entropy_already_provisioned()
+            .field_entropy_status(self.scratch)
             .await
             .map_err(map_common_cmd_error)?;
         let resp = McuFeStatusResp {
-            already_provisioned: already_provisioned.into(),
+            fe_status,
             ..Default::default()
         };
         let resp = resp.as_bytes();
@@ -1137,6 +1140,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
 
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
+}
+
+/// Returns true if the MCU mailbox command requires a privileged (PL0) AXI user.
+fn requires_pl0_axi_user(cmd: CommandId) -> bool {
+    matches!(cmd, CommandId::MC_DPE_SIGNER_CONTEXT_SIGN)
 }
 
 /// Map an MCU mailbox `CommandId` to the Caliptra mailbox command code for
@@ -1775,6 +1783,15 @@ mod tests {
             pki_entity_slot: PkiEntitySlot::Vendor as u32,
             nonce: [0x5A; 32],
         }
+    }
+
+    #[test]
+    fn pl0_axi_user_requirement_gates_privileged_commands() {
+        assert!(requires_pl0_axi_user(CommandId::MC_DPE_SIGNER_CONTEXT_SIGN));
+        assert!(!requires_pl0_axi_user(
+            CommandId::MC_DPE_SIGNER_CONTEXT_CERT
+        ));
+        assert!(!requires_pl0_axi_user(CommandId::MC_FIRMWARE_VERSION));
     }
 
     #[test]

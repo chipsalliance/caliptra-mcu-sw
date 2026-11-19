@@ -5,7 +5,10 @@
 //! Command structures for certificate operations
 
 use crate::attestation::{AsymAlgo, PkiEntitySlot};
+use crate::fuse::{AUTH_CMD_CHALLENGE_SIZE, AUTH_PUB_ECC_COORD_SIZE, AUTH_PUB_MLDSA_SIZE};
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
+use caliptra_mcu_mbox_common::authorization::AuthorizationMetadata;
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Placeholder certificate commands - implement as needed
@@ -456,6 +459,179 @@ impl CommandRequest for ProvisionIdevCertRequest {
 
 impl CommandResponse for ProvisionIdevCertResponse {}
 
+// ============================================================================
+// MC_DPE_SIGNER_CONTEXT_CERT / MC_DPE_SIGNER_CONTEXT_SIGN Commands
+// ============================================================================
+
+/// Maximum exported-CDI leaf certificate size (8 KiB).
+pub const MAX_DPE_SIGNER_CERT_SIZE: usize =
+    caliptra_mcu_mbox_common::messages::MAX_ENDORSEMENT_CERT_SIZE;
+
+/// Maximum payload size for `MC_DPE_SIGNER_CONTEXT_SIGN` (4 KiB).
+pub const MAX_DPE_SIGNER_SIGN_DATA_SIZE: usize =
+    caliptra_mcu_mbox_common::messages::MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE;
+
+/// Maximum signature buffer size for `MC_DPE_SIGNER_CONTEXT_SIGN` (4-byte aligned for `IntoBytes`).
+pub const MAX_DPE_SIGNER_SIG_SIZE: usize = 4628;
+
+/// Expected byte length of an ECDSA P-384 `r || s` signature.
+pub const ECDSA384_SIGNATURE_SIZE: usize = 96;
+
+/// Expected byte length of an ML-DSA-87 signature on the wire.
+pub const MLDSA87_SIGNATURE_SIZE: usize = 4627;
+
+/// Request for `MC_DPE_SIGNER_CONTEXT_CERT` (`0x4D44_5343`, `"MDSC"`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextCertRequest {
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+}
+
+impl DpeSignerContextCertRequest {
+    pub const fn new(target_fw_id: u32, algorithm: AsymAlgo) -> Self {
+        Self {
+            target_fw_id,
+            algorithm: algorithm as u32,
+        }
+    }
+}
+
+/// Response for `MC_DPE_SIGNER_CONTEXT_CERT` (`0x4D44_5343`, `"MDSC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextCertResponse {
+    pub common: CommonResponse,
+    /// Number of valid DER bytes in `cert_data`.
+    pub data_len: u32,
+    /// Derived Exported-CDI leaf X.509 certificate in DER format.
+    pub cert_data: [u8; MAX_DPE_SIGNER_CERT_SIZE],
+}
+
+impl DpeSignerContextCertResponse {
+    /// Returns the valid DER certificate slice (`..data_len`).
+    pub fn cert_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_DPE_SIGNER_CERT_SIZE);
+        &self.cert_data[..len]
+    }
+}
+
+impl CommandRequest for DpeSignerContextCertRequest {
+    type Response = DpeSignerContextCertResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::DpeSignerContextCert;
+}
+
+impl CommandResponse for DpeSignerContextCertResponse {}
+
+/// Request for `MC_DPE_SIGNER_CONTEXT_SIGN` (`0x4D44_5353`, `"MDSS"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextSignRequest {
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+    /// Number of valid bytes in `data`.
+    pub data_len: u32,
+    /// Signing input (`48`-byte SHA-384 digest for `EccP384`; raw TBS up to `MAX_DPE_SIGNER_SIGN_DATA_SIZE` for `Mldsa87`).
+    pub data: [u8; MAX_DPE_SIGNER_SIGN_DATA_SIZE],
+}
+
+impl DpeSignerContextSignRequest {
+    pub fn new(target_fw_id: u32, algorithm: AsymAlgo, payload: &[u8]) -> Option<Self> {
+        if payload.is_empty() || payload.len() > MAX_DPE_SIGNER_SIGN_DATA_SIZE {
+            return None;
+        }
+        let mut data = [0u8; MAX_DPE_SIGNER_SIGN_DATA_SIZE];
+        data[..payload.len()].copy_from_slice(payload);
+        Some(Self {
+            target_fw_id,
+            algorithm: algorithm as u32,
+            data_len: payload.len() as u32,
+            data,
+        })
+    }
+}
+
+/// Response for `MC_DPE_SIGNER_CONTEXT_SIGN` (`0x4D44_5353`, `"MDSS"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextSignResponse {
+    pub common: CommonResponse,
+    /// Number of valid signature bytes in `signature` (`96` for `EccP384`, `4627` for `Mldsa87`).
+    pub data_len: u32,
+    /// Signature bytes (`r || s` for `EccP384`, raw FIPS-204 signature for `Mldsa87`).
+    pub signature: [u8; MAX_DPE_SIGNER_SIG_SIZE],
+}
+
+impl DpeSignerContextSignResponse {
+    /// Returns the valid signature slice (`..data_len`).
+    pub fn signature_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_DPE_SIGNER_SIG_SIZE);
+        &self.signature[..len]
+    }
+}
+
+impl CommandRequest for DpeSignerContextSignRequest {
+    type Response = DpeSignerContextSignResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::DpeSignerContextSign;
+}
+
+impl CommandResponse for DpeSignerContextSignResponse {}
+
+// ============================================================================
+// MC_AUTH_SET_CERT_CHAIN (0x4D41_5343 - "MASC" via 0x0000_0012)
+// ============================================================================
+
+/// Canonical MCU command ID for `MC_AUTH_SET_CERT_CHAIN` (`"MASC"`).
+pub const MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID: u32 = 0x4D41_5343;
+
+/// Request for `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343`, `"MASC"`), dispatched via
+/// `MC_AUTHORIZED_COMMAND` (`0x0000_0012`).
+///
+/// Arms a managed certificate slot with `(total_size, expected_sha384)` for the
+/// next `MC_SET_CERT_CHAIN` or SPDM `SET_CERTIFICATE` write.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct AuthSetCertChainRequest {
+    /// Target PKI entity slot (`PkiEntitySlot`: `0 = Vendor`, `1 = Owner`, `2 = Tenant`).
+    pub pki_entity_slot: u32,
+    /// Asymmetric algorithm (`AsymAlgo`: `1 = EccP384`, `2 = MlDsa87`).
+    pub algorithm: u32,
+    /// Total byte length of the endorsement chain to be streamed (`> 0`), or `0` to arm an erase.
+    pub total_size: u32,
+    /// Expected SHA-384 digest over the full streamed endorsement chain (ignored when `total_size == 0`).
+    pub expected_sha384: [u8; CERT_CHAIN_DIGEST_SIZE],
+    /// Authorization metadata (`version`, `authority`, `soc_ueid`).
+    pub metadata: AuthorizationMetadata,
+    /// 48-byte challenge nonce from `GetAuthCmdChallenge` (or `[0; 48]` for offline mode).
+    pub nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
+    /// Signer ECC P-384 public key X coordinate (48 bytes).
+    pub ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
+    /// Signer ECC P-384 public key Y coordinate (48 bytes).
+    pub ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
+    /// Signer ML-DSA-87 public key (2592 bytes).
+    pub mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
+    /// Hybrid ECDSA P-384 + ML-DSA-87 signature.
+    pub sig: HybridSignature,
+}
+
+/// Response for `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343`, `"MASC"`).
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct AuthSetCertChainResponse {
+    pub common: CommonResponse,
+}
+
+impl CommandRequest for AuthSetCertChainRequest {
+    type Response = AuthSetCertChainResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::AuthSetCertChain;
+}
+
+impl CommandResponse for AuthSetCertChainResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,5 +656,24 @@ mod tests {
         assert_eq!(parsed.device_key_id, 0);
         assert_eq!(parsed.algorithm, 1);
         assert_eq!(parsed.nonce, [0x5A; 32]);
+    }
+
+    #[test]
+    fn test_auth_set_cert_chain_request() {
+        assert_eq!(
+            AuthSetCertChainRequest::COMMAND_ID,
+            CaliptraCommandId::AuthSetCertChain
+        );
+        assert_eq!(MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID, 0x4D41_5343);
+        let expected_size = 60
+            + core::mem::size_of::<AuthorizationMetadata>()
+            + AUTH_CMD_CHALLENGE_SIZE
+            + 2 * AUTH_PUB_ECC_COORD_SIZE
+            + AUTH_PUB_MLDSA_SIZE
+            + core::mem::size_of::<HybridSignature>();
+        assert_eq!(
+            core::mem::size_of::<AuthSetCertChainRequest>(),
+            expected_size
+        );
     }
 }

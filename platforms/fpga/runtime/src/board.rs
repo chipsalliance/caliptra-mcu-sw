@@ -1034,6 +1034,7 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         &peripherals.mcu_mbox0,
+        caliptra_mcu_config_fpga::FPGA_MCU_MBOX0_PL0_AXI_USERS,
     )
     .finalize(mcu_mbox_component_static!(
         caliptra_mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>

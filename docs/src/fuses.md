@@ -62,8 +62,11 @@ The implemented generator runs as:
 cargo xtask registers-autogen --fuses-hjson <path> --otp-mmap-hjson <path>
 ```
 
-Both path options are optional and default to `hw/fuses.hjson` and the
-Caliptra subsystem OTP memory map. The command generates:
+Both path options are optional. `CALIPTRA_HW_REV=2.1` (the default) selects
+`hw/rev-2_1/fuses.hjson` and the OTP memory map under
+`hw/rev-2_1/caliptra-ss`; `CALIPTRA_HW_REV=latest` selects the corresponding
+inputs under `hw/latest`. Explicit path options override these defaults.
+The command generates:
 
 * Rust fuse definitions in the selected generated-register output
 * The corresponding `fuse_map.md`
@@ -107,6 +110,9 @@ These commands reference partition, fuse, and bit numbers that must use the same
 Field entropy can only be programmed by Caliptra. MCU Runtime exposes the
 authorized `MC_FE_PROG` (`MCFP`) command, which accepts one partition index and
 forwards Caliptra's `FE_PROG` mailbox command.
+
+FE status is queried from Caliptra Core's `FW_INFO.fe_status`. The legacy
+`FIELD_ENTROPY_STATE` fuse allocation remains reserved.
 
 The reference DOT configuration derives its effective key from the stable
 IDevID root, so Field Entropy programming does not invalidate the DOT_BLOB.

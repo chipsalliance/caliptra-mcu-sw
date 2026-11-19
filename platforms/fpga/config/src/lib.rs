@@ -73,6 +73,9 @@ pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     mcu_wdt_cfg1_debug: 1,
 };
 
+/// Privileged (PL0) AXI users for MCI mailbox 0.
+pub const FPGA_MCU_MBOX0_PL0_AXI_USERS: &[u32] = &[1];
+
 /// The MRAC value which should be populated for this memory map.  This corresponds to a value
 /// utilized within the global start assembly and thus must be unmangled.
 #[no_mangle]

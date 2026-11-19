@@ -71,7 +71,7 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
 
     async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
-        let dma_params = DOWNLOAD_CTX.lock(|ctx| -> McuResult<Option<(AXIAddr, usize)>> {
+        let dma_params = DOWNLOAD_CTX.lock(|ctx| -> McuResult<_> {
             let mut ctx = ctx.borrow_mut();
             let start = ctx.current_offset - ctx.initial_offset;
 
@@ -96,8 +96,16 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
                 }
                 ctx.total_downloaded += data.len();
             } else if state == State::DownloadingImage {
-                ctx.total_downloaded += data.len();
-                return Ok(Some((ctx.load_address, start)));
+                let remaining = ctx
+                    .total_length
+                    .checked_sub(start)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                // PLDM padding is not part of the validated image range.
+                let bytes_to_copy = data.len().min(remaining);
+                if bytes_to_copy == 0 {
+                    return Ok(None);
+                }
+                return Ok(Some((ctx.load_address, start, bytes_to_copy)));
             } else if state == State::DownloadingPayload {
                 let bytes_to_copy = data.len().min(ctx.total_length - ctx.total_downloaded);
                 let end = start + bytes_to_copy;
@@ -113,10 +121,15 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
 
             Ok(None)
         })?;
-        if let Some(dma_params) = dma_params {
-            return self
-                .copy_buffer_to_load_address(dma_params.0, dma_params.1, data, self.dma_mapping)
-                .await;
+        if let Some((load_address, start, bytes_to_copy)) = dma_params {
+            self.copy_buffer_to_load_address(
+                load_address,
+                start,
+                &data[..bytes_to_copy],
+                self.dma_mapping,
+            )
+            .await?;
+            DOWNLOAD_CTX.lock(|ctx| ctx.borrow_mut().total_downloaded += bytes_to_copy);
         }
         Ok(())
     }
@@ -165,7 +178,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
 
     async fn query_download_offset_and_length(
         &self,
-        _component: &FirmwareComponent,
+        component: &FirmwareComponent,
     ) -> McuResult<(usize, usize)> {
         let should_yield = PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
@@ -178,7 +191,8 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
             }
             false
         });
-        if should_yield {
+        // The daemon queries again before sending TransferComplete, even after rejection.
+        if should_yield && !self.is_download_complete(component) {
             IMAGE_LOADING_TASK_YIELD.signal(());
             PLDM_TASK_YIELD.wait().await;
         }
@@ -206,7 +220,24 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         data: &[u8],
         _component: &FirmwareComponent,
     ) -> McuResult<TransferResult> {
-        self.copy_data_to_buffer(offset, data).await?;
+        if PLDM_STATE.lock(|state| *state.borrow() == State::ImageDownloadFailed) {
+            return Ok(TransferResult::FdAbortedTransfer);
+        }
+        if let Err(error) = self.copy_data_to_buffer(offset, data).await {
+            let failed_image = PLDM_STATE.lock(|state| {
+                let mut state = state.borrow_mut();
+                if *state == State::DownloadingImage {
+                    *state = State::ImageDownloadFailed;
+                    true
+                } else {
+                    false
+                }
+            });
+            if failed_image {
+                return Ok(TransferResult::FdAbortedTransfer);
+            }
+            return Err(error);
+        }
         // update self.download_ctx
         let should_yield = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
@@ -240,6 +271,19 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         }
 
         Ok(TransferResult::TransferSuccess)
+    }
+
+    fn transfer_complete_reported(&self, result: McuResult<()>) {
+        if result.is_err() && PLDM_STATE.lock(|state| *state.borrow() == State::ImageDownloadFailed)
+        {
+            IMAGE_LOADING_TASK_YIELD.signal(());
+        }
+    }
+
+    fn cancel_update_reported(&self, _result: McuResult<()>) {
+        if PLDM_STATE.lock(|state| *state.borrow() == State::ImageDownloadFailed) {
+            IMAGE_LOADING_TASK_YIELD.signal(());
+        }
     }
 
     fn is_download_complete(&self, _component: &FirmwareComponent) -> bool {
@@ -292,20 +336,52 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
-    use caliptra_mcu_libtock_platform::ErrorCode;
+    use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+    use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
     use core::future::Future;
     use core::task::{Context, Poll, Waker};
+    use std::rc::Rc;
+
+    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct NoDma;
 
     impl DMAMapping for NoDma {
         fn mcu_sram_to_mcu_axi(&self, _addr: u32) -> Result<AXIAddr, ErrorCode> {
-            panic!("Header and TOC copies must not use DMA");
+            panic!("This copy must not use DMA");
         }
 
         fn cptra_axi_to_mcu_axi(&self, _addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-            panic!("Header and TOC copies must not use DMA");
+            panic!("This copy must not use DMA");
+        }
+
+        fn validate_image_load_range(
+            &self,
+            _range: core::ops::Range<AXIAddr>,
+        ) -> Result<(), ErrorCode> {
+            panic!("This copy must not use DMA");
+        }
+    }
+
+    struct TestDma;
+
+    impl DMAMapping for TestDma {
+        fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+            Ok(u64::from(addr))
+        }
+
+        fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+            Ok(addr)
+        }
+
+        fn validate_image_load_range(
+            &self,
+            _range: core::ops::Range<AXIAddr>,
+        ) -> Result<(), ErrorCode> {
+            Ok(())
         }
     }
 
@@ -322,6 +398,7 @@ mod tests {
 
     #[test]
     fn header_and_toc_copies_update_progress_only_on_success() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let params = FirmwareParameters::default();
         let ops = StreamingFdOps::new(&[], &params, &NoDma);
         let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
@@ -370,6 +447,318 @@ mod tests {
                 assert_eq!(&buffer[len - 2..], &data[..2]);
             });
         }
+
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
+    }
+
+    #[test]
+    fn failed_image_copy_does_not_advance_progress() {
+        struct FailingDmaMapping;
+
+        impl DMAMapping for FailingDmaMapping {
+            fn mcu_sram_to_mcu_axi(&self, _addr: u32) -> Result<AXIAddr, ErrorCode> {
+                Err(ErrorCode::Fail)
+            }
+
+            fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+                Ok(addr)
+            }
+
+            fn validate_image_load_range(
+                &self,
+                _range: core::ops::Range<AXIAddr>,
+            ) -> Result<(), ErrorCode> {
+                Ok(())
+            }
+        }
+
+        let _guard = TEST_LOCK.lock().unwrap();
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &FailingDmaMapping);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        PLDM_STATE.lock(|state| *state.borrow_mut() = State::DownloadingImage);
+        DOWNLOAD_CTX.lock(|ctx| {
+            let mut ctx = ctx.borrow_mut();
+            ctx.initial_offset = 100;
+            ctx.current_offset = 132;
+            ctx.total_downloaded = 32;
+            ctx.total_length = 96;
+        });
+
+        let result = run_ready(ops.copy_data_to_buffer(132, &[0x5a; 32]));
+        let progress = DOWNLOAD_CTX.lock(|ctx| {
+            let ctx = ctx.borrow();
+            (ctx.current_offset, ctx.total_downloaded)
+        });
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
+
+        assert_eq!(result, Err(pldm_errors::FW_DOWNLOAD_ERROR));
+        assert_eq!(progress, (132, 32));
+    }
+
+    #[test]
+    fn returned_dma_error_aborts_image_download() {
+        use caliptra_mcu_libsyscall_caliptra::dma::DMA_DRIVER_NUM;
+        use caliptra_mcu_libtock_platform::Syscalls;
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        struct IdentityDmaMapping;
+
+        impl DMAMapping for IdentityDmaMapping {
+            fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+                Ok(addr as AXIAddr)
+            }
+
+            fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+                Ok(addr)
+            }
+
+            fn validate_image_load_range(
+                &self,
+                _range: core::ops::Range<AXIAddr>,
+            ) -> Result<(), ErrorCode> {
+                Ok(())
+            }
+        }
+
+        let _guard = TEST_LOCK.lock().unwrap();
+        let kernel = fake::Kernel::new();
+        let dma = std::rc::Rc::new(fake::FakeDMADriver::new());
+        kernel.add_driver(&dma);
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &IdentityDmaMapping);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        let component = FirmwareComponent::default();
+        for (total_length, downloaded, expected_copy) in [(96, 0, 32), (96, 32, 32), (36, 32, 4)] {
+            for report_result in [
+                Some(Ok(())),
+                Some(Err(pldm_errors::FW_DOWNLOAD_ERROR)),
+                None,
+            ] {
+                IMAGE_LOADING_TASK_YIELD.reset();
+                PLDM_TASK_YIELD.reset();
+                let mut loader = core::pin::pin!(super::super::pldm_client::pldm_download_image(
+                    0x1000,
+                    100,
+                    total_length
+                ));
+                let mut context = Context::from_waker(Waker::noop());
+                assert!(loader.as_mut().poll(&mut context).is_pending());
+                DOWNLOAD_CTX.lock(|ctx| {
+                    let mut ctx = ctx.borrow_mut();
+                    ctx.current_offset += downloaded;
+                    ctx.total_downloaded = downloaded;
+                });
+                kernel.add_expected_syscall(ExpectedSyscall::Command {
+                    driver_id: DMA_DRIVER_NUM,
+                    command_id: 0,
+                    argument0: expected_copy,
+                    argument1: 0,
+                    override_return: Some(command_return::failure(ErrorCode::Fail)),
+                });
+
+                assert_eq!(
+                    run_ready(ops.download_fw_data(100 + downloaded, &[0x5a; 32], &component)),
+                    Ok(TransferResult::FdAbortedTransfer)
+                );
+                DOWNLOAD_CTX.lock(|ctx| {
+                    let ctx = ctx.borrow();
+                    assert_eq!(ctx.current_offset, 100 + downloaded);
+                    assert_eq!(ctx.total_downloaded, downloaded);
+                });
+                assert!(!IMAGE_LOADING_TASK_YIELD.signaled());
+                assert!(loader.as_mut().poll(&mut context).is_pending());
+
+                match report_result {
+                    Some(Ok(())) => {
+                        ops.transfer_complete_reported(Ok(()));
+                        assert!(loader.as_mut().poll(&mut context).is_pending());
+                        ops.cancel_update_component(&component).unwrap();
+                        assert!(loader.as_mut().poll(&mut context).is_pending());
+                        ops.cancel_update_reported(Ok(()));
+                    }
+                    Some(Err(error)) => ops.transfer_complete_reported(Err(error)),
+                    None => {
+                        ops.cancel_update_component(&component).unwrap();
+                        assert!(loader.as_mut().poll(&mut context).is_pending());
+                        ops.cancel_update_reported(Err(pldm_errors::FW_DOWNLOAD_ERROR));
+                    }
+                }
+                assert_eq!(
+                    loader.as_mut().poll(&mut context),
+                    Poll::Ready(Err(ErrorCode::Fail))
+                );
+                PLDM_TASK_YIELD.reset();
+                assert_eq!(
+                    super::super::pldm_client::finalize(VerifyResult::VerifySuccess),
+                    Err(ErrorCode::Fail)
+                );
+                assert!(!PLDM_TASK_YIELD.signaled());
+                assert_eq!(
+                    run_ready(ops.download_fw_data(100 + downloaded, &[0x5a; 32], &component)),
+                    Ok(TransferResult::FdAbortedTransfer)
+                );
+            }
+        }
+        IMAGE_LOADING_TASK_YIELD.reset();
+        PLDM_TASK_YIELD.reset();
+        PLDM_STATE.lock(|state| *state.borrow_mut() = State::DownloadingImage);
+        DOWNLOAD_CTX.lock(|ctx| {
+            let mut ctx = ctx.borrow_mut();
+            ctx.initial_offset = 100;
+            ctx.current_offset = 132;
+            ctx.total_downloaded = 32;
+            ctx.total_length = 96;
+        });
+        {
+            let mut copy = core::pin::pin!(ops.copy_data_to_buffer(132, &[0x5a; 32]));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(copy.as_mut().poll(&mut context).is_pending());
+            fake::Syscalls::yield_no_wait();
+            assert_eq!(copy.as_mut().poll(&mut context), Poll::Ready(Ok(())));
+        }
+        DOWNLOAD_CTX.lock(|ctx| assert_eq!(ctx.borrow().total_downloaded, 64));
+        ops.transfer_complete_reported(Ok(()));
+        assert!(!IMAGE_LOADING_TASK_YIELD.signaled());
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
+    }
+
+    #[test]
+    fn image_dma_clamps_padding_and_counts_only_completed_bytes() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let kernel = fake::Kernel::new();
+        let dma = Rc::new(fake::FakeDMADriver::new());
+        kernel.add_driver(&dma);
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &TestDma);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        let data = [0x5a; PLDM_FWUP_BASELINE_TRANSFER_SIZE];
+
+        for (total_length, downloaded, expected_copy) in
+            [(4, 0, 4), (36, 32, 4), (64, 32, 32), (64, 0, 32)]
+        {
+            let load_address = 0x8010_0000 - total_length as u64;
+            PLDM_STATE.lock(|state| *state.borrow_mut() = State::DownloadingImage);
+            DOWNLOAD_CTX.lock(|ctx| {
+                let mut ctx = ctx.borrow_mut();
+                ctx.initial_offset = 100;
+                ctx.current_offset = 100 + downloaded;
+                ctx.total_length = total_length;
+                ctx.total_downloaded = downloaded;
+                ctx.load_address = load_address;
+            });
+            if expected_copy < data.len() {
+                assert_eq!(
+                    run_ready(ops.query_download_offset_and_length(&FirmwareComponent::default())),
+                    Ok((100 + downloaded, PLDM_FWUP_BASELINE_TRANSFER_SIZE))
+                );
+            }
+
+            let mut copy = core::pin::pin!(ops.copy_data_to_buffer(100 + downloaded, &data));
+            assert!(copy
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending());
+            assert_eq!(dma.get_byte_count(), expected_copy);
+            assert_eq!(dma.get_dest_addr(), Some(load_address + downloaded as u64));
+            assert!(dma.get_dest_addr().unwrap() + dma.get_byte_count() as u64 <= 0x8010_0000);
+            DOWNLOAD_CTX.lock(|ctx| assert_eq!(ctx.borrow().total_downloaded, downloaded));
+
+            fake::Syscalls::yield_no_wait();
+            assert_eq!(run_ready(copy.as_mut()), Ok(()));
+            DOWNLOAD_CTX
+                .lock(|ctx| assert_eq!(ctx.borrow().total_downloaded, downloaded + expected_copy));
+        }
+
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
+    }
+
+    #[test]
+    fn failed_image_dma_does_not_advance_progress() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let kernel = fake::Kernel::new();
+        let dma = Rc::new(fake::FakeDMADriver::new());
+        kernel.add_driver(&dma);
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &TestDma);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        PLDM_STATE.lock(|state| *state.borrow_mut() = State::DownloadingImage);
+        DOWNLOAD_CTX.lock(|ctx| {
+            let mut ctx = ctx.borrow_mut();
+            ctx.initial_offset = 100;
+            ctx.current_offset = 132;
+            ctx.total_length = 36;
+            ctx.total_downloaded = 32;
+        });
+        kernel.add_expected_syscall(ExpectedSyscall::Command {
+            driver_id: caliptra_mcu_libsyscall_caliptra::dma::DMA_DRIVER_NUM,
+            command_id: 0, // SET_BYTE_XFER_COUNT
+            argument0: 4,
+            argument1: 0,
+            override_return: Some(command_return::failure(ErrorCode::Fail)),
+        });
+
+        assert_eq!(
+            run_ready(ops.copy_data_to_buffer(132, &[0; PLDM_FWUP_BASELINE_TRANSFER_SIZE])),
+            Err(pldm_errors::FW_DOWNLOAD_ERROR)
+        );
+        DOWNLOAD_CTX.lock(|ctx| assert_eq!(ctx.borrow().total_downloaded, 32));
+
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
+    }
+
+    #[test]
+    fn image_copy_at_or_past_the_end_does_not_start_dma() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &NoDma);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        PLDM_STATE.lock(|state| *state.borrow_mut() = State::DownloadingImage);
+
+        for (downloaded, expected) in [(4, Ok(())), (8, Err(pldm_errors::FW_DOWNLOAD_ERROR))] {
+            DOWNLOAD_CTX.lock(|ctx| {
+                let mut ctx = ctx.borrow_mut();
+                ctx.initial_offset = 100;
+                ctx.current_offset = 100 + downloaded;
+                ctx.total_length = 4;
+                ctx.total_downloaded = downloaded;
+            });
+            assert_eq!(
+                run_ready(ops.copy_data_to_buffer(100 + downloaded, &[0; 32])),
+                expected
+            );
+            DOWNLOAD_CTX.lock(|ctx| assert_eq!(ctx.borrow().total_downloaded, downloaded));
+        }
+
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
+    }
+
+    #[test]
+    fn rejected_image_can_finish_the_pldm_transfer_without_downloading_it() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &NoDma);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        PLDM_STATE.lock(|state| *state.borrow_mut() = State::ImageDownloadReady);
+        super::super::pldm_client::finalize(VerifyResult::VerifyFailedFdSecurityChecks).unwrap();
+        // The last TOC download consumes this signal before the daemon queries again.
+        run_ready(PLDM_TASK_YIELD.wait());
+
+        assert!(
+            run_ready(ops.query_download_offset_and_length(&FirmwareComponent::default())).is_ok()
+        );
 
         DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
         PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);

@@ -46,18 +46,69 @@ For more details on how to run tests locally, how CI works, and how to add new t
 
 ## Hardware revisions
 
-Currently, two hardware revisions are supported: 2.0 and 2.1.
+`CALIPTRA_HW_REV` selects the hardware inputs and both firmware and emulator
+register interfaces. Supported values are `2.1` (default) and `latest`.
+Other values, including `2.2`, are rejected; `latest` is not an alias for 2.2.
+The repository's Cargo configuration also supplies the 2.1 default to Caliptra
+core dependencies, whose upstream default differs.
 
-The features added to the 2.1 hardware are, briefly:
+| Selector | Pinned subsystem | Generated interfaces |
+|---|---|---|
+| `2.1` | `hw/rev-2_1/caliptra-ss` | `registers/generated-{firmware,emulator}/src/rev_2_1` |
+| `latest` | `hw/latest/caliptra-ss` | `registers/generated-{firmware,emulator}/src/latest` |
 
-* Caliptra ML-KEM support
-* I3C AXI recovery bypass
+Both subsystem snapshots initially pin the validated commit
+`3350c70a296bf897abe8c02e5ec0da69cc83ee16`, including its recorded nested
+dependencies. Update a subsystem gitlink and regenerate its interfaces together;
+do not independently advance nested RTL/I3C dependencies to branch tips.
+The production USB hardware upgrade is tracked separately in #2237.
 
-By default, the emulator and firmware use the 2.0 hardware features.
+Each hardware-input directory (`hw/rev-2_1` or `hw/latest`) also owns its local
+RDL files and `fuses.hjson`. Register generation selects `mcu.rdl`, `network.rdl`,
+their local includes and the fuse definitions from that same directory.
+The directories initially contain identical inputs, but are independent copies:
+updating latest's local definitions must not change 2.1. Shared tools and models
+remain in `hw/revision` and `hw/model`; the Vivado FPGA flow continues to use the
+validated 2.1 subsystem.
 
-For the emulator, there is a `--hw-revision 2.1.0` flag that can be used to select the 2.1 hardware when running (`cargo xtask runtime` also supports this flag).
+```shell
+git submodule update --init --recursive
+CALIPTRA_HW_REV=2.1 cargo xtask rom-build
+CALIPTRA_HW_REV=latest cargo xtask rom-build
+CALIPTRA_HW_REV=latest cargo xtask runtime-build
+```
 
-For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when specifying dependencies.
+Changing the selector rebuilds affected crates without `cargo clean`. New
+firmware functionality must still have its own Cargo feature gates: selecting
+`latest` does not enable new behavior. The existing `hw-2-1` feature keeps its
+firmware semantics and is valid for both current snapshots.
+
+The emulator's `--hw-revision` is a runtime behavior contract, not a register
+selector. Both snapshots currently require `2.1.0`, now the emulator and
+`cargo xtask runtime` default; incompatible runtime revisions are rejected.
+This intentionally removes the previous implicit 2.0 emulator behavior.
+
+Default 2.1 firmware/archive filenames remain compatible with existing tooling.
+Latest outputs have a `latest-` prefix; explicit output paths remain caller-owned.
+Caliptra ROM/FW cache keys always include `rev_2_1-` or `latest-`, including
+separately sourced ROM builds. Core source builds run in a child process with
+the selected revision explicitly set, preserving upstream's registered firmware
+IDs and isolating its in-process firmware cache. ROM/runtime outputs have `.provenance.txt`
+sidecars, and firmware/emulator ZIPs include `hardware-provenance.txt`.
+These record subsystem and nested hardware commits, the Cargo Caliptra source,
+and the separately configured ROM source (`CALIPTRA_ROM_REF`), frozen ROM
+selection (`CPTRA_CI_ROM_VERSION`), and prebuilt directory, when applicable.
+Explicit externally supplied binaries remain the caller's compatibility responsibility.
+
+**Core integration boundary:** the pinned Caliptra core uses different
+subsystem commits (`753308dd...` for 2.1 and `01b0a352...` for latest).
+Equal selector names do not prove equivalent hardware. This change preserves
+the existing core dependency; core/MCU pin alignment and actual 2.2 validation
+remain in #2238. Both current MCU snapshots retain the existing 2.1 ROM contract,
+including the CI `CALIPTRA_ROM_REF=rom-2.1.2`. Prebuilt or separately sourced ROMs
+must be revalidated before advancing latest. Upstream core Verilator hardware
+selection is not fully revision-aware; this change does not claim dual-revision
+RTL simulation or FPGA validation.
 
 ## Documentation
 
@@ -158,12 +209,16 @@ You can run the registers RDL to Rust autogenerator as an `xtask`:
 cargo xtask registers-autogen
 ```
 
-By default, this generates Rust register files from the pre-defined RDL files contained in the `hw/` directory.
+By default, this generates only the selected snapshot, including its fuse map,
+OTP input and MCU definitions. It does not overwrite the other snapshot or the
+public register-crate facades.
 
 If you only want to check the output, you can use `--check`.
 
 ```shell
 cargo xtask registers-autogen --check
+CALIPTRA_HW_REV=latest cargo xtask registers-autogen
+CALIPTRA_HW_REV=latest cargo xtask registers-autogen --check
 ```
 
 ### Quickly checking new RDL files

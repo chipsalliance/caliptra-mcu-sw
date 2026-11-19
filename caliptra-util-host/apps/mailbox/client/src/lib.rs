@@ -30,8 +30,9 @@ use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
 use caliptra_mcu_core_util_host_command_types::certificate::{
-    ExportAttestedCsrResponse, GetCertChainInfoResponse, GetCertChainResponse,
-    ProvisionIdevCertMode, ProvisionIdevCertResponse, SetCertChainResponse,
+    AuthSetCertChainRequest, AuthSetCertChainResponse, DpeSignerContextCertResponse,
+    DpeSignerContextSignResponse, ExportAttestedCsrResponse, GetCertChainInfoResponse,
+    GetCertChainResponse, ProvisionIdevCertMode, ProvisionIdevCertResponse, SetCertChainResponse,
     MAX_CERT_CHAIN_CHUNK_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
@@ -74,9 +75,10 @@ use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
 use caliptra_util_host_commands::api::certificate::{
-    caliptra_cmd_export_attested_csr, caliptra_cmd_get_cert_chain,
-    caliptra_cmd_get_cert_chain_info, caliptra_cmd_provision_idevid_cert,
-    caliptra_cmd_set_cert_chain,
+    caliptra_cmd_auth_set_cert_chain, caliptra_cmd_dpe_signer_context_cert,
+    caliptra_cmd_dpe_signer_context_sign, caliptra_cmd_export_attested_csr,
+    caliptra_cmd_get_cert_chain, caliptra_cmd_get_cert_chain_info,
+    caliptra_cmd_provision_idevid_cert, caliptra_cmd_set_cert_chain,
 };
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
@@ -113,6 +115,8 @@ use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_ocp_lock_set_perma_hek, caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_session::CaliptraSession;
+
+const DEFAULT_SESSION_ID: u32 = 1;
 
 /// High-level Mailbox Client for communicating with Caliptra devices
 pub struct MailboxClient<'a> {
@@ -1154,6 +1158,60 @@ impl<'a> MailboxClient<'a> {
             .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
         caliptra_cmd_provision_idevid_cert(&mut session, algorithm, mode, data)
             .map_err(|e| anyhow::anyhow!("ProvisionIdevCert command failed: {:?}", e))
+    }
+
+    /// Derive an Exported-CDI leaf X.509 certificate for `target_fw_id` (`0` uses the default `EXPORT_CDI_TARGET`).
+    pub fn dpe_signer_context_cert(
+        &mut self,
+        target_fw_id: u32,
+        algorithm: AsymAlgo,
+    ) -> Result<DpeSignerContextCertResponse> {
+        let mut session = CaliptraSession::new(
+            DEFAULT_SESSION_ID,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_dpe_signer_context_cert(&mut session, target_fw_id, algorithm)
+            .map_err(|e| anyhow::anyhow!("DpeSignerContextCert command failed: {:?}", e))
+    }
+
+    /// Sign `data` using the stashed Exported-CDI key for `target_fw_id` (`0` uses the default `EXPORT_CDI_TARGET`).
+    pub fn dpe_signer_context_sign(
+        &mut self,
+        target_fw_id: u32,
+        algorithm: AsymAlgo,
+        data: &[u8],
+    ) -> Result<DpeSignerContextSignResponse> {
+        let mut session = CaliptraSession::new(
+            DEFAULT_SESSION_ID,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_dpe_signer_context_sign(&mut session, target_fw_id, algorithm, data)
+            .map_err(|e| anyhow::anyhow!("DpeSignerContextSign command failed: {:?}", e))
+    }
+
+    /// Execute `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343`, `"MASC"`) via `0x0000_0012` (`AuthorizedCommand`).
+    pub fn auth_set_cert_chain(
+        &mut self,
+        request: &AuthSetCertChainRequest,
+    ) -> Result<AuthSetCertChainResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_auth_set_cert_chain(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("AuthSetCertChain command failed: {:?}", e))
     }
 
     /// Request an authorization command challenge nonce

@@ -660,15 +660,18 @@ impl<'a> FirmwareDeviceContext<'a> {
 
     pub async fn should_start_initiator_mode(&self) -> bool {
         self.internal.get_fd_state() == FirmwareDeviceState::Download
+            && !self.internal.is_fd_req_complete()
     }
 
     pub async fn should_stop_initiator_mode(&self) -> bool {
+        let state = self.internal.get_fd_state();
         !matches!(
-            self.internal.get_fd_state(),
+            state,
             FirmwareDeviceState::Download
                 | FirmwareDeviceState::Verify
                 | FirmwareDeviceState::Apply
-        )
+        ) || (state == FirmwareDeviceState::Download
+            && self.internal.get_fd_req_state() == FdReqState::Failed)
     }
 
     pub async fn fd_progress(&self, payload: &mut [u8]) -> McuResult<usize> {
@@ -705,6 +708,23 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
 
         Ok(result)
+    }
+
+    pub fn transfer_complete_reported(&self, result: McuResult<()>) {
+        if self.is_cancelled() {
+            return;
+        }
+        let request = self.internal.get_fd_req();
+        if result.is_err()
+            && request.complete
+            && request
+                .result
+                .is_some_and(|result| result != TransferResult::TransferSuccess as u8)
+        {
+            self.internal
+                .set_fd_req(FdReqState::Failed, true, request.result, None, None, None);
+        }
+        self.ops.transfer_complete_reported(result);
     }
 
     pub async fn handle_response(&self, payload: &mut [u8]) -> McuResult<()> {
@@ -1159,9 +1179,12 @@ mod test {
     struct MockFdOps {
         outcome: Option<ApplyOutcome>,
         progress: u8,
+        download_result: TransferResult,
         component_response: ComponentResponseCode,
         apply_calls: core::cell::Cell<usize>,
         apply_reported: core::cell::Cell<Option<McuResult<()>>>,
+        transfer_reported: core::cell::Cell<Option<McuResult<()>>>,
+        cancel_reported: core::cell::Cell<Option<McuResult<()>>>,
     }
 
     impl Default for MockFdOps {
@@ -1169,9 +1192,12 @@ mod test {
             Self {
                 outcome: None,
                 progress: 100,
+                download_result: TransferResult::TransferSuccess,
                 component_response: ComponentResponseCode::CompCanBeUpdated,
                 apply_calls: core::cell::Cell::new(0),
                 apply_reported: core::cell::Cell::new(None),
+                transfer_reported: core::cell::Cell::new(None),
+                cancel_reported: core::cell::Cell::new(None),
             }
         }
     }
@@ -1216,7 +1242,7 @@ mod test {
         ) -> McuResult<
             caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult,
         > {
-            Ok(caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult::TransferSuccess)
+            Ok(self.download_result)
         }
         fn is_download_complete(
             &self,
@@ -1263,6 +1289,12 @@ mod test {
         fn apply_complete_reported(&self, result: McuResult<()>) {
             self.apply_reported.set(Some(result));
         }
+        fn transfer_complete_reported(&self, result: McuResult<()>) {
+            self.transfer_reported.set(Some(result));
+        }
+        fn cancel_update_reported(&self, result: McuResult<()>) {
+            self.cancel_reported.set(Some(result));
+        }
         fn activate(
             &self,
             _self_contained_activation: u8,
@@ -1295,7 +1327,9 @@ mod test {
         share: caliptra_mcu_libtock_unittest::DriverShareRef,
         request_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RoAllowBuffer>,
         response_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RwAllowBuffer>,
+        incoming_request_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RwAllowBuffer>,
         received: core::cell::RefCell<std::vec::Vec<u8>>,
+        response_pending: core::cell::Cell<bool>,
         fail_send: bool,
         fail_receive: bool,
     }
@@ -1321,6 +1355,7 @@ mod test {
             use caliptra_mcu_libtock_platform::ErrorCode;
             use caliptra_mcu_libtock_unittest::command_return;
             match command {
+                1 => command_return::success(),
                 5 => command_return::success_u32(256),
                 3 if self.fail_send => command_return::failure(ErrorCode::Fail),
                 3 => {
@@ -1332,6 +1367,11 @@ mod test {
                 }
                 2 if self.fail_receive => command_return::failure(ErrorCode::Fail),
                 2 => command_return::success(),
+                4 => {
+                    *self.received.borrow_mut() = self.request_buffer.borrow().as_ref().to_vec();
+                    self.response_pending.set(true);
+                    command_return::success()
+                }
                 _ => panic!("unexpected MCTP command {command}"),
             }
         }
@@ -1362,8 +1402,149 @@ mod test {
                 caliptra_mcu_libtock_platform::ErrorCode,
             ),
         > {
-            assert_eq!(number, 1);
-            Ok(self.response_buffer.replace(buffer))
+            match number {
+                0 => Ok(self.incoming_request_buffer.replace(buffer)),
+                1 => Ok(self.response_buffer.replace(buffer)),
+                _ => panic!("unexpected MCTP buffer {number}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_cancellation_response_owns_notification_during_transfer_ack() {
+        use crate::cmd_interface::{CmdInterface, ResponderAction};
+        use crate::control_context::ProtocolCapability;
+        use crate::transport::MctpTransport;
+        use caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM;
+        use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+        use caliptra_mcu_libtock_unittest::fake;
+        use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferCompleteResponse;
+        use caliptra_mcu_pldm_common::protocol::base::PldmSupportedType;
+        use core::future::Future;
+        use core::task::{Context, Poll, Waker};
+        use std::rc::Rc;
+
+        let cancel_commands = [
+            FwUpdateCmd::CancelUpdateComponent as u8,
+            FwUpdateCmd::CancelUpdate as u8,
+        ];
+        let capabilities =
+            [
+                ProtocolCapability::new(PldmSupportedType::FwUpdate, "1.0.0", &cancel_commands)
+                    .unwrap(),
+            ];
+
+        for cancel_command in cancel_commands {
+            for fail_cancel_response in [false, true] {
+                let kernel = fake::Kernel::new();
+                let agent = Rc::new(FakeUpdateAgent::default());
+                kernel.add_driver(&agent);
+                let ops = MockFdOps::default();
+                let fd_ctx = FirmwareDeviceContext::new(&ops);
+                fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+                fd_ctx.internal.set_fd_req(
+                    FdReqState::Ready,
+                    true,
+                    Some(TransferResult::FdAbortedTransfer as u8),
+                    None,
+                    None,
+                    None,
+                );
+                let interface = CmdInterface::new(&capabilities, fd_ctx);
+                let mut initiator_transport = MctpTransport::new(MCTP_PLDM);
+                let mut responder_transport = MctpTransport::new(MCTP_PLDM);
+                let mut initiator_buffer = [0u8; 256];
+                let mut responder_buffer = [0u8; 256];
+                let mut initiator = core::pin::pin!(interface
+                    .handle_initiator_msg(&mut initiator_transport, &mut initiator_buffer,));
+                let mut responder = core::pin::pin!(interface
+                    .handle_responder_msg(&mut responder_transport, &mut responder_buffer,));
+                let mut context = Context::from_waker(Waker::noop());
+
+                assert!(initiator.as_mut().poll(&mut context).is_pending());
+                let transfer_request =
+                    TransferCompleteRequest::decode(&agent.received.borrow()[1..]).unwrap();
+                assert_eq!(
+                    transfer_request.tranfer_result,
+                    TransferResult::FdAbortedTransfer as u8
+                );
+                fake::Syscalls::yield_no_wait();
+                fake::Syscalls::unallow_ro(MCTP_PLDM, 0);
+                assert!(initiator.as_mut().poll(&mut context).is_pending());
+                assert!(responder.as_mut().poll(&mut context).is_pending());
+
+                let cancel_len = {
+                    let mut request = agent.incoming_request_buffer.borrow_mut();
+                    request[0] = 1;
+                    PldmMsgHeader::new(
+                        7,
+                        PldmMsgType::Request,
+                        PldmSupportedType::FwUpdate,
+                        cancel_command,
+                    )
+                    .encode(&mut request[1..])
+                    .unwrap()
+                        + 1
+                };
+                agent
+                    .share
+                    .schedule_upcall(0, (cancel_len as u32, 0, (8 << 16) | 2))
+                    .unwrap();
+                fake::Syscalls::yield_no_wait();
+                fake::Syscalls::unallow_rw(MCTP_PLDM, 0);
+                assert!(responder.as_mut().poll(&mut context).is_pending());
+                assert!(interface.is_cancelled());
+                assert!(agent.response_pending.get());
+
+                let transfer_response_len = {
+                    let mut response = agent.response_buffer.borrow_mut();
+                    response[0] = 1;
+                    TransferCompleteResponse::new(transfer_request.hdr.instance_id(), 0)
+                        .encode(&mut response[1..])
+                        .unwrap()
+                        + 1
+                };
+                agent
+                    .share
+                    .schedule_upcall(1, (transfer_response_len as u32, 0, 0))
+                    .unwrap();
+                fake::Syscalls::yield_no_wait();
+                let initiator_result = initiator.as_mut().poll(&mut context);
+                let early_transfer_notification = ops.transfer_reported.get();
+                let early_cancel_notification = ops.cancel_reported.get();
+
+                let tx_status = if fail_cancel_response {
+                    ErrorCode::Fail as u32
+                } else {
+                    0
+                };
+                agent.share.schedule_upcall(2, (tx_status, 0, 0)).unwrap();
+                fake::Syscalls::yield_no_wait();
+                let responder_result = responder.as_mut().poll(&mut context);
+
+                assert_eq!(
+                    initiator_result,
+                    Poll::Ready(Err(errors::FD_INITIATOR_MODE_ERROR))
+                );
+                assert_eq!(
+                    responder_result,
+                    Poll::Ready(if fail_cancel_response {
+                        Err(errors::TRANSPORT_ERROR)
+                    } else {
+                        Ok(ResponderAction::Complete)
+                    })
+                );
+                assert_eq!(early_transfer_notification, None);
+                assert_eq!(early_cancel_notification, None);
+                assert_eq!(
+                    ops.cancel_reported.get(),
+                    Some(if fail_cancel_response {
+                        Err(errors::TRANSPORT_ERROR)
+                    } else {
+                        Ok(())
+                    })
+                );
+            }
         }
     }
 
@@ -1852,6 +2033,88 @@ mod test {
         assert!(block_on(fd_ctx.handle_response(&mut payload[..response_len])).is_err());
         assert_eq!(fd_ctx.internal.get_fd_download_state(), Some((64, 64)));
         assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Sent);
+    }
+
+    #[test]
+    fn test_aborted_download_is_reported_without_restarting() {
+        for optimized in [false, true] {
+            let mock_ops = MockFdOps {
+                download_result: TransferResult::FdAbortedTransfer,
+                ..Default::default()
+            };
+            let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+            let mut payload = [0u8; 256];
+            prepare_download_request(&fd_ctx, 3, 0, 64);
+
+            if optimized {
+                let mut session = block_on(fd_ctx.create_transfer_session());
+                session.mark_complete(TransferResult::FdAbortedTransfer);
+                block_on(fd_ctx.sync_transfer_session(&session));
+            } else {
+                let response = RequestFirmwareDataResponse::new(
+                    3,
+                    PldmBaseCompletionCode::Success as u8,
+                    &[0x5a; 64],
+                );
+                let response_len = response.encode(&mut payload).unwrap();
+                block_on(fd_ctx.handle_response(&mut payload[..response_len])).unwrap();
+            }
+
+            assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Ready);
+            assert!(fd_ctx.internal.is_fd_req_complete());
+            assert!(!block_on(fd_ctx.should_start_initiator_mode()));
+            assert!(!block_on(fd_ctx.should_stop_initiator_mode()));
+
+            let length = block_on(fd_ctx.fd_progress(&mut payload)).unwrap();
+            let request = TransferCompleteRequest::decode(&payload[..length]).unwrap();
+            assert_eq!(
+                request.tranfer_result,
+                TransferResult::FdAbortedTransfer as u8
+            );
+            block_on(fd_ctx.process_transfer_complete_rsp(&mut [])).unwrap();
+            fd_ctx.transfer_complete_reported(Ok(()));
+
+            assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Failed);
+            assert_eq!(mock_ops.transfer_reported.get(), Some(Ok(())));
+            assert!(!block_on(fd_ctx.should_start_initiator_mode()));
+            assert!(block_on(fd_ctx.should_stop_initiator_mode()));
+            assert_eq!(
+                fd_ctx.internal.get_fd_state(),
+                FirmwareDeviceState::Download
+            );
+        }
+    }
+
+    #[test]
+    fn test_aborted_transfer_report_error_notifies_client() {
+        let _kernel = caliptra_mcu_libtock_unittest::fake::Kernel::new();
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+        fd_ctx.internal.set_fd_req(
+            FdReqState::Ready,
+            true,
+            Some(TransferResult::FdAbortedTransfer as u8),
+            None,
+            None,
+            None,
+        );
+        let commands = crate::cmd_interface::CmdInterface::new(&[], fd_ctx);
+        let mut transport = crate::transport::MctpTransport::new(
+            caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM,
+        );
+        let mut payload = [0u8; 256];
+
+        assert_eq!(
+            block_on(commands.handle_initiator_msg(&mut transport, &mut payload)),
+            Err(errors::TRANSPORT_ERROR)
+        );
+        assert_eq!(
+            mock_ops.transfer_reported.get(),
+            Some(Err(errors::TRANSPORT_ERROR))
+        );
+        assert!(!block_on(commands.should_start_initiator_mode()));
+        assert!(block_on(commands.should_stop_initiator_mode()));
     }
 
     #[test]
