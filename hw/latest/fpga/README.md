@@ -118,6 +118,11 @@ the Core RTL and USB sources, so their relative includes resolve during synthesi
 The subsystem SPI host and UART peripherals have been removed upstream; Core
 and MCU logging still uses the FPGA wrapper's log and debug FIFOs.
 
+The 60 MHz USB synchronizer overlay uses context-anchored patch hunks so
+upstream source additions cannot silently move endpoint metadata sampling into
+the reset branch. Keep reset values under `Reset_N = '0'` and live endpoint
+metadata sampling under the `FsClk` rising-edge branch when updating USB RTL.
+
 The latest prebuilt-bitstream manifest selects the segmented build from
 [run 44345325904](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/44345325904),
 built at test-merge commit `24ac9445` with subsystem `bb9d747e`.

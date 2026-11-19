@@ -1,4 +1,7 @@
-215a216,225
+218c218,228
+< signal pie_lowpower_n_s  : std_logic;
+---
+> signal pie_lowpower_n_s  : std_logic;
 > signal sync_pie_dev_selected_s : integer range 0 to C_NBDEV - 1;
 > signal epinfo_active_s           : std_logic;
 > signal epinfo_disabled_s         : std_logic;
@@ -9,7 +12,10 @@
 > signal epinfo_nbytes_s           : std_logic_vector(TXNBYTES_BITS-1 downto 0);
 > signal epinfo_maxpacket_s        : std_logic_vector(1 downto 0);
 > signal epinfo_txdata_s           : std_logic_vector(USB_DATAWIDTH-1 downto 0);
-225a236,243
+228c238,246
+<       epinfo_valid_ss        <= '0';
+---
+>       epinfo_valid_ss        <= '0';
 >       epinfo_active_s        <= '0';
 >       epinfo_disabled_s      <= '0';
 >       epinfo_toggle_s        <= '0';
@@ -18,9 +24,15 @@
 >       epinfo_ratefeedbackmode_s <= '0';
 >       epinfo_nbytes_s        <= (others => '0');
 >       epinfo_maxpacket_s     <= (others => '0');
-228a247
+231c249,250
+<       epinfo_txdata_valid_ss <= '0';
+---
+>       epinfo_txdata_valid_ss <= '0';
 >       epinfo_txdata_s        <= (others => '0');
-263a283,290
+268c287,295
+<       epinfo_valid_ss        <= epinfo_valid_s;
+---
+>       epinfo_valid_ss        <= epinfo_valid_s;
 >       epinfo_active_s        <= epinfo_sync_active;
 >       epinfo_disabled_s      <= epinfo_sync_disabled;
 >       epinfo_toggle_s        <= epinfo_sync_toggle;
@@ -29,13 +41,22 @@
 >       epinfo_ratefeedbackmode_s <= epinfo_sync_ratefeedbackmode;
 >       epinfo_nbytes_s        <= epinfo_sync_nbytes;
 >       epinfo_maxpacket_s     <= epinfo_sync_maxpacket;
-266a294
+271c298,299
+<       epinfo_txdata_valid_ss <= epinfo_txdata_valid_s;
+---
+>       epinfo_txdata_valid_ss <= epinfo_txdata_valid_s;
 >       epinfo_txdata_s        <= epinfo_sync_txdata;
-372a401
+379c407,408
+<       usbreg_phy_test_mode_toggle <= '0';
+---
+>       usbreg_phy_test_mode_toggle <= '0';
 >       sync_pie_dev_selected_s <= 0;
-389a419
+389c418,419
+<       sync_VBusDebounced_ss         <= sync_VBusDebounced_s;
+---
+>       sync_VBusDebounced_ss         <= sync_VBusDebounced_s;
 >       sync_pie_dev_selected_s       <= pie_dev_selected;
-492,499c522,529
+512,519c542,549
 <   epinfo_active            <= epinfo_sync_active;
 <   epinfo_disabled          <= epinfo_sync_disabled;
 <   epinfo_toggle            <= epinfo_sync_toggle;
@@ -53,11 +74,11 @@
 >   epinfo_ratefeedbackmode  <= epinfo_ratefeedbackmode_s;
 >   epinfo_nbytes            <= epinfo_nbytes_s;
 >   epinfo_maxpacket         <= epinfo_maxpacket_s;
-501c531
+521c551
 <   epinfo_txdata            <= epinfo_sync_txdata;
 ---
 >   epinfo_txdata            <= epinfo_txdata_s;
-560c590
+577c607
 <   sync_pie_dev_selected   <= pie_dev_selected;
 ---
 >   sync_pie_dev_selected   <= sync_pie_dev_selected_s;
