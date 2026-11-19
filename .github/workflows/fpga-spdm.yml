@@ -16,7 +16,8 @@ jobs:
   build_test_binaries:
     if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: [ e2-standard-8-big-disk ]
-    timeout-minutes: 60
+    # Cold dual-revision builds can reach artifact upload after one hour.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
