@@ -15,6 +15,10 @@ Abstract:
     The BMC provides its VendorKey public keys (ECC P-384 + MLDSA-87) and signs
     a challenge with both VendorKey.priv keys.
 
+    The transport is for tests. The emulator ROM uses it when it is built with
+    `test-dot-recovery`, and the test host takes the place of the BMC. A BMC
+    or another recovery agent has no access to the MCI mailboxes.
+
     See docs/src/dot.md for full protocol documentation.
 
 --*/
@@ -56,7 +60,7 @@ struct OverrideResponse {
     mldsa_signature: [u32; MLDSA87_SIGNATURE_SIZE_DWORDS],
 }
 
-/// MCI mbox0 helpers for the override transport.
+/// MCI mbox0 helpers for the override transport, which is for tests.
 #[derive(Clone, Copy)]
 struct Mbox0Helpers {
     mci: StaticRef<mci::regs::Mci>,
@@ -64,6 +68,16 @@ struct Mbox0Helpers {
 
 impl Mbox0Helpers {
     fn new(mci: StaticRef<mci::regs::Mci>) -> Self {
+        // The MCU holds the lock of the mailbox after a reset, and a requester
+        // cannot take it until the MCU has released the mailbox. A release with
+        // the size of the SRAM as the length makes the hardware clear the SRAM.
+        // The read takes the lock if it is free.
+        mci.mcu_mbox0_csr_mbox_lock.get();
+        mci.mcu_mbox0_csr_mbox_dlen
+            .set((mci.mcu_mbox0_csr_mbox_sram.len() * 4) as u32);
+        mci.mcu_mbox0_csr_mbox_execute
+            .write(mci::bits::MboxExecute::Execute::CLEAR);
+
         mci.intr_block_rf_notif0_intr_en_r
             .modify(mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET);
         Self { mci }
@@ -169,7 +183,8 @@ impl Mbox0Helpers {
     }
 }
 
-/// DOT recovery transport using MCI mbox0.
+/// DOT recovery transport using MCI mbox0, for tests. A real recovery agent has
+/// no access to the MCI mailboxes.
 pub struct Mbox0RecoveryTransport {
     helpers: Mbox0Helpers,
 }
