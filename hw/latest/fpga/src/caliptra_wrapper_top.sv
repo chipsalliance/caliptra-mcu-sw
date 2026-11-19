@@ -1361,8 +1361,8 @@ trng_fifo_inst (
     logic itrng1_full, itrng1_empty, itrng1_wr_busy, itrng1_rd_busy;
     logic [3:0] itrng1_data;
     logic [31:0] itrng1_counter;
-    wire itrng1_reset = !hwif_out.interface_regs.control.cptra_ss_rst_b.value ||
-                        hwif_out.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value;
+    // Like ES0, only the FIFO reset register clears ES1; subsystem reset does not.
+    wire itrng1_reset = hwif_out.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value;
     assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next = itrng1_empty;
     assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next = itrng1_full | itrng1_wr_busy | itrng1_reset;
     always_ff @(posedge core_clk) begin
