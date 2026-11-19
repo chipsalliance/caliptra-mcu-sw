@@ -630,10 +630,12 @@ pub trait McuHwModel {
 
     /// Send a command to the mailbox but don't wait for the response
     fn start_mailbox_execute(&mut self, cmd: u32, buf: &[u8]) -> Result<()> {
+        // A read of the lock register returns 0 when the read takes the lock and 1 when the lock
+        // is held. The lock stays held while the hardware clears the SRAM after a release.
         let mut acquired = false;
         let start = std::time::Instant::now();
         while start.elapsed() < std::time::Duration::from_secs(5) {
-            if self.mcu_manager().mbox0().mbox_lock().read().lock() {
+            if !self.mcu_manager().mbox0().mbox_lock().read().lock() {
                 acquired = true;
                 break;
             }
@@ -641,7 +643,7 @@ pub trait McuHwModel {
         }
 
         if !acquired {
-            bail!("Mailbox lock is not set");
+            bail!("Timed out waiting for the MCU mailbox lock");
         }
 
         println!(
