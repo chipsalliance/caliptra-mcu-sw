@@ -1356,6 +1356,12 @@ trng_fifo_inst (
 `endif
 
 `ifdef CALIPTRA_FPGA_DUAL_ITRNG
+    assign hwif_in.interface_regs.status.dual_itrng_capable.next = 1'b1;
+    // Only a cold reset permits changing the strap, not an SS-only reset.
+    assign hwif_in.interface_regs.entropy_ctrl.itrng1_en.swwe =
+        !hwif_out.interface_regs.control.cptra_ss_rst_b.value &&
+        !hwif_out.interface_regs.control.cptra_pwrgood.value;
+
     // ES1 is driven independently of ES0 so the host can delay or withhold it.
     logic etrng1_req, itrng1_valid, itrng1_wr_en, itrng1_rd_en;
     logic itrng1_full, itrng1_empty, itrng1_wr_busy, itrng1_rd_busy;
@@ -1400,6 +1406,9 @@ trng_fifo_inst (
         .wr_en(itrng1_wr_en && !itrng1_full && !itrng1_wr_busy && !itrng1_reset)
     );
 `else
+    assign hwif_in.interface_regs.status.dual_itrng_capable.next = 1'b0;
+    // Never write the strap, so the register stays at its reset value (0).
+    assign hwif_in.interface_regs.entropy_ctrl.itrng1_en.swwe = 1'b0;
     assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next = 1'b1;
     assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next = 1'b0;
 `endif
@@ -2916,7 +2925,7 @@ caliptra_ss_top #(
     .cptra_ss_cptra_core_etrng1_req_o(etrng1_req),
     .cptra_ss_cptra_core_itrng1_data_i(itrng1_data),
     .cptra_ss_cptra_core_itrng1_valid_i(itrng1_valid),
-    .cptra_ss_cptra_core_itrng1_en_i(1'b1),
+    .cptra_ss_cptra_core_itrng1_en_i(hwif_out.interface_regs.entropy_ctrl.itrng1_en.value),
 `else
     .cptra_ss_cptra_core_etrng1_req_o(),
     .cptra_ss_cptra_core_itrng1_data_i('0),

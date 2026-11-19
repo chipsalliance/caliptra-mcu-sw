@@ -64,6 +64,7 @@ regfile interface_regs {
         field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_flow_done[6:6] = 1'b0;
 
         field { sw=r; hw=rw; desc = "RSVD in core"; } cptra_ss_mcu_halt_status_o[7:7] = 1'b0;
+        field { sw=r; hw=rw; desc = "This image supports the ES1 boot strap and host-fed ES1 FIFO. If 0, do not access entropy_ctrl or the ES1 FIFO (older images may not map them)."; } dual_itrng_capable[8:8] = 1'b0;
     } status;
 
     reg {
@@ -88,6 +89,13 @@ regfile interface_regs {
 
         field {} cycle_count[32] = 32'b0;
     } cycle_count;
+
+    reg {
+        field {
+            sw=rw; hw=r; swwe;
+            desc = "ES1 boot strap: 0 selects ES0 only, 1 selects ES0 and ES1. On dual-capable images, write while both control.cptra_ss_rst_b and control.cptra_pwrgood are 0, before releasing cold reset. Writes at other times are ignored; warm reset does not change the strap. On standard images the field always reads 0.";
+        } itrng1_en[0:0] = 1'b0;
+    } entropy_ctrl @0x1C;
 
     reg {
         field { sw=rw; hw=r; } value[32] = 32'b0;

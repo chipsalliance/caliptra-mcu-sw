@@ -34,6 +34,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x010|                   arm_user                   |  — |
 | 0x014|                 itrng_divisor                |  — |
 | 0x018|                  cycle_count                 |  — |
+| 0x01C|                 entropy_ctrl                 |  — |
 | 0x030|            generic_input_wires[0]            |  — |
 | 0x034|            generic_input_wires[1]            |  — |
 | 0x038|            generic_output_wires[0]           |  — |
@@ -256,6 +257,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  5 |    mailbox_data_avail    |   r  | 0x0 |  — |
 |  6 |     mailbox_flow_done    |   r  | 0x0 |  — |
 |  7 |cptra_ss_mcu_halt_status_o|   r  | 0x0 |  — |
+|  8 |    dual_itrng_capable    |   r  | 0x0 |  — |
 
 #### cptra_error_fatal field
 
@@ -288,6 +290,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### cptra_ss_mcu_halt_status_o field
 
 <p>RSVD in core</p>
+
+#### dual_itrng_capable field
+
+<p>This image supports the ES1 boot strap and host-fed ES1 FIFO. If 0, do not access entropy_ctrl or the ES1 FIFO (older images may not map them).</p>
 
 ### arm_user register
 
@@ -322,6 +328,20 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits| Identifier|Access|Reset|Name|
 |----|-----------|------|-----|----|
 |31:0|cycle_count|   r  | 0x0 |  — |
+
+### entropy_ctrl register
+
+- Absolute Address: 0xA401001C
+- Base Offset: 0x1C
+- Size: 0x4
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|  0 | itrng1_en|  rw  | 0x0 |  — |
+
+#### itrng1_en field
+
+<p>ES1 boot strap: 0 selects ES0 only, 1 selects ES0 and ES1. On dual-capable images, write while both control.cptra_ss_rst_b and control.cptra_pwrgood are 0, before releasing cold reset. Writes at other times are ignored; warm reset does not change the strap. On standard images the field always reads 0.</p>
 
 ### generic_input_wires register
 
