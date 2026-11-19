@@ -10,7 +10,6 @@ anyhow.workspace = true
 caliptra-auth-man-gen.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
-caliptra-hw-model-types.workspace = true
 caliptra-image-crypto.workspace = true
 caliptra-image-fake-keys.workspace = true
 caliptra-image-gen.workspace = true
