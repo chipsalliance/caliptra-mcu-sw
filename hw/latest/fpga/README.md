@@ -118,6 +118,12 @@ the Core RTL and USB sources, so their relative includes resolve during synthesi
 The subsystem SPI host and UART peripherals have been removed upstream; Core
 and MCU logging still uses the FPGA wrapper's log and debug FIFOs.
 
+The latest prebuilt-bitstream manifest selects the segmented build from
+[run 44345325904](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/44345325904),
+built at test-merge commit `24ac9445` with subsystem `bb9d747e`.
+Its PDI/XSA URLs use the published `subsystem/` GCS directory and their hashes
+match the generated bundle manifest. The 2.1 download manifest is unchanged.
+
 ### Build boot.bin: ###
 
 Note: If using the Calptra CI Image (or PetaLinux image), you can skip this step. Instead use a segmented bitstream and load the PDI file directly.
