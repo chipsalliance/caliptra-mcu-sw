@@ -26,8 +26,8 @@ pip install -e '.[cli]'
 peakrdl tock input.rdl -o output_dir/ --top my_addrmap --base-addr 0x20000000
 ```
 
-`--output-name` sets the module name, which is used for the file name, the
-address constant, and the register struct. It defaults to the addrmap name.
+`--output-name` sets the module name, which is used for the file name and the
+register struct. It defaults to the addrmap name.
 
 ### Python API
 
@@ -44,30 +44,49 @@ design.
 
 ## Naming
 
-- Registers in a regfile are prefixed with the regfile name. Registers in a
-  nested addrmap are prefixed with the names of all enclosing addrmaps.
-- Register types are named after the RDL type, or the instance for anonymous
-  types. Registers with the same type name and the same fields share one
-  bitfield definition. If the fields differ, the later register's type is
-  prefixed with the name of its parent.
-- Registers that share an offset are merged into one entry with the name and
-  type of the first.
+Names follow the Rust generator that this plugin replaces for the firmware
+registers.
+
+- The address constant is named after the addrmap instance. The module name
+  is the instance name with the suffixes `_csr`, `_reg`, `_top` and `_ifc`
+  removed, and names the file and the register struct.
+- Registers and memories directly in the addrmap keep their names. Those in a
+  nested addrmap or regfile are prefixed with the name of the block that
+  contains them, and not with the names of blocks further up.
+- A register of a named type uses that type's name for its bitfields.
+- Registers of anonymous types that are identical in fields, access, reset
+  values and descriptions share one bitfield definition. It is named after
+  what the register names have in common: the common prefix, the common
+  suffix, or the names with an `X` where they differ, whichever keeps the
+  most characters.
+- If two bitfield definitions with different fields get the same name, the
+  later one is prefixed with the name of its parent.
+- A register name that is already taken gets a numeric suffix.
+- Registers that share an offset become one entry with the name and type of
+  the first, readable if either is readable and writable if either is
+  writable.
+- `rename` in the Python API replaces the instance names of blocks,
+  registers, memories and fields before any of the above.
 
 ## Limitations
 
 - Arrays of addrmaps and regfiles are rejected.
 - Register arrays must be contiguous.
-- Memories are emitted as offset, size, and pointer constants, and are not
-  part of the register struct.
+- A memory is an array of 8, 16 or 32-bit words in the register struct.
+  Entries of 64 or 128 bits are split into 32-bit words.
 
-## Example output
+## Firmware registers
 
-`registers/generated-firmware-peakrdl` holds the output for the SoC and MCU
-address maps in this repository. To regenerate it:
+The register modules in `registers/generated-firmware` are this plugin's
+output for the SoC and MCU address maps in this repository.
+`cargo xtask registers-autogen` regenerates them by running:
 
 ```bash
 python scripts/generate_registers.py
 ```
+
+The script needs `systemrdl-compiler` and uses the plugin from this
+directory, so the plugin does not have to be installed.
 
 ## Tests
 
@@ -78,4 +97,4 @@ pytest
 
 The tests that read the RDL files in `hw/caliptra-ss` are skipped unless the
 submodules are checked out. One test checks that
-`registers/generated-firmware-peakrdl` matches the generator output.
+`registers/generated-firmware` matches the generator output.

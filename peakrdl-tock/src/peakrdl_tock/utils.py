@@ -2,60 +2,114 @@
 
 """Utility functions for name conversion and formatting."""
 
-import re
+from __future__ import annotations
 
-# Mixed-case acronyms that are treated as a single word.
-_WORD_OVERRIDES = {"SoC": "Soc"}
+import os
+import string
+from typing import Optional
 
-# Rust keywords that can appear as register or field names.
+_SEPARATORS = frozenset(string.punctuation + string.whitespace)
+
 _RUST_KEYWORDS = frozenset(
     """
-    as async await break const continue crate dyn else enum extern false fn
-    for if impl in let loop match mod move mut pub ref return self Self
-    static struct super trait true type unsafe use where while
+    as break const continue crate else fn for if impl in let loop match mod
+    move mut pub ref return self Self static struct super trait true type
+    unsafe use where while async await dyn abstract become box do final macro
+    override priv typeof unsized virtual yield
     """.split()
 )
 
-# A word is an acronym (uppercase letters and digits, ended before the next
-# capitalized word), a capitalized or lowercase word, or a run of digits.
-_WORD_RE = re.compile(
-    r"[A-Z][A-Z0-9]*(?![a-z])|[A-Z]?[a-z][a-z0-9]*|[A-Z]|[0-9]+"
-)
 
-
-def _words(name: str) -> list[str]:
-    """Split a name into words on separators and case boundaries."""
-    for src, dst in _WORD_OVERRIDES.items():
-        name = name.replace(src, dst)
-    return _WORD_RE.findall(name)
-
-
-def _escape(ident: str) -> str:
-    """Make a string a valid Rust identifier."""
-    if not ident:
-        return "_"
-    if ident[0].isdigit():
-        ident = "_" + ident
-    if ident in _RUST_KEYWORDS:
-        ident += "_"
-    return ident
+def _tweak_keywords(ident: str) -> str:
+    """Append an underscore to identifiers that are Rust keywords."""
+    return ident + "_" if ident in _RUST_KEYWORDS else ident
 
 
 def snake_case(name: str) -> str:
-    """Convert a name to snake_case."""
-    return _escape("_".join(w.lower() for w in _words(name)))
+    """Convert a name to snake_case.
+
+    An underscore is inserted where an uppercase letter follows a lowercase
+    letter or a digit. "I3C" and "SoC" are kept as single words.
+    """
+    result = []
+    if name and name[0] in string.digits:
+        result.append("_")
+    prev = None
+    for c in name:
+        if c in _SEPARATORS:
+            if prev != "_":
+                result.append("_")
+            prev = "_"
+            continue
+        if (
+            prev is not None
+            and (prev in string.ascii_lowercase or prev in string.digits)
+            and c in string.ascii_uppercase
+        ):
+            result.append("_")
+        prev = c
+        result.append(c.lower())
+    snake = "".join(result)
+    snake = snake.replace("so_cmgmt", "soc_mgmt")
+    snake = snake.replace("i3_c", "i3c_").replace("__", "_")
+    return _tweak_keywords(snake.rstrip("_"))
 
 
 def camel_case(name: str) -> str:
-    """Convert a name to CamelCase (PascalCase)."""
-    return _escape("".join(w[0].upper() + w[1:].lower() for w in _words(name)))
+    """Convert a name to CamelCase.
+
+    Each run of letters and digits between separators is capitalized. Case
+    boundaries inside a run are not preserved, so "iTRNG_en" gives "ItrngEn".
+    """
+    result = []
+    if name and name[0] in string.digits:
+        result.append("_")
+    upper_next = True
+    for c in name:
+        if c in _SEPARATORS:
+            upper_next = True
+        else:
+            result.append(c.upper() if upper_next else c.lower())
+            upper_next = False
+    camel = "".join(result).replace("Socmgmt", "SoCMgmt")
+    return _tweak_keywords(camel)
+
+
+def common_name(names: list[str]) -> Optional[str]:
+    """Find a name for a type shared by registers with the given names.
+
+    The candidates are the longest common prefix, the longest common suffix,
+    and the names overlaid with an X in each position where they differ. The
+    candidate that keeps the most characters is used.
+    """
+    prefix = os.path.commonprefix(names)
+    suffix = os.path.commonprefix([n[::-1] for n in names])[::-1]
+
+    shortest = min((len(n) for n in names), default=0)
+    chars: list[Optional[str]] = list(names[0][:shortest]) if names else []
+    for name in names[1:]:
+        for i, c in enumerate(name[:shortest]):
+            if chars[i] != c:
+                chars[i] = None
+    while chars and chars[-1] is None:
+        chars.pop()
+    placeholder = "X" if any(c and c in string.ascii_uppercase for c in chars) else "x"
+    overlaid = "".join(c or placeholder for c in chars)
+    overlaid_score = sum(c is not None for c in chars) - 1
+
+    options = [(prefix, len(prefix)), (suffix, len(suffix)), (overlaid, overlaid_score)]
+    options.sort(key=lambda option: option[1])
+    return options[-1][0] or None
 
 
 def hex_u32(value: int) -> str:
-    """Format a value as a Rust hex literal with an underscore every 4 digits.
+    """Format a value as a Rust literal: hex with an underscore every 4 digits.
 
-    Matches the existing generator output style (e.g., 0x2100_0000).
+    Matches the existing generator output style (e.g., 0x2100_0000). Values
+    below 10 are written in decimal.
     """
+    if value <= 9:
+        return str(value)
     raw = f"{value:x}"
     chunks = []
     while raw:

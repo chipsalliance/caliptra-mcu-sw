@@ -1975,13 +1975,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-registers-generated-peakrdl"
-version = "0.1.0"
-dependencies = [
- "tock-registers",
-]
-
-[[package]]
 name = "caliptra-mcu-registers-generator"
 version = "0.1.0"
 dependencies = [

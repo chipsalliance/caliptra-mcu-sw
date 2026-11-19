@@ -30,8 +30,8 @@ class Exporter(ExporterSubcommandPlugin):
         arg_group.add_argument(
             "--output-name",
             default=None,
-            help="Rust module name, used for the file name, address constant and "
-            "register struct. Defaults to the addrmap name.",
+            help="Rust module name, used for the file name and the register struct. "
+            "Defaults to the addrmap name.",
         )
         arg_group.add_argument(
             "--header",

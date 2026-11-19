@@ -200,16 +200,8 @@ pub(crate) fn autogen(
     };
     let root_block = root_block.validate_and_dedup()?;
 
-    let mut register_types_to_crates = HashMap::new();
-
-    generate_fw_registers(
-        check,
-        root_block.clone(),
-        &scopes.clone(),
-        header.clone(),
-        registers_dest_dir,
-        &mut register_types_to_crates,
-    )?;
+    generate_fw_registers(check, extra_files, extra_addrmap)?;
+    let register_types_to_crates = fw_register_types(root_block.clone(), &scopes)?;
     let _defines = generate_defines(check, header.clone(), registers_dest_dir)?;
     generate_emulator_types(
         check,
@@ -1240,21 +1232,43 @@ fn delete_rust_files(dir: &Path) -> Result<()> {
 }
 
 /// Generate read/write registers used by the firmware.
+/// Generate the firmware register modules with peakrdl-tock.
+///
+/// Uses the Python interpreter named by `PEAKRDL_TOCK_PYTHON`, or `python3`.
+/// The interpreter needs the `systemrdl-compiler` package.
 fn generate_fw_registers(
     check: bool,
+    extra_files: &[PathBuf],
+    extra_addrmap: &[String],
+) -> Result<()> {
+    let python = std::env::var("PEAKRDL_TOCK_PYTHON").unwrap_or_else(|_| "python3".to_string());
+    let mut cmd = Command::new(&python);
+    cmd.current_dir(&*PROJECT_ROOT)
+        .arg("peakrdl-tock/scripts/generate_registers.py");
+    if check {
+        cmd.arg("--check");
+    }
+    for file in extra_files {
+        cmd.arg("--file").arg(file);
+    }
+    for entry in extra_addrmap {
+        cmd.arg("--addrmap").arg(entry);
+    }
+    let status = cmd
+        .status()
+        .map_err(|e| anyhow!("Failed to run {python} to generate firmware registers: {e}"))?;
+    if !status.success() {
+        bail!("Firmware register generation failed");
+    }
+    Ok(())
+}
+
+/// Find the firmware register modules that define each register type with
+/// bitfields. The emulator peripherals refer to those types.
+fn fw_register_types(
     mut root_block: ValidatedRegisterBlock,
     scopes: &[ParentScope],
-    header: String,
-    dest_dir: &Path,
-    register_types_to_crates: &mut HashMap<String, Vec<String>>,
-) -> Result<()> {
-    let file_action = if check {
-        file_check_contents
-    } else {
-        delete_rust_files(dest_dir)?;
-        write_file
-    };
-
+) -> Result<HashMap<String, Vec<String>>> {
     let mut blocks = vec![];
     for scope in scopes.iter() {
         blocks.extend(caliptra_mcu_registers_generator::translate_addrmap(*scope)?);
@@ -1317,54 +1331,35 @@ fn generate_fw_registers(
         let block = block.validate_and_dedup()?;
         validated_blocks.push(block);
     }
-    let mut root_submod_tokens = String::new();
 
     let mut all_blocks: Vec<_> = std::iter::once(&mut root_block)
         .chain(validated_blocks.iter_mut())
         .collect();
     caliptra_mcu_registers_generator::filter_unused_types(&mut all_blocks);
 
+    let mut register_types_to_crates: HashMap<String, Vec<String>> = HashMap::new();
     for block in validated_blocks {
-        // Only generate addresses for this since the types are covered elsewhere
-        let addr_only = block.block().name == "secondary_flash_ctrl";
-        let module_ident = block.block().name.clone();
-        let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
-        let tokens = caliptra_mcu_registers_generator::generate_code(
-            &format!("crate::{}::", block.block().name),
-            &block,
-            false,
-            register_types_to_crates,
-            addr_only,
-        );
-        root_submod_tokens += &format!("pub mod {module_ident};\n");
-        file_action(
-            &dest_file,
-            &rustfmt(&(header.clone() + &tokens.to_string()))?,
-        )?;
+        // The secondary flash controller uses the types of the primary one.
+        if block.block().name == "secondary_flash_ctrl" {
+            continue;
+        }
+        let mut type_names: Vec<String> = block
+            .register_types()
+            .values()
+            .chain(block.block().declared_register_types.iter())
+            .filter(|rt| !has_single_32_bit_field(rt))
+            .map(|rt| rt.name.clone().unwrap())
+            .collect();
+        type_names.sort();
+        type_names.dedup();
+        for type_name in type_names {
+            register_types_to_crates
+                .entry(type_name)
+                .or_default()
+                .push(block.block().name.clone());
+        }
     }
-    let root_type_tokens = caliptra_mcu_registers_generator::generate_code(
-        "crate::",
-        &root_block,
-        true,
-        register_types_to_crates,
-        false,
-    );
-    let recursion = "#![recursion_limit = \"2048\"]\n";
-    let root_tokens = root_type_tokens;
-    let defines_mod = "pub mod defines;\n";
-    let fuses_tokens = "pub mod fuses;\n";
-    file_action(
-        &dest_dir.join("lib.rs"),
-        &rustfmt(
-            &(header.clone()
-                + recursion
-                + &root_tokens.to_string()
-                + &root_submod_tokens
-                + defines_mod
-                + fuses_tokens),
-        )?,
-    )?;
-    Ok(())
+    Ok(register_types_to_crates)
 }
 
 fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<HashMap<String, u32>> {

@@ -16,7 +16,7 @@ from systemrdl import RDLCompiler
 from systemrdl.node import AddrmapNode, RootNode
 
 from .generator import render_module
-from .scanner import DEFAULT_STRIP_SUFFIXES, _scan_addrmap
+from .scanner import DEFAULT_STRIP_SUFFIXES, RenameFn, _scan_addrmap
 
 
 class TockExporter:
@@ -35,12 +35,14 @@ class TockExporter:
         header: str = "",
         fmt: bool = False,
         strip_suffixes: Optional[list[str]] = None,
-        strip_first_level_prefix: bool = True,
+        rename: Optional[RenameFn] = None,
+        addr_only: bool = False,
     ) -> str:
         """Export a single addrmap node to a Rust module in the output directory.
 
-        The module name is used for the file name, the address constant, and
-        the register struct. The generated code refers to its own bitfields as
+        The module name is used for the file name and the register struct.
+        The address constant is named after the addrmap instance. The
+        generated code refers to its own bitfields as
         crate::<module name>::bits, so the file must be a top-level module of
         its crate.
 
@@ -61,9 +63,13 @@ class TockExporter:
         fmt : bool
             Run rustfmt on the output.
         strip_suffixes : list[str], optional
-            Suffixes to strip from names. Defaults to DEFAULT_STRIP_SUFFIXES.
-        strip_first_level_prefix : bool
-            Strip the first-level regfile prefix when flattening. Default True.
+            Suffixes to strip from the addrmap name to get the default module
+            name. Defaults to DEFAULT_STRIP_SUFFIXES.
+        rename : callable, optional
+            Called with a block, register, memory, or field node. Returns the
+            name to use in place of its instance name.
+        addr_only : bool
+            Only generate the address constant.
 
         Returns
         -------
@@ -76,11 +82,11 @@ class TockExporter:
         if base_addr is None:
             base_addr = node.absolute_address
         suffixes = strip_suffixes if strip_suffixes is not None else DEFAULT_STRIP_SUFFIXES
-        ctx = _scan_addrmap(node, base_addr, suffixes, strip_first_level_prefix)
+        ctx = _scan_addrmap(node, base_addr, suffixes, rename)
         if output_name:
             ctx.name = output_name
 
-        code = header + render_module(ctx, f"crate::{ctx.name}::")
+        code = header + render_module(ctx, f"crate::{ctx.name}::", addr_only)
 
         out_dir = Path(path)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,8 +110,11 @@ class TockExporter:
         header: str = "",
         incl_search_paths: Optional[list[str]] = None,
         fmt: bool = False,
+        **export_args,
     ) -> str:
         """Compile an RDL file and export the top addrmap.
+
+        Keyword arguments not listed here are passed to export().
 
         Parameters
         ----------
@@ -142,4 +151,5 @@ class TockExporter:
             output_name=output_name,
             header=header,
             fmt=fmt,
+            **export_args,
         )

@@ -32,28 +32,19 @@ def _should_emit_bitfield(rt: RegisterTypeContext) -> bool:
     return True
 
 
-def render_module(ctx: AddrmapContext, crate_prefix: str) -> str:
+def render_module(ctx: AddrmapContext, crate_prefix: str, addr_only: bool = False) -> str:
     """Render a single addrmap module to a Rust source string.
 
     crate_prefix is the Rust path of the generated module, ending in "::".
+    With addr_only, only the address constant is rendered.
     """
     lines: list[str] = []
 
-    # Address constant
-    name_upper = snake_case(ctx.name).upper()
+    # Address constant, named after the addrmap instance
+    name_upper = snake_case(ctx.inst_name).upper()
     lines.append(f"pub const {name_upper}_ADDR: u32 = {hex_u32(ctx.base_address)};")
-
-    # Memory region constants
-    if ctx.memories:
-        lines.append("")
-        lines.append("// Memory regions")
-        sorted_mems = sorted(ctx.memories, key=lambda m: m.offset)
-        for mem in sorted_mems:
-            mem_upper = snake_case(mem.name).upper()
-            abs_addr = ctx.base_address + mem.offset
-            lines.append(f"pub const {mem_upper}_OFFSET: u32 = {hex_u32(mem.offset)};")
-            lines.append(f"pub const {mem_upper}_SIZE: usize = {hex_u32(mem.size_bytes)};")
-            lines.append(f"pub const {mem_upper}_PTR: *mut u8 = {hex_u32(abs_addr)} as *mut u8;")
+    if addr_only:
+        return "\n".join(lines) + "\n"
 
     # Group register types by width, filtering trivial ones
     bitfield_groups: OrderedDict[int, list[RegisterTypeContext]] = OrderedDict()
@@ -75,21 +66,19 @@ def render_module(ctx: AddrmapContext, crate_prefix: str) -> str:
             lines.append("    register_bitfields! {")
             lines.append(f"        {width_type},")
             for rt in types:
-                lines.append(f"        pub {rt.name} [")
+                lines.append(f"            pub {rt.name} [")
                 for field in rt.fields:
                     if field.description:
-                        for desc_line in field.description.splitlines():
-                            stripped = desc_line.strip()
-                            if stripped:
-                                lines.append(f"            /// {stripped}")
+                        for desc_line in field.description.split("\n"):
+                            lines.append(f"                /// {desc_line}".rstrip())
                     if field.enum_values:
-                        lines.append(f"            {field.name} OFFSET({field.offset}) NUMBITS({field.width}) [")
+                        lines.append(f"                {field.name} OFFSET({field.offset}) NUMBITS({field.width}) [")
                         for vname, vval in field.enum_values:
-                            lines.append(f"                {vname} = {vval},")
-                        lines.append("            ],")
+                            lines.append(f"                    {vname} = {hex_u32(vval)},")
+                        lines.append("                ],")
                     else:
-                        lines.append(f"            {field.name} OFFSET({field.offset}) NUMBITS({field.width}) [],")
-                lines.append("        ],")
+                        lines.append(f"                {field.name} OFFSET({field.offset}) NUMBITS({field.width}) [],")
+                lines.append("            ],")
             lines.append("    }")
         lines.append("}")
 
