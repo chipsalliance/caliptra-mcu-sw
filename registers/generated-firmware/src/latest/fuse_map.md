@@ -14,22 +14,22 @@
 | 5 | secret_prod_partition_3 | 0x00e0 | 24 | Yes | Yes | HW |
 | 6 | sw_manuf_partition | 0x00f8 | 520 | No | No | SW |
 | 7 | secret_lc_transition_partition | 0x0300 | 184 | Yes | No | HW |
-| 8 | svn_partition | 0x03b8 | 40 | No | No | — |
-| 9 | vendor_test_partition | 0x03e0 | 64 | No | No | SW |
-| 10 | vendor_hashes_manuf_partition | 0x0420 | 64 | No | No | SW |
-| 11 | vendor_hashes_prod_partition | 0x0460 | 864 | No | No | SW |
-| 12 | vendor_revocations_prod_partition | 0x07c0 | 216 | No | No | SW |
-| 13 | vendor_secret_prod_partition | 0x0898 | 528 | Yes | Yes | HW |
-| 14 | vendor_non_secret_prod_partition | 0x0aa8 | 520 | No | No | SW |
-| 15 | cptra_ss_lock_hek_prod_0 | 0x0cb0 | 48 | No | Yes | SW |
-| 16 | cptra_ss_lock_hek_prod_1 | 0x0ce0 | 48 | No | Yes | SW |
-| 17 | cptra_ss_lock_hek_prod_2 | 0x0d10 | 48 | No | Yes | SW |
-| 18 | cptra_ss_lock_hek_prod_3 | 0x0d40 | 48 | No | Yes | SW |
-| 19 | cptra_ss_lock_hek_prod_4 | 0x0d70 | 48 | No | Yes | SW |
-| 20 | cptra_ss_lock_hek_prod_5 | 0x0da0 | 48 | No | Yes | SW |
-| 21 | cptra_ss_lock_hek_prod_6 | 0x0dd0 | 48 | No | Yes | SW |
-| 22 | cptra_ss_lock_hek_prod_7 | 0x0e00 | 48 | No | Yes | SW |
-| 23 | life_cycle | 0x0e30 | 88 | No | No | — |
+| 8 | svn_partition | 0x03b8 | 56 | No | No | — |
+| 9 | vendor_test_partition | 0x03f0 | 64 | No | No | SW |
+| 10 | vendor_hashes_manuf_partition | 0x0430 | 64 | No | No | SW |
+| 11 | vendor_hashes_prod_partition | 0x0470 | 864 | No | No | SW |
+| 12 | vendor_revocations_prod_partition | 0x07d0 | 216 | No | No | SW |
+| 13 | vendor_secret_prod_partition | 0x08a8 | 528 | Yes | Yes | HW |
+| 14 | vendor_non_secret_prod_partition | 0x0ab8 | 520 | No | No | SW |
+| 15 | cptra_ss_lock_hek_prod_0 | 0x0cc0 | 48 | No | Yes | SW |
+| 16 | cptra_ss_lock_hek_prod_1 | 0x0cf0 | 48 | No | Yes | SW |
+| 17 | cptra_ss_lock_hek_prod_2 | 0x0d20 | 48 | No | Yes | SW |
+| 18 | cptra_ss_lock_hek_prod_3 | 0x0d50 | 48 | No | Yes | SW |
+| 19 | cptra_ss_lock_hek_prod_4 | 0x0d80 | 48 | No | Yes | SW |
+| 20 | cptra_ss_lock_hek_prod_5 | 0x0db0 | 48 | No | Yes | SW |
+| 21 | cptra_ss_lock_hek_prod_6 | 0x0de0 | 48 | No | Yes | SW |
+| 22 | cptra_ss_lock_hek_prod_7 | 0x0e10 | 48 | No | Yes | SW |
+| 23 | life_cycle | 0x0e40 | 88 | No | No | — |
 
 ## Partition Items
 
@@ -107,215 +107,215 @@
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_CORE_FMC_KEY_MANIFEST_SVN | 0x03b8 | 4 | Single |
-| 1 | CPTRA_CORE_RUNTIME_SVN | 0x03bc | 16 | Single |
-| 2 | CPTRA_CORE_SOC_MANIFEST_SVN | 0x03cc | 16 | Single |
-| 3 | CPTRA_CORE_SOC_MANIFEST_MAX_SVN | 0x03dc | 4 | Single |
+| 0 | MCU_RUNTIME_SVN | 0x03b8 | 16 | Single |
+| 1 | CPTRA_CORE_RUNTIME_SVN | 0x03c8 | 16 | Single |
+| 2 | CPTRA_CORE_SOC_MANIFEST_SVN | 0x03d8 | 16 | Single |
+| 3 | CPTRA_CORE_SOC_MANIFEST_MAX_SVN | 0x03e8 | 4 | Single |
 
 ### vendor_test_partition (partition 9)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | VENDOR_TEST | 0x03e0 | 32 | OneHot |
+| 0 | VENDOR_TEST | 0x03f0 | 32 | OneHot |
 
 ### vendor_hashes_manuf_partition (partition 10)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_CORE_VENDOR_PK_HASH_0 | 0x0420 | 48 | Single |
-| 1 | CPTRA_CORE_PQC_KEY_TYPE_0 | 0x0450 | 4 | OneHotLinearOr(3x) |
+| 0 | CPTRA_CORE_VENDOR_PK_HASH_0 | 0x0430 | 48 | Single |
+| 1 | CPTRA_CORE_PQC_KEY_TYPE_0 | 0x0460 | 4 | OneHotLinearOr(3x) |
 
 ### vendor_hashes_prod_partition (partition 11)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_OWNER_PK_HASH | 0x0460 | 48 | Single |
-| 1 | CPTRA_SS_OWNER_PQC_KEY_TYPE | 0x0490 | 4 | Single |
-| 2 | CPTRA_SS_OWNER_PK_HASH_VALID | 0x0494 | 4 | Single |
-| 3 | CPTRA_CORE_VENDOR_PK_HASH_1 | 0x0498 | 48 | Single |
-| 4 | CPTRA_CORE_PQC_KEY_TYPE_1 | 0x04c8 | 4 | OneHotLinearOr(3x) |
-| 5 | CPTRA_CORE_VENDOR_PK_HASH_2 | 0x04cc | 48 | Single |
-| 6 | CPTRA_CORE_PQC_KEY_TYPE_2 | 0x04fc | 4 | OneHotLinearOr(3x) |
-| 7 | CPTRA_CORE_VENDOR_PK_HASH_3 | 0x0500 | 48 | Single |
-| 8 | CPTRA_CORE_PQC_KEY_TYPE_3 | 0x0530 | 4 | OneHotLinearOr(3x) |
-| 9 | CPTRA_CORE_VENDOR_PK_HASH_4 | 0x0534 | 48 | Single |
-| 10 | CPTRA_CORE_PQC_KEY_TYPE_4 | 0x0564 | 4 | OneHotLinearOr(3x) |
-| 11 | CPTRA_CORE_VENDOR_PK_HASH_5 | 0x0568 | 48 | Single |
-| 12 | CPTRA_CORE_PQC_KEY_TYPE_5 | 0x0598 | 4 | OneHotLinearOr(3x) |
-| 13 | CPTRA_CORE_VENDOR_PK_HASH_6 | 0x059c | 48 | Single |
-| 14 | CPTRA_CORE_PQC_KEY_TYPE_6 | 0x05cc | 4 | OneHotLinearOr(3x) |
-| 15 | CPTRA_CORE_VENDOR_PK_HASH_7 | 0x05d0 | 48 | Single |
-| 16 | CPTRA_CORE_PQC_KEY_TYPE_7 | 0x0600 | 4 | OneHotLinearOr(3x) |
-| 17 | CPTRA_CORE_VENDOR_PK_HASH_8 | 0x0604 | 48 | Single |
-| 18 | CPTRA_CORE_PQC_KEY_TYPE_8 | 0x0634 | 4 | OneHotLinearOr(3x) |
-| 19 | CPTRA_CORE_VENDOR_PK_HASH_9 | 0x0638 | 48 | Single |
-| 20 | CPTRA_CORE_PQC_KEY_TYPE_9 | 0x0668 | 4 | OneHotLinearOr(3x) |
-| 21 | CPTRA_CORE_VENDOR_PK_HASH_10 | 0x066c | 48 | Single |
-| 22 | CPTRA_CORE_PQC_KEY_TYPE_10 | 0x069c | 4 | OneHotLinearOr(3x) |
-| 23 | CPTRA_CORE_VENDOR_PK_HASH_11 | 0x06a0 | 48 | Single |
-| 24 | CPTRA_CORE_PQC_KEY_TYPE_11 | 0x06d0 | 4 | OneHotLinearOr(3x) |
-| 25 | CPTRA_CORE_VENDOR_PK_HASH_12 | 0x06d4 | 48 | Single |
-| 26 | CPTRA_CORE_PQC_KEY_TYPE_12 | 0x0704 | 4 | OneHotLinearOr(3x) |
-| 27 | CPTRA_CORE_VENDOR_PK_HASH_13 | 0x0708 | 48 | Single |
-| 28 | CPTRA_CORE_PQC_KEY_TYPE_13 | 0x0738 | 4 | OneHotLinearOr(3x) |
-| 29 | CPTRA_CORE_VENDOR_PK_HASH_14 | 0x073c | 48 | Single |
-| 30 | CPTRA_CORE_PQC_KEY_TYPE_14 | 0x076c | 4 | OneHotLinearOr(3x) |
-| 31 | CPTRA_CORE_VENDOR_PK_HASH_15 | 0x0770 | 48 | Single |
-| 32 | CPTRA_CORE_PQC_KEY_TYPE_15 | 0x07a0 | 4 | OneHotLinearOr(3x) |
-| 33 | CPTRA_CORE_VENDOR_PK_HASH_VALID | 0x07a4 | 16 | LinearOr(3x) |
+| 0 | CPTRA_SS_OWNER_PK_HASH | 0x0470 | 48 | Single |
+| 1 | CPTRA_SS_OWNER_PQC_KEY_TYPE | 0x04a0 | 4 | Single |
+| 2 | CPTRA_SS_OWNER_PK_HASH_VALID | 0x04a4 | 4 | Single |
+| 3 | CPTRA_CORE_VENDOR_PK_HASH_1 | 0x04a8 | 48 | Single |
+| 4 | CPTRA_CORE_PQC_KEY_TYPE_1 | 0x04d8 | 4 | OneHotLinearOr(3x) |
+| 5 | CPTRA_CORE_VENDOR_PK_HASH_2 | 0x04dc | 48 | Single |
+| 6 | CPTRA_CORE_PQC_KEY_TYPE_2 | 0x050c | 4 | OneHotLinearOr(3x) |
+| 7 | CPTRA_CORE_VENDOR_PK_HASH_3 | 0x0510 | 48 | Single |
+| 8 | CPTRA_CORE_PQC_KEY_TYPE_3 | 0x0540 | 4 | OneHotLinearOr(3x) |
+| 9 | CPTRA_CORE_VENDOR_PK_HASH_4 | 0x0544 | 48 | Single |
+| 10 | CPTRA_CORE_PQC_KEY_TYPE_4 | 0x0574 | 4 | OneHotLinearOr(3x) |
+| 11 | CPTRA_CORE_VENDOR_PK_HASH_5 | 0x0578 | 48 | Single |
+| 12 | CPTRA_CORE_PQC_KEY_TYPE_5 | 0x05a8 | 4 | OneHotLinearOr(3x) |
+| 13 | CPTRA_CORE_VENDOR_PK_HASH_6 | 0x05ac | 48 | Single |
+| 14 | CPTRA_CORE_PQC_KEY_TYPE_6 | 0x05dc | 4 | OneHotLinearOr(3x) |
+| 15 | CPTRA_CORE_VENDOR_PK_HASH_7 | 0x05e0 | 48 | Single |
+| 16 | CPTRA_CORE_PQC_KEY_TYPE_7 | 0x0610 | 4 | OneHotLinearOr(3x) |
+| 17 | CPTRA_CORE_VENDOR_PK_HASH_8 | 0x0614 | 48 | Single |
+| 18 | CPTRA_CORE_PQC_KEY_TYPE_8 | 0x0644 | 4 | OneHotLinearOr(3x) |
+| 19 | CPTRA_CORE_VENDOR_PK_HASH_9 | 0x0648 | 48 | Single |
+| 20 | CPTRA_CORE_PQC_KEY_TYPE_9 | 0x0678 | 4 | OneHotLinearOr(3x) |
+| 21 | CPTRA_CORE_VENDOR_PK_HASH_10 | 0x067c | 48 | Single |
+| 22 | CPTRA_CORE_PQC_KEY_TYPE_10 | 0x06ac | 4 | OneHotLinearOr(3x) |
+| 23 | CPTRA_CORE_VENDOR_PK_HASH_11 | 0x06b0 | 48 | Single |
+| 24 | CPTRA_CORE_PQC_KEY_TYPE_11 | 0x06e0 | 4 | OneHotLinearOr(3x) |
+| 25 | CPTRA_CORE_VENDOR_PK_HASH_12 | 0x06e4 | 48 | Single |
+| 26 | CPTRA_CORE_PQC_KEY_TYPE_12 | 0x0714 | 4 | OneHotLinearOr(3x) |
+| 27 | CPTRA_CORE_VENDOR_PK_HASH_13 | 0x0718 | 48 | Single |
+| 28 | CPTRA_CORE_PQC_KEY_TYPE_13 | 0x0748 | 4 | OneHotLinearOr(3x) |
+| 29 | CPTRA_CORE_VENDOR_PK_HASH_14 | 0x074c | 48 | Single |
+| 30 | CPTRA_CORE_PQC_KEY_TYPE_14 | 0x077c | 4 | OneHotLinearOr(3x) |
+| 31 | CPTRA_CORE_VENDOR_PK_HASH_15 | 0x0780 | 48 | Single |
+| 32 | CPTRA_CORE_PQC_KEY_TYPE_15 | 0x07b0 | 4 | OneHotLinearOr(3x) |
+| 33 | CPTRA_CORE_VENDOR_PK_HASH_VALID | 0x07b4 | 16 | LinearOr(3x) |
 
 ### vendor_revocations_prod_partition (partition 12)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_OWNER_ECC_REVOCATION | 0x07c0 | 4 | Single |
-| 1 | CPTRA_SS_OWNER_LMS_REVOCATION | 0x07c4 | 4 | Single |
-| 2 | CPTRA_SS_OWNER_MLDSA_REVOCATION | 0x07c8 | 4 | Single |
-| 3 | CPTRA_CORE_ECC_REVOCATION_0 | 0x07cc | 4 | LinearOr(3x) |
-| 4 | CPTRA_CORE_LMS_REVOCATION_0 | 0x07d0 | 4 | LinearOr(2x) |
-| 5 | CPTRA_CORE_MLDSA_REVOCATION_0 | 0x07d4 | 4 | LinearOr(3x) |
-| 6 | CPTRA_CORE_ECC_REVOCATION_1 | 0x07d8 | 4 | LinearOr(3x) |
-| 7 | CPTRA_CORE_LMS_REVOCATION_1 | 0x07dc | 4 | LinearOr(2x) |
-| 8 | CPTRA_CORE_MLDSA_REVOCATION_1 | 0x07e0 | 4 | LinearOr(3x) |
-| 9 | CPTRA_CORE_ECC_REVOCATION_2 | 0x07e4 | 4 | LinearOr(3x) |
-| 10 | CPTRA_CORE_LMS_REVOCATION_2 | 0x07e8 | 4 | LinearOr(2x) |
-| 11 | CPTRA_CORE_MLDSA_REVOCATION_2 | 0x07ec | 4 | LinearOr(3x) |
-| 12 | CPTRA_CORE_ECC_REVOCATION_3 | 0x07f0 | 4 | LinearOr(3x) |
-| 13 | CPTRA_CORE_LMS_REVOCATION_3 | 0x07f4 | 4 | LinearOr(2x) |
-| 14 | CPTRA_CORE_MLDSA_REVOCATION_3 | 0x07f8 | 4 | LinearOr(3x) |
-| 15 | CPTRA_CORE_ECC_REVOCATION_4 | 0x07fc | 4 | LinearOr(3x) |
-| 16 | CPTRA_CORE_LMS_REVOCATION_4 | 0x0800 | 4 | LinearOr(2x) |
-| 17 | CPTRA_CORE_MLDSA_REVOCATION_4 | 0x0804 | 4 | LinearOr(3x) |
-| 18 | CPTRA_CORE_ECC_REVOCATION_5 | 0x0808 | 4 | LinearOr(3x) |
-| 19 | CPTRA_CORE_LMS_REVOCATION_5 | 0x080c | 4 | LinearOr(2x) |
-| 20 | CPTRA_CORE_MLDSA_REVOCATION_5 | 0x0810 | 4 | LinearOr(3x) |
-| 21 | CPTRA_CORE_ECC_REVOCATION_6 | 0x0814 | 4 | LinearOr(3x) |
-| 22 | CPTRA_CORE_LMS_REVOCATION_6 | 0x0818 | 4 | LinearOr(2x) |
-| 23 | CPTRA_CORE_MLDSA_REVOCATION_6 | 0x081c | 4 | LinearOr(3x) |
-| 24 | CPTRA_CORE_ECC_REVOCATION_7 | 0x0820 | 4 | LinearOr(3x) |
-| 25 | CPTRA_CORE_LMS_REVOCATION_7 | 0x0824 | 4 | LinearOr(2x) |
-| 26 | CPTRA_CORE_MLDSA_REVOCATION_7 | 0x0828 | 4 | LinearOr(3x) |
-| 27 | CPTRA_CORE_ECC_REVOCATION_8 | 0x082c | 4 | LinearOr(3x) |
-| 28 | CPTRA_CORE_LMS_REVOCATION_8 | 0x0830 | 4 | LinearOr(2x) |
-| 29 | CPTRA_CORE_MLDSA_REVOCATION_8 | 0x0834 | 4 | LinearOr(3x) |
-| 30 | CPTRA_CORE_ECC_REVOCATION_9 | 0x0838 | 4 | LinearOr(3x) |
-| 31 | CPTRA_CORE_LMS_REVOCATION_9 | 0x083c | 4 | LinearOr(2x) |
-| 32 | CPTRA_CORE_MLDSA_REVOCATION_9 | 0x0840 | 4 | LinearOr(3x) |
-| 33 | CPTRA_CORE_ECC_REVOCATION_10 | 0x0844 | 4 | LinearOr(3x) |
-| 34 | CPTRA_CORE_LMS_REVOCATION_10 | 0x0848 | 4 | LinearOr(2x) |
-| 35 | CPTRA_CORE_MLDSA_REVOCATION_10 | 0x084c | 4 | LinearOr(3x) |
-| 36 | CPTRA_CORE_ECC_REVOCATION_11 | 0x0850 | 4 | LinearOr(3x) |
-| 37 | CPTRA_CORE_LMS_REVOCATION_11 | 0x0854 | 4 | LinearOr(2x) |
-| 38 | CPTRA_CORE_MLDSA_REVOCATION_11 | 0x0858 | 4 | LinearOr(3x) |
-| 39 | CPTRA_CORE_ECC_REVOCATION_12 | 0x085c | 4 | LinearOr(3x) |
-| 40 | CPTRA_CORE_LMS_REVOCATION_12 | 0x0860 | 4 | LinearOr(2x) |
-| 41 | CPTRA_CORE_MLDSA_REVOCATION_12 | 0x0864 | 4 | LinearOr(3x) |
-| 42 | CPTRA_CORE_ECC_REVOCATION_13 | 0x0868 | 4 | LinearOr(3x) |
-| 43 | CPTRA_CORE_LMS_REVOCATION_13 | 0x086c | 4 | LinearOr(2x) |
-| 44 | CPTRA_CORE_MLDSA_REVOCATION_13 | 0x0870 | 4 | LinearOr(3x) |
-| 45 | CPTRA_CORE_ECC_REVOCATION_14 | 0x0874 | 4 | LinearOr(3x) |
-| 46 | CPTRA_CORE_LMS_REVOCATION_14 | 0x0878 | 4 | LinearOr(2x) |
-| 47 | CPTRA_CORE_MLDSA_REVOCATION_14 | 0x087c | 4 | LinearOr(3x) |
-| 48 | CPTRA_CORE_ECC_REVOCATION_15 | 0x0880 | 4 | LinearOr(3x) |
-| 49 | CPTRA_CORE_LMS_REVOCATION_15 | 0x0884 | 4 | LinearOr(2x) |
-| 50 | CPTRA_CORE_MLDSA_REVOCATION_15 | 0x0888 | 4 | LinearOr(3x) |
+| 0 | CPTRA_SS_OWNER_ECC_REVOCATION | 0x07d0 | 4 | Single |
+| 1 | CPTRA_SS_OWNER_LMS_REVOCATION | 0x07d4 | 4 | Single |
+| 2 | CPTRA_SS_OWNER_MLDSA_REVOCATION | 0x07d8 | 4 | Single |
+| 3 | CPTRA_CORE_ECC_REVOCATION_0 | 0x07dc | 4 | LinearOr(3x) |
+| 4 | CPTRA_CORE_LMS_REVOCATION_0 | 0x07e0 | 4 | LinearOr(2x) |
+| 5 | CPTRA_CORE_MLDSA_REVOCATION_0 | 0x07e4 | 4 | LinearOr(3x) |
+| 6 | CPTRA_CORE_ECC_REVOCATION_1 | 0x07e8 | 4 | LinearOr(3x) |
+| 7 | CPTRA_CORE_LMS_REVOCATION_1 | 0x07ec | 4 | LinearOr(2x) |
+| 8 | CPTRA_CORE_MLDSA_REVOCATION_1 | 0x07f0 | 4 | LinearOr(3x) |
+| 9 | CPTRA_CORE_ECC_REVOCATION_2 | 0x07f4 | 4 | LinearOr(3x) |
+| 10 | CPTRA_CORE_LMS_REVOCATION_2 | 0x07f8 | 4 | LinearOr(2x) |
+| 11 | CPTRA_CORE_MLDSA_REVOCATION_2 | 0x07fc | 4 | LinearOr(3x) |
+| 12 | CPTRA_CORE_ECC_REVOCATION_3 | 0x0800 | 4 | LinearOr(3x) |
+| 13 | CPTRA_CORE_LMS_REVOCATION_3 | 0x0804 | 4 | LinearOr(2x) |
+| 14 | CPTRA_CORE_MLDSA_REVOCATION_3 | 0x0808 | 4 | LinearOr(3x) |
+| 15 | CPTRA_CORE_ECC_REVOCATION_4 | 0x080c | 4 | LinearOr(3x) |
+| 16 | CPTRA_CORE_LMS_REVOCATION_4 | 0x0810 | 4 | LinearOr(2x) |
+| 17 | CPTRA_CORE_MLDSA_REVOCATION_4 | 0x0814 | 4 | LinearOr(3x) |
+| 18 | CPTRA_CORE_ECC_REVOCATION_5 | 0x0818 | 4 | LinearOr(3x) |
+| 19 | CPTRA_CORE_LMS_REVOCATION_5 | 0x081c | 4 | LinearOr(2x) |
+| 20 | CPTRA_CORE_MLDSA_REVOCATION_5 | 0x0820 | 4 | LinearOr(3x) |
+| 21 | CPTRA_CORE_ECC_REVOCATION_6 | 0x0824 | 4 | LinearOr(3x) |
+| 22 | CPTRA_CORE_LMS_REVOCATION_6 | 0x0828 | 4 | LinearOr(2x) |
+| 23 | CPTRA_CORE_MLDSA_REVOCATION_6 | 0x082c | 4 | LinearOr(3x) |
+| 24 | CPTRA_CORE_ECC_REVOCATION_7 | 0x0830 | 4 | LinearOr(3x) |
+| 25 | CPTRA_CORE_LMS_REVOCATION_7 | 0x0834 | 4 | LinearOr(2x) |
+| 26 | CPTRA_CORE_MLDSA_REVOCATION_7 | 0x0838 | 4 | LinearOr(3x) |
+| 27 | CPTRA_CORE_ECC_REVOCATION_8 | 0x083c | 4 | LinearOr(3x) |
+| 28 | CPTRA_CORE_LMS_REVOCATION_8 | 0x0840 | 4 | LinearOr(2x) |
+| 29 | CPTRA_CORE_MLDSA_REVOCATION_8 | 0x0844 | 4 | LinearOr(3x) |
+| 30 | CPTRA_CORE_ECC_REVOCATION_9 | 0x0848 | 4 | LinearOr(3x) |
+| 31 | CPTRA_CORE_LMS_REVOCATION_9 | 0x084c | 4 | LinearOr(2x) |
+| 32 | CPTRA_CORE_MLDSA_REVOCATION_9 | 0x0850 | 4 | LinearOr(3x) |
+| 33 | CPTRA_CORE_ECC_REVOCATION_10 | 0x0854 | 4 | LinearOr(3x) |
+| 34 | CPTRA_CORE_LMS_REVOCATION_10 | 0x0858 | 4 | LinearOr(2x) |
+| 35 | CPTRA_CORE_MLDSA_REVOCATION_10 | 0x085c | 4 | LinearOr(3x) |
+| 36 | CPTRA_CORE_ECC_REVOCATION_11 | 0x0860 | 4 | LinearOr(3x) |
+| 37 | CPTRA_CORE_LMS_REVOCATION_11 | 0x0864 | 4 | LinearOr(2x) |
+| 38 | CPTRA_CORE_MLDSA_REVOCATION_11 | 0x0868 | 4 | LinearOr(3x) |
+| 39 | CPTRA_CORE_ECC_REVOCATION_12 | 0x086c | 4 | LinearOr(3x) |
+| 40 | CPTRA_CORE_LMS_REVOCATION_12 | 0x0870 | 4 | LinearOr(2x) |
+| 41 | CPTRA_CORE_MLDSA_REVOCATION_12 | 0x0874 | 4 | LinearOr(3x) |
+| 42 | CPTRA_CORE_ECC_REVOCATION_13 | 0x0878 | 4 | LinearOr(3x) |
+| 43 | CPTRA_CORE_LMS_REVOCATION_13 | 0x087c | 4 | LinearOr(2x) |
+| 44 | CPTRA_CORE_MLDSA_REVOCATION_13 | 0x0880 | 4 | LinearOr(3x) |
+| 45 | CPTRA_CORE_ECC_REVOCATION_14 | 0x0884 | 4 | LinearOr(3x) |
+| 46 | CPTRA_CORE_LMS_REVOCATION_14 | 0x0888 | 4 | LinearOr(2x) |
+| 47 | CPTRA_CORE_MLDSA_REVOCATION_14 | 0x088c | 4 | LinearOr(3x) |
+| 48 | CPTRA_CORE_ECC_REVOCATION_15 | 0x0890 | 4 | LinearOr(3x) |
+| 49 | CPTRA_CORE_LMS_REVOCATION_15 | 0x0894 | 4 | LinearOr(2x) |
+| 50 | CPTRA_CORE_MLDSA_REVOCATION_15 | 0x0898 | 4 | LinearOr(3x) |
 
 ### vendor_secret_prod_partition (partition 13)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0 | 0x0898 | 32 | Single |
-| 1 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1 | 0x08b8 | 32 | Single |
-| 2 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_2 | 0x08d8 | 32 | Single |
-| 3 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_3 | 0x08f8 | 32 | Single |
-| 4 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_4 | 0x0918 | 32 | Single |
-| 5 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_5 | 0x0938 | 32 | Single |
-| 6 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_6 | 0x0958 | 32 | Single |
-| 7 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_7 | 0x0978 | 32 | Single |
-| 8 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_8 | 0x0998 | 32 | Single |
-| 9 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_9 | 0x09b8 | 32 | Single |
-| 10 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_10 | 0x09d8 | 32 | Single |
-| 11 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_11 | 0x09f8 | 32 | Single |
-| 12 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_12 | 0x0a18 | 32 | Single |
-| 13 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_13 | 0x0a38 | 32 | Single |
-| 14 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_14 | 0x0a58 | 32 | Single |
-| 15 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_15 | 0x0a78 | 32 | Single |
+| 0 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0 | 0x08a8 | 32 | Single |
+| 1 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1 | 0x08c8 | 32 | Single |
+| 2 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_2 | 0x08e8 | 32 | Single |
+| 3 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_3 | 0x0908 | 32 | Single |
+| 4 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_4 | 0x0928 | 32 | Single |
+| 5 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_5 | 0x0948 | 32 | Single |
+| 6 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_6 | 0x0968 | 32 | Single |
+| 7 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_7 | 0x0988 | 32 | Single |
+| 8 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_8 | 0x09a8 | 32 | Single |
+| 9 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_9 | 0x09c8 | 32 | Single |
+| 10 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_10 | 0x09e8 | 32 | Single |
+| 11 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_11 | 0x0a08 | 32 | Single |
+| 12 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_12 | 0x0a28 | 32 | Single |
+| 13 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_13 | 0x0a48 | 32 | Single |
+| 14 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_14 | 0x0a68 | 32 | Single |
+| 15 | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_15 | 0x0a88 | 32 | Single |
 
 ### vendor_non_secret_prod_partition (partition 14)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0 | 0x0aa8 | 32 | LinearOr(3x) |
-| 1 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1 | 0x0ac8 | 32 | Single |
-| 2 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2 | 0x0ae8 | 32 | LinearMajorityVote(3x) |
-| 3 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | 0x0b08 | 32 | Single |
-| 4 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | 0x0b28 | 32 | Single |
-| 5 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | 0x0b48 | 32 | Single |
-| 6 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | 0x0b68 | 32 | Single |
-| 7 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | 0x0b88 | 32 | Single |
-| 8 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | 0x0ba8 | 32 | Single |
-| 9 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9 | 0x0bc8 | 32 | Single |
-| 10 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10 | 0x0be8 | 32 | Single |
-| 11 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_11 | 0x0c08 | 32 | Single |
-| 12 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_12 | 0x0c28 | 32 | Single |
-| 13 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_13 | 0x0c48 | 32 | Single |
-| 14 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_14 | 0x0c68 | 32 | Single |
-| 15 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_15 | 0x0c88 | 32 | Single |
+| 0 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0 | 0x0ab8 | 32 | LinearOr(3x) |
+| 1 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1 | 0x0ad8 | 32 | Single |
+| 2 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2 | 0x0af8 | 32 | LinearMajorityVote(3x) |
+| 3 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | 0x0b18 | 32 | Single |
+| 4 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | 0x0b38 | 32 | Single |
+| 5 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | 0x0b58 | 32 | Single |
+| 6 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | 0x0b78 | 32 | Single |
+| 7 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | 0x0b98 | 32 | Single |
+| 8 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | 0x0bb8 | 32 | Single |
+| 9 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9 | 0x0bd8 | 32 | Single |
+| 10 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10 | 0x0bf8 | 32 | Single |
+| 11 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_11 | 0x0c18 | 32 | Single |
+| 12 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_12 | 0x0c38 | 32 | Single |
+| 13 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_13 | 0x0c58 | 32 | Single |
+| 14 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_14 | 0x0c78 | 32 | Single |
+| 15 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_15 | 0x0c98 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_0 (partition 15)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_0_RATCHET_SEED | 0x0cb0 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_0_RATCHET_SEED | 0x0cc0 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_1 (partition 16)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_1_RATCHET_SEED | 0x0ce0 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_1_RATCHET_SEED | 0x0cf0 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_2 (partition 17)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_2_RATCHET_SEED | 0x0d10 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_2_RATCHET_SEED | 0x0d20 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_3 (partition 18)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_3_RATCHET_SEED | 0x0d40 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_3_RATCHET_SEED | 0x0d50 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_4 (partition 19)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_4_RATCHET_SEED | 0x0d70 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_4_RATCHET_SEED | 0x0d80 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_5 (partition 20)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_5_RATCHET_SEED | 0x0da0 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_5_RATCHET_SEED | 0x0db0 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_6 (partition 21)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_6_RATCHET_SEED | 0x0dd0 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_6_RATCHET_SEED | 0x0de0 | 32 | Single |
 
 ### cptra_ss_lock_hek_prod_7 (partition 22)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | CPTRA_SS_LOCK_HEK_PROD_7_RATCHET_SEED | 0x0e00 | 32 | Single |
+| 0 | CPTRA_SS_LOCK_HEK_PROD_7_RATCHET_SEED | 0x0e10 | 32 | Single |
 
 ### life_cycle (partition 23)
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | LC_TRANSITION_CNT | 0x0e30 | 48 | Single |
-| 1 | LC_STATE | 0x0e60 | 40 | Single |
+| 0 | LC_TRANSITION_CNT | 0x0e40 | 48 | Single |
+| 1 | LC_STATE | 0x0e70 | 40 | Single |
 
 ## Vendor-Specific Fields (from fuses.hjson)
 

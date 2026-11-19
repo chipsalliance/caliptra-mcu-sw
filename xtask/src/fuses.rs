@@ -9,6 +9,39 @@ use caliptra_mcu_registers_generator::snake_case;
 use std::fmt::Write;
 use std::path::Path;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aligns_svn_partition_and_following_fields_to_eight_bytes() {
+        let otp: OtpMmap = serde_hjson::from_str(
+            r#"{
+            partitions: [
+                {name: "SVN_PARTITION", secret: false, desc: "", sw_digest: false, hw_digest: false,
+                 items: [{name: "COUNTERS", size: "52"}]},
+                {name: "NEXT", secret: false, desc: "", sw_digest: false, hw_digest: false,
+                 items: [{name: "VALUE", size: "8"}]}
+            ]
+        }"#,
+        )
+        .unwrap();
+        let map = build_partition_mmap(&otp);
+        assert_eq!(map["SVN_PARTITION"].byte_size, 56);
+        assert_eq!(map["NEXT"].byte_offset, 56);
+        assert_eq!(map["NEXT"].items[0].byte_offset, 56);
+        let generated = generate_fuse_partitions_from_otp(&otp).unwrap();
+        assert!(generated.contains("SVN_PARTITION_BYTE_SIZE: usize = 0x38;"));
+        assert!(generated.contains("NEXT_BYTE_OFFSET: usize = 0x38;"));
+        let docs = generate_fuse_docs(&otp, None, &map);
+        assert!(
+            docs.contains("| 0 | svn_partition | 0x0000 | 56 |"),
+            "{docs}"
+        );
+        assert!(docs.contains("| 1 | next | 0x0038 | 8 |"), "{docs}");
+    }
+}
+
 /// Autogenerate fuse code.
 pub(crate) fn autogen_fuses(
     check: bool,
@@ -119,7 +152,7 @@ fn build_partition_mmap(
         let calculated_size = if digest_size == 8 {
             calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
-            calculated_size.next_multiple_of(4) + zeroize_size
+            calculated_size.next_multiple_of(8) + zeroize_size
         };
 
         let size = partition
@@ -208,8 +241,8 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
             // digests need to be aligned to 8-byte boundary
             calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
-            // partitions need to be aligned to 4-byte boundary
-            calculated_size.next_multiple_of(4) + zeroize_size
+            // Partitions start on the OTP macro's eight-byte boundary.
+            calculated_size.next_multiple_of(8) + zeroize_size
         };
 
         let size = partition
@@ -309,7 +342,7 @@ fn generate_fuse_docs(
         let calculated_size = if digest_size == 8 {
             calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
-            calculated_size.next_multiple_of(4) + zeroize_size
+            calculated_size.next_multiple_of(8) + zeroize_size
         };
         let size = partition
             .size

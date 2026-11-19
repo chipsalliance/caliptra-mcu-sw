@@ -1308,8 +1308,6 @@ mod tests {
             None,
             #[cfg(hw_rev = "latest")]
             None,
-            #[cfg(hw_rev = "latest")]
-            None,
             None,
             None,
             None,

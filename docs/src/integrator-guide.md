@@ -8,6 +8,17 @@ OTP field names from the selected `hw/rev-2_1/fuses.hjson` or
 `hw/latest/fuses.hjson`, and `UPPER_SNAKE_CASE` for generated
 Rust constants, command IDs, Caliptra registers, and partition names.
 
+## Hardware revision compatibility
+
+Use the OTP map, generated registers, and provisioning fixture for the selected
+hardware revision. Latest OTP partitions use eight-byte alignment; do not reuse
+2.1 provisioning images without checking their field offsets and layouts.
+
+The latest subsystem no longer exposes the subsystem SPI-host or UART peripheral
+ports. This does not remove MCU debug-FIFO or Caliptra Core log-FIFO logging in
+the FPGA wrapper. FPGA integration and prebuilt bitstreams must match the
+selected subsystem revision.
+
 ## DOT Integration Recommendations
 
 For the full DOT protocol, state machine, and I3C recovery command details, see
