@@ -799,6 +799,80 @@ fn compute_common_name<'a>(reg_names: &'a [&'a str]) -> Option<String> {
         .and_then(|s| if s.is_empty() { None } else { Some(s) })
 }
 
+fn disambiguate_inferred_register_type_names(
+    register_types: &mut HashMap<RegisterType, Rc<RegisterType>>,
+) {
+    let mut types_by_name = HashMap::<String, Vec<RegisterType>>::new();
+    for (original, inferred) in register_types.iter() {
+        types_by_name
+            .entry(inferred.name.clone().unwrap())
+            .or_default()
+            .push(original.clone());
+    }
+
+    let mut occupied_names: HashSet<String> = register_types
+        .values()
+        .map(|ty| ty.name.clone().unwrap())
+        .collect();
+    for (base_name, originals) in types_by_name {
+        if originals.len() < 2 || originals.iter().any(|ty| ty.name.is_some()) {
+            continue;
+        }
+
+        let mut classes = Vec::<Vec<RegisterType>>::new();
+        for original in originals {
+            if let Some(class) = classes
+                .iter_mut()
+                .find(|class| class[0].equals_except_comment(&original))
+            {
+                class.push(original);
+            } else {
+                classes.push(vec![original]);
+            }
+        }
+        if classes.len() < 2 {
+            continue;
+        }
+
+        occupied_names.remove(&base_name);
+        let mut suffix_counts = HashMap::<String, usize>::new();
+        for class in &classes {
+            let suffix = class[0]
+                .fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>()
+                .join("_");
+            *suffix_counts.entry(suffix).or_default() += 1;
+        }
+
+        for class in classes {
+            let suffix = class[0]
+                .fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>()
+                .join("_");
+            let separator = if base_name.ends_with('_') || suffix.is_empty() {
+                ""
+            } else {
+                "_"
+            };
+            let mut name = format!("{base_name}{separator}{suffix}");
+            if suffix.is_empty()
+                || suffix_counts.get(&suffix).copied().unwrap_or_default() > 1
+                || occupied_names.contains(&name)
+            {
+                name.push_str(&format!("_{:016x}", hash_u64(&class[0])));
+            }
+            occupied_names.insert(name.clone());
+            for original in class {
+                Rc::make_mut(register_types.get_mut(&original).unwrap()).name = Some(name.clone());
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod compute_reg_type_name_tests {
     use super::*;
@@ -826,6 +900,86 @@ mod compute_reg_type_name_tests {
             compute_common_name(&["PROG_LB0_POST_OVRD", "LB0_POST_OVRD"]),
             Some("LB0_POST_OVRD".into())
         );
+    }
+
+    #[test]
+    fn disambiguates_colliding_inferred_names() {
+        let data = RegisterType {
+            fields: vec![RegisterField {
+                name: "DATA".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let lock = RegisterType {
+            fields: vec![RegisterField {
+                name: "lock".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut types = HashMap::from([
+            (
+                data.clone(),
+                Rc::new(RegisterType {
+                    name: Some("CPTRA_".into()),
+                    ..data.clone()
+                }),
+            ),
+            (
+                lock.clone(),
+                Rc::new(RegisterType {
+                    name: Some("CPTRA_".into()),
+                    ..lock.clone()
+                }),
+            ),
+        ]);
+
+        disambiguate_inferred_register_type_names(&mut types);
+
+        assert_eq!(types[&data].name.as_deref(), Some("CPTRA_DATA"));
+        assert_eq!(types[&lock].name.as_deref(), Some("CPTRA_lock"));
+    }
+
+    #[test]
+    fn keeps_equivalent_inferred_types_shared() {
+        let first = RegisterType {
+            fields: vec![RegisterField {
+                name: "CapId".into(),
+                default_val: 1,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let second = RegisterType {
+            fields: vec![RegisterField {
+                name: "CapId".into(),
+                default_val: 2,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut types = HashMap::from([
+            (
+                first.clone(),
+                Rc::new(RegisterType {
+                    name: Some("EXTCAP_HEADER".into()),
+                    ..first.clone()
+                }),
+            ),
+            (
+                second.clone(),
+                Rc::new(RegisterType {
+                    name: Some("EXTCAP_HEADER".into()),
+                    ..second.clone()
+                }),
+            ),
+        ]);
+
+        disambiguate_inferred_register_type_names(&mut types);
+
+        assert_eq!(types[&first].name.as_deref(), Some("EXTCAP_HEADER"));
+        assert_eq!(types[&second].name.as_deref(), Some("EXTCAP_HEADER"));
     }
 }
 
@@ -1045,6 +1199,7 @@ impl RegisterBlock {
             }
             new_types.insert(reg_type.clone(), Rc::new(new_type));
         }
+        disambiguate_inferred_register_type_names(&mut new_types);
         // Replace the old duplicate register types with the new shared types
         self.replace_register_types(&new_types);
         let mut register_types: HashMap<String, Rc<RegisterType>> = HashMap::new();

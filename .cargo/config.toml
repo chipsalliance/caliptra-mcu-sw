@@ -2,7 +2,7 @@
 
 [env]
 # Keep MCU and its Caliptra dependencies on the same default register revision.
-CALIPTRA_HW_REV = { value = "2.1", force = false }
+CALIPTRA_HW_REV = { value = "latest", force = false }
 
 [alias]
 xtask = "run --package caliptra-mcu-xtask --"

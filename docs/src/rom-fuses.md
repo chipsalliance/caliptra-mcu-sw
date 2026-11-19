@@ -46,7 +46,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `CPTRA_CORE_VENDOR_PK_HASH_VALID` | 16 bits | Slot revocation bitmask used to pick the active slot: 0 means valid; 1 means revoked |
 | `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | 2 bits each | Per-slot; selects MLDSA vs LMS for that vendor PK |
 | `CPTRA_CORE_RUNTIME_SVN` | 128 bits | Caliptra Runtime SVN |
-| `CPTRA_CORE_SOC_MANIFEST_SVN` | 128 bits | SoC manifest SVN (also drives MCU Runtime SVN) |
+| `CPTRA_CORE_SOC_MANIFEST_SVN` | 128 OTP bits | SoC manifest SVN (also drives MCU Runtime SVN); decoded to numeric `FUSE_SOC_MANIFEST_SVN[0]` on 2.2 |
 | `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | 32 bits | Max allowed SoC manifest SVN |
 | `CPTRA_CORE_ECC_REVOCATION_{0..N}` | 4 bits each | Per-slot ECC key revocation bitmask |
 | `CPTRA_CORE_LMS_REVOCATION_{0..N}` | 16 bits each | Per-slot LMS key revocation bitmask |
@@ -56,7 +56,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
 | `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
 | `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
-| `owner_soc_manifest_min_svn` | 8-bit strap value (0-64) | Owner SoC Manifest min SVN floor. Stored in a 64-bit OTP bit-count counter and forwarded by MCU ROM to `SS_STRAP_GENERIC[3]` bits\[15:8\] on full subsystem cold boot |
+| `owner_soc_manifest_min_svn` | 64 OTP bits | Owner manifest minimum SVN (0-64); decoded to numeric `FUSE_SOC_MANIFEST_SVN[2]` on 2.2, or `SS_STRAP_GENERIC[3][15:8]` on 2.1, on full subsystem cold boot |
 
 ### Optional fuses
 
@@ -117,7 +117,12 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 
 - **`CPTRA_CORE_RUNTIME_SVN`** ✓ → `FUSE_RUNTIME_SVN[0..3]`: raw u32 × 4
 
-- **`CPTRA_CORE_SOC_MANIFEST_SVN`** ✓ → `FUSE_SOC_MANIFEST_SVN[0..3]`: raw u32 × 4
+- **`CPTRA_CORE_SOC_MANIFEST_SVN`** ✓ → `FUSE_SOC_MANIFEST_SVN[0]` on 2.2
+  (`CALIPTRA_HW_REV=latest`): the highest programmed bit position in the
+  128-bit OTP bitmap becomes the numeric minimum (0 for an empty bitmap).
+  Words 1 and 3 are zero; word 2 holds the independent owner floor below.
+  `CALIPTRA_HW_REV=2.1` still forwards the raw bitmap as u32 × 4.
+  See [Core register handoff on 2.2](svn.md#core-register-handoff-on-22).
 
 - **`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`** ✓ → `FUSE_SOC_MANIFEST_MAX_SVN`: raw u32
 
@@ -165,22 +170,32 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`cptra_itrng_entropy_config_1`** ✓ →
   `CPTRA_I_TRNG_ENTROPY_CONFIG_1`: `Single{bits:32}` raw u32.
 
-- **`owner_soc_manifest_min_svn`** ✓ → `SS_STRAP_GENERIC[3]` bits\[15:8\].
-  `OneHot{bits:64}` in non-ECC `VENDOR_TEST_PARTITION`: count programmed bits
-  across 8 bytes to obtain a minimum SVN from 0 through 64. MCU ROM forwards
-  this count as an 8-bit binary value before `CPTRA_FUSE_WR_DONE` on full
-  subsystem cold boot. Other strap bits are preserved, including
-  `stable-owner-key` bit\[0\]. PK-hash skip-lock and rotation are read from
-  `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively.
-  See [Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn) for programming
+- **`owner_soc_manifest_min_svn`** ✓ → `FUSE_SOC_MANIFEST_SVN[2]` on 2.2
+  (`CALIPTRA_HW_REV=latest`): count programmed bits in the 64-bit OTP counter
+  and forward the numeric minimum (0-64). OTP storage remains `OneHot{bits:64}`;
+  a new floor takes effect only after a full subsystem cold boot.
+  `CALIPTRA_HW_REV=2.1` still forwards the decoded floor in
+  `SS_STRAP_GENERIC[3][15:8]`, preserving the other bits. The 2.2 handoff does
+  not write that strap field. Stable-owner enable and vendor-debug policy use
+  `SS_FW_FEATURE_CFG` on 2.2.
+  The counter resides in non-ECC `VENDOR_TEST_PARTITION`. See
+  [Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn) for programming
   and activation requirements.
 
-- **OTP status register offset** — hard-coded in MCU ROM (not from OTP).
-  Written to `SS_STRAP_GENERIC[0]` bits\[15:0\]; Caliptra ROM reads this strap
-  and uses it as the OTP controller status-register byte offset when polling
-  for DAI idle during UDS/FE programming. Integrators select the value from
-  their OTP controller's register map. See
-  [caliptra-sw#3723](https://github.com/chipsalliance/caliptra-sw/pull/3723).
+- **OTP controller layout** — hard-coded in MCU ROM (not from OTP). On 2.2,
+  MCU ROM writes the status-register offset and DAI-idle bit index to
+  `SS_OTP_FC_STATUS_CFG`, and the direct-access command-register offset to
+  `SS_OTP_FC_CMD_CFG`. Caliptra ROM consumes these values during UDS/FE
+  programming. The reference values are status offset `0x10`, DAI-idle bit
+  `30`, and direct-access command offset `0x80`. The 2.1 build writes the same
+  values to legacy `SS_STRAP_GENERIC[0..1]`.
+
+- **Firmware feature policy** — on 2.2, a `stable-owner-key` MCU ROM sets
+  `SS_FW_FEATURE_CFG.STABLE_OWNER_KEY_EN`. An optional
+  `RomParameters::vendor_debug_images_disabled` value sets or clears
+  `VENDOR_DEBUG_IMAGES_DIS`; `None` preserves a value written by the platform
+  before MCU ROM. The 2.1 build uses the corresponding legacy bits in
+  `SS_STRAP_GENERIC[3]`.
 
 - **`CPTRA_CORE_VENDOR_PK_HASH_VALID`** (all slots) — slot selection only, not written to any
   register. `LinearOr{bits:16, dupe:3}` → decoded u16 revocation bitmask:
@@ -269,7 +284,7 @@ the integration recommendations below.
 | `dot_initialized` | `LinearOr{bits:1, dupe:3}` | 3 physical bits in `VENDOR_NON_SECRET_PROD_PARTITION` |
 | `dot_fuse_array` | `OneHot{bits:256}` | 256 counter bits in non-ECC `VENDOR_TEST_PARTITION` |
 | `perma_hek_en` (2.1 only) | `LinearMajorityVote{bits:1, dupe:3}` | Existing majority-vote policy; 3 physical bits in `VENDOR_NON_SECRET_PROD_PARTITION` |
-| `owner_soc_manifest_min_svn` | `OneHot{bits:64}` | 64 counter bits in non-ECC `VENDOR_TEST_PARTITION`; decoded floor forwarded to `SS_STRAP_GENERIC[3]` bits\[15:8\] |
+| `owner_soc_manifest_min_svn` | `OneHot{bits:64}` | 64 counter bits in non-ECC `VENDOR_TEST_PARTITION`; decoded floor forwarded to `FUSE_SOC_MANIFEST_SVN[2]` on 2.2 or `SS_STRAP_GENERIC[3]` bits\[15:8\] on 2.1 |
 | `vendor_recovery_pk_hash` | `Single{bits:384}` | 48 bytes in `VENDOR_NON_SECRET_PROD_PARTITION`, spanning FUSE_8 and part of FUSE_9 |
 
 OR redundancy tolerates failed OTP programming when at least one copy of a bit
@@ -315,6 +330,8 @@ must preserve compatible read and write paths. See
 | `cptra_itrng_health_test_window_size` | ✅ | `Single{bits:16}` |
 | `cptra_itrng_entropy_config_0` | ✅ | `Single{bits:32}` |
 | `cptra_itrng_entropy_config_1` | ✅ | `Single{bits:32}` |
+| `owner_soc_manifest_min_svn` | ❌ | `OneHot{bits:64}` (reference bit-count counter) |
+| `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearOr{bits:1, dupe:3}` |
 | `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:256}` each (per-slot `CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`) |
 | `vendor_recovery_pk_hash_valid` (optional, if multiple slots) | ❌ | `LinearOr{bits:N, dupe:3}` |
 | `fw_encryption_key` | ✅ | `Single{bits:256}` (or 128/192 to match the chosen AES key length) |

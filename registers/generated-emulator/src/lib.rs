@@ -10,6 +10,9 @@ mod selected;
 pub use selected::*;
 pub const HARDWARE_REVISION: &str = env!("CALIPTRA_MCU_HW_REV");
 
+#[cfg(all(test, hw_rev = "latest"))]
+mod usb_baseline_tests;
+
 #[test]
 fn selected_revision_matches_requested_revision() {
     assert_eq!(

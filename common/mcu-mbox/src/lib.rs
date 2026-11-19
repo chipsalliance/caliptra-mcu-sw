@@ -5,3 +5,4 @@
 pub mod authorization;
 pub mod config;
 pub mod messages;
+pub mod target_status;

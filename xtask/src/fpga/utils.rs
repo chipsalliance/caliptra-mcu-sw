@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Context, Result};
-use cargo_metadata::MetadataCommand;
 
 use std::path::Path;
 
@@ -308,10 +307,15 @@ impl Container {
         let home = std::env::var("HOME").unwrap();
         let project_root = PROJECT_ROOT.clone();
         let project_root = project_root.display();
+        let revision =
+            caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+        let fuses = revision.fuses_hjson(Path::new("/work-dir"));
 
         self.run()
             .rm()
             .env("TERM", "xterm-256color")
+            .env("CALIPTRA_HW_REV", revision.as_str())
+            .env("CALIPTRA_MCU_FUSES_HJSON", &fuses.to_string_lossy())
             .volume(&project_root.to_string(), "/work-dir")
             .workdir("/work-dir")
             .volume(&format!("{home}/.cargo/registry"), "/root/.cargo/registry")
@@ -365,11 +369,12 @@ pub fn run_test_suite(
     };
     // Allow CI (which runs xtask from the repo root) to override the cd target.
     let workspace = std::env::var("CPTRA_TEST_WORKSPACE").unwrap_or_else(|_| test_dir.to_string());
+    let revision = caliptra_mcu_builder::hardware_revision()?;
     // --status-level=all emits STARTING lines so a hung test is visible in the
     // streamed log even if nextest never reports a PASS/FAIL.
     let mut test_command = format!(
         "(cd {workspace} && \
-                sudo {prelude} \
+                sudo CALIPTRA_HW_REV={revision} {prelude} \
                 cargo-nextest nextest run \
                 {binaries_args}\
                 {test_output} --no-fail-fast --status-level=all "
@@ -395,45 +400,9 @@ pub fn run_test_suite(
     Ok(())
 }
 
-/// Checks if any caliptra_sw dependencies are a local path.
-///
-/// If so, returns the Path to the caliptra_sw workspace root.
+/// Returns the selected local Caliptra software workspace.
 pub fn caliptra_sw_workspace_root() -> PathBuf {
-    let metadata = MetadataCommand::new().exec().unwrap();
-
-    // Look at the workspace dependencies for xtask and find a caliptra-sw crate.
-    // Check if the crate contains a path, that indicates that caliptra-sw is local.
-    //
-    // We have to look at workspace, otherwise `path` may not be set (opposed to looking at the
-    // local xtask dependencies).
-    let caliptra_path = metadata
-        .workspace_packages()
-        .iter()
-        .find(|p| p.name.as_ref() == "xtask")
-        .and_then(|xtask| {
-            xtask
-                .dependencies
-                .iter()
-                .find(|p| p.name == "caliptra-api-types")
-        })
-        .and_then(|caliptra_package| caliptra_package.path.clone())
-        .and_then(|p| p.ancestors().nth(2).map(|p| p.to_path_buf()))
-        // Fallback to the git manifest if caliptra-sw doesn't appear to be local.
-        .or_else(|| {
-            let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
-            let package = metadata
-                .packages
-                .iter()
-                .find(|p| p.name.to_string() == "caliptra-api-types")
-                .map(|p| p.manifest_path.clone())
-                .and_then(|p| p.ancestors().nth(3).map(|p| p.to_path_buf()));
-            package
-        });
-
-    match caliptra_path {
-        Some(path) => path.into(),
-        None => panic!("Could not determine caliptra-sw path"),
-    }
+    caliptra_mcu_builder::caliptra_sw_workspace_root()
 }
 
 /// Download a bitstream from a Caliptra bitstream manifest
@@ -528,6 +497,32 @@ pub fn resolve_target_host(target_host: Option<&str>) -> Option<String> {
                 default_host
             );
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_container_uses_selected_hardware_and_local_fuses() {
+        let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env().unwrap();
+        let mut container = Container {
+            cmd: Command::new("docker"),
+        };
+        container.setup_build_env().unwrap();
+        let args: Vec<_> = container.cmd.get_args().collect();
+        for expected in [
+            format!("CALIPTRA_HW_REV={revision}"),
+            format!(
+                "CALIPTRA_MCU_FUSES_HJSON={}",
+                revision.fuses_hjson(Path::new("/work-dir")).display()
+            ),
+        ] {
+            assert!(args.windows(2).any(|pair| {
+                pair[0] == std::ffi::OsStr::new("-e") && pair[1] == std::ffi::OsStr::new(&expected)
+            }));
         }
     }
 }

@@ -977,6 +977,10 @@ impl Emulator {
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(usb_periph)),
+            #[cfg(hw_capability = "usb-support")]
+            None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
@@ -984,9 +988,15 @@ impl Emulator {
             None,
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
+            #[cfg(hw_capability = "usb-support")]
+            None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,

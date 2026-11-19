@@ -3,7 +3,46 @@
 use std::{env, fmt, path::Path};
 
 pub const ENV: &str = "CALIPTRA_HW_REV";
-pub const DEFAULT: HardwareRevision = HardwareRevision::V2_1;
+pub const DEFAULT: HardwareRevision = HardwareRevision::Latest;
+
+/// Functionality provided by a selected hardware revision and its pinned Core.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Capability {
+    UsbSupport,
+    RecoveryInterfaceSelect,
+    OwnerPkHashMailbox,
+    OwnerPkHashRegisters,
+    MboxTargetDone,
+    MboxStatusCompletion,
+    NumericSvnFloors,
+    NamedSocIfcConfig,
+}
+
+impl Capability {
+    pub const ALL: &'static [Self] = &[
+        Self::UsbSupport,
+        Self::RecoveryInterfaceSelect,
+        Self::OwnerPkHashMailbox,
+        Self::OwnerPkHashRegisters,
+        Self::MboxTargetDone,
+        Self::MboxStatusCompletion,
+        Self::NumericSvnFloors,
+        Self::NamedSocIfcConfig,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UsbSupport => "usb-support",
+            Self::RecoveryInterfaceSelect => "recovery-interface-select",
+            Self::OwnerPkHashMailbox => "owner-pk-hash-mailbox",
+            Self::OwnerPkHashRegisters => "owner-pk-hash-registers",
+            Self::MboxTargetDone => "mbox-target-done",
+            Self::MboxStatusCompletion => "mbox-status-completion",
+            Self::NumericSvnFloors => "numeric-svn-floors",
+            Self::NamedSocIfcConfig => "named-soc-ifc-config",
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HardwareRevision {
@@ -12,6 +51,24 @@ pub enum HardwareRevision {
 }
 
 impl HardwareRevision {
+    pub const fn capabilities(self) -> &'static [Capability] {
+        match self {
+            Self::V2_1 => &[Capability::OwnerPkHashMailbox, Capability::MboxTargetDone],
+            Self::Latest => &[
+                Capability::UsbSupport,
+                Capability::RecoveryInterfaceSelect,
+                Capability::OwnerPkHashRegisters,
+                Capability::MboxStatusCompletion,
+                Capability::NumericSvnFloors,
+                Capability::NamedSocIfcConfig,
+            ],
+        }
+    }
+
+    pub fn supports(self, capability: Capability) -> bool {
+        self.capabilities().contains(&capability)
+    }
+
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "2.1" => Ok(Self::V2_1),
@@ -65,8 +122,8 @@ impl HardwareRevision {
         }
     }
 
-    // Both snapshots initially use the validated 2.1 hardware. Advance this
-    // contract together with latest's hardware and generated bindings.
+    // This is the existing emulator/core behavior contract, not the MCU register
+    // revision. Full 2.2 behavior remains gated on core alignment and new models.
     pub const fn emulator_version(self) -> &'static str {
         "2.1.0"
     }
@@ -87,10 +144,29 @@ impl HardwareRevision {
     }
 
     pub fn emit_build_configuration(self) {
-        println!("cargo:rerun-if-env-changed={ENV}");
-        println!("cargo:rustc-check-cfg=cfg(hw_rev, values(\"2.1\", \"latest\"))");
-        println!("cargo:rustc-cfg=hw_rev=\"{self}\"");
-        println!("cargo:rustc-env=CALIPTRA_MCU_HW_REV={self}");
+        print!("{}", self.build_configuration());
+    }
+
+    fn build_configuration(self) -> String {
+        let names = Capability::ALL
+            .iter()
+            .map(|capability| format!("\"{}\"", capability.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut configuration = format!(
+            "cargo:rerun-if-env-changed={ENV}\n\
+             cargo:rustc-check-cfg=cfg(hw_rev, values(\"2.1\", \"latest\"))\n\
+             cargo:rustc-check-cfg=cfg(hw_capability, values({names}))\n\
+             cargo:rustc-cfg=hw_rev=\"{self}\"\n\
+             cargo:rustc-env=CALIPTRA_MCU_HW_REV={self}\n"
+        );
+        for capability in self.capabilities() {
+            configuration.push_str(&format!(
+                "cargo:rustc-cfg=hw_capability=\"{}\"\n",
+                capability.as_str()
+            ));
+        }
+        configuration
     }
 
     pub fn otp_mmap(self, root: &Path) -> std::path::PathBuf {
@@ -114,13 +190,82 @@ mod tests {
     use super::*;
 
     #[test]
-    fn supported_selectors_and_default() {
-        assert_eq!(DEFAULT, HardwareRevision::V2_1);
-        assert_eq!(HardwareRevision::parse("2.1"), Ok(DEFAULT));
+    fn capability_matrix_matches_selected_hardware_and_core_contract() {
+        use Capability::*;
+
         assert_eq!(
-            HardwareRevision::parse("latest"),
-            Ok(HardwareRevision::Latest)
+            HardwareRevision::V2_1.capabilities(),
+            &[OwnerPkHashMailbox, MboxTargetDone]
         );
+        assert_eq!(
+            HardwareRevision::Latest.capabilities(),
+            &[
+                UsbSupport,
+                RecoveryInterfaceSelect,
+                OwnerPkHashRegisters,
+                MboxStatusCompletion,
+                NumericSvnFloors,
+                NamedSocIfcConfig,
+            ]
+        );
+        for revision in [HardwareRevision::V2_1, HardwareRevision::Latest] {
+            assert_ne!(
+                revision.supports(OwnerPkHashMailbox),
+                revision.supports(OwnerPkHashRegisters)
+            );
+            assert_ne!(
+                revision.supports(MboxTargetDone),
+                revision.supports(MboxStatusCompletion)
+            );
+            assert_eq!(
+                revision.supports(NumericSvnFloors),
+                revision == HardwareRevision::Latest
+            );
+            assert_eq!(
+                revision.supports(NamedSocIfcConfig),
+                revision == HardwareRevision::Latest
+            );
+        }
+    }
+
+    #[test]
+    fn build_configuration_registers_all_capabilities_and_enables_only_selected_ones() {
+        let names: std::collections::HashSet<_> = Capability::ALL
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect();
+        assert_eq!(names.len(), Capability::ALL.len());
+
+        for revision in [HardwareRevision::V2_1, HardwareRevision::Latest] {
+            let configuration = revision.build_configuration();
+            let check_cfg = configuration
+                .lines()
+                .find(|line| line.starts_with("cargo:rustc-check-cfg=cfg(hw_capability,"))
+                .unwrap();
+            for capability in Capability::ALL {
+                let name = capability.as_str();
+                assert!(check_cfg.contains(&format!("\"{name}\"")));
+                assert_eq!(
+                    configuration
+                        .lines()
+                        .filter(|line| *line == format!("cargo:rustc-cfg=hw_capability=\"{name}\""))
+                        .count(),
+                    usize::from(revision.supports(*capability)),
+                    "{revision}: {name}"
+                );
+            }
+            assert!(configuration.contains(&format!("cargo:rustc-cfg=hw_rev=\"{revision}\"\n")));
+            assert!(configuration
+                .contains(&format!("cargo:rustc-env=CALIPTRA_MCU_HW_REV={revision}\n")));
+            assert!(configuration.contains(&format!("cargo:rerun-if-env-changed={ENV}\n")));
+        }
+    }
+
+    #[test]
+    fn supported_selectors_and_default() {
+        assert_eq!(DEFAULT, HardwareRevision::Latest);
+        assert_eq!(HardwareRevision::parse("2.1"), Ok(HardwareRevision::V2_1));
+        assert_eq!(HardwareRevision::parse("latest"), Ok(DEFAULT));
         for value in ["", "2.0", "2.2", "2.1.0", "../latest"] {
             assert!(HardwareRevision::parse(value).is_err());
         }

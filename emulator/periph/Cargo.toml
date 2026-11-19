@@ -27,6 +27,7 @@ num_enum.workspace = true
 caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 semver.workspace = true
 serde_json.workspace = true
 serde.workspace = true
@@ -41,3 +42,6 @@ tempfile.workspace = true
 
 [features]
 default = []
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

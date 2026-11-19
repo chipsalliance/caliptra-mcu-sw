@@ -28,7 +28,6 @@ use caliptra_image_types::{
 use caliptra_mcu_flash_image::{
     MCU_RT_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
 };
-use cargo_metadata::MetadataCommand;
 use hex::ToHex;
 use std::{
     collections::HashSet,
@@ -830,22 +829,13 @@ impl CaliptraBuilder {
         )
     }
 
-    fn caliptra_version() -> Option<String> {
-        let metadata = MetadataCommand::new().exec().unwrap();
-        if let Some(caliptra) = metadata
-            .packages
-            .iter()
-            .find(|p| *p.name == "caliptra-builder")
-        {
-            if let Some(source) = caliptra.source.as_ref() {
-                if source.repr.starts_with("git") && source.repr.contains('#') {
-                    // If the source is a git repository, we can extract the commit hash
-                    return source.repr.split('#').next_back().map(|s| s.to_string());
-                }
-            }
+    fn caliptra_version() -> Result<Option<String>> {
+        let revision = crate::caliptra_source_revision()?;
+        if !crate::caliptra_source_changes()?.is_empty() {
+            println!("Caliptra checkout has local changes; disabling firmware caches");
+            return Ok(None);
         }
-        println!("Could not determine Caliptra version from Cargo metadata, local checkout?");
-        None
+        Ok(Some(revision))
     }
 
     fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
@@ -854,7 +844,7 @@ impl CaliptraBuilder {
         }
 
         let platform = if fpga { "fpga" } else { "emulator" };
-        if let Some(version) = Self::caliptra_version() {
+        if let Some(version) = Self::caliptra_version()? {
             let path =
                 Self::hardware_cache_path(&format!("caliptra-rom-{}-{}.bin", version, platform))?;
             if path.exists() {
@@ -1014,7 +1004,7 @@ fn main() -> Result<()> {
     ) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
         let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
-        if let Some(version) = Self::caliptra_version() {
+        if let Some(version) = Self::caliptra_version()? {
             let svn_or_default = svn.unwrap_or_default();
             let key_str = if use_second_key { "key2" } else { "key1" };
             let pqc_key_str = match pqc_key_type {
@@ -1174,7 +1164,7 @@ fn main() -> Result<()> {
     ) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
         let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
-        let version = Self::caliptra_version().unwrap_or("no_version".to_string());
+        let version = Self::caliptra_version()?.unwrap_or("no_version".to_string());
         let svn_or_default = svn.unwrap_or_default();
         let key_str = if use_second_key { "key2" } else { "key1" };
         let pqc_key_str = match pqc_key_type {
@@ -1211,6 +1201,7 @@ fn main() -> Result<()> {
     }
 
     fn core_build_command() -> Result<Command> {
+        crate::caliptra_source_revision()?;
         Ok(Self::core_build_command_for_revision(
             crate::hardware_revision()?,
         ))
@@ -1236,7 +1227,6 @@ fn main() -> Result<()> {
     }
 
     pub(crate) fn build_core_rom(id: caliptra_builder::FwId<'static>, path: &Path) -> Result<()> {
-        let id = Self::core_firmware_id(id)?;
         let index = caliptra_builder::firmware::REGISTERED_FW
             .iter()
             .position(|registered| **registered == id)
@@ -1251,29 +1241,6 @@ fn main() -> Result<()> {
             bail!("Caliptra ROM helper failed: {status}");
         }
         Ok(())
-    }
-
-    pub(crate) fn core_firmware_id(
-        id: caliptra_builder::FwId<'static>,
-    ) -> Result<caliptra_builder::FwId<'static>> {
-        Self::core_firmware_id_for_revision(id, crate::hardware_revision()?)
-    }
-
-    fn core_firmware_id_for_revision(
-        id: caliptra_builder::FwId<'static>,
-        revision: caliptra_mcu_hw_revision::HardwareRevision,
-    ) -> Result<caliptra_builder::FwId<'static>> {
-        if let caliptra_builder::FirmwareType::Source { hw_revision, .. } = id.fw_type {
-            if hw_revision
-                .is_some_and(|value| value != caliptra_hw_model_types::CaliptraHwVersion::V2_1)
-            {
-                bail!(
-                    "Core firmware {} requires {hw_revision:?}, incompatible with CALIPTRA_HW_REV={revision}",
-                    id.crate_name
-                );
-            }
-        }
-        Ok(id)
     }
 
     fn hardware_cache_path(name: &str) -> Result<PathBuf> {
@@ -1737,6 +1704,26 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn local_core_cache_version_tracks_the_actual_checkout() {
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(crate::caliptra_sw_workspace_root())
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let revision = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+        assert_eq!(crate::caliptra_source_revision().unwrap(), revision);
+        let expected = crate::caliptra_source_changes()
+            .unwrap()
+            .is_empty()
+            .then_some(revision);
+        assert_eq!(
+            super::CaliptraBuilder::caliptra_version().unwrap(),
+            expected
+        );
+    }
+
+    #[test]
     fn core_build_process_explicitly_selects_hardware() {
         use caliptra_mcu_hw_revision::HardwareRevision::{Latest, V2_1};
         for revision in [V2_1, Latest] {
@@ -1745,38 +1732,6 @@ mod tests {
                 key == caliptra_mcu_hw_revision::ENV
                     && value == Some(std::ffi::OsStr::new(revision.as_str()))
             }));
-        }
-    }
-
-    #[test]
-    fn core_firmware_revision_is_propagated_and_conflicts_are_rejected() {
-        use caliptra_builder::{FirmwareType, FwId};
-        use caliptra_hw_model_types::CaliptraHwVersion;
-        use caliptra_mcu_hw_revision::HardwareRevision::{Latest, V2_1};
-        for revision in [V2_1, Latest] {
-            let id = super::CaliptraBuilder::core_firmware_id_for_revision(
-                caliptra_builder::firmware::ROM_WITH_UART,
-                revision,
-            )
-            .unwrap();
-            let FirmwareType::Source { hw_revision, .. } = id.fw_type else {
-                panic!("source firmware unexpectedly replaced");
-            };
-            assert_eq!(hw_revision, None);
-            assert!(caliptra_builder::firmware::REGISTERED_FW.contains(&&id));
-            let incompatible = FwId {
-                fw_type: FirmwareType::Source {
-                    features: &[],
-                    hw_revision: Some(CaliptraHwVersion::V2_2),
-                },
-                ..id
-            };
-            assert!(
-                super::CaliptraBuilder::core_firmware_id_for_revision(incompatible, revision)
-                    .unwrap_err()
-                    .to_string()
-                    .contains("incompatible with CALIPTRA_HW_REV")
-            );
         }
     }
 

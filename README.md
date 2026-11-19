@@ -46,69 +46,65 @@ For more details on how to run tests locally, how CI works, and how to add new t
 
 ## Hardware revisions
 
-`CALIPTRA_HW_REV` selects the hardware inputs and both firmware and emulator
-register interfaces. Supported values are `2.1` (default) and `latest`.
-Other values, including `2.2`, are rejected; `latest` is not an alias for 2.2.
-The repository's Cargo configuration also supplies the 2.1 default to Caliptra
-core dependencies, whose upstream default differs.
+Set `CALIPTRA_HW_REV` to `2.1` or `latest` (default) to select the hardware
+revision. Use the matching Caliptra software version as shown below.
 
-| Selector | Pinned subsystem | Generated interfaces |
-|---|---|---|
-| `2.1` | `hw/rev-2_1/caliptra-ss` | `registers/generated-{firmware,emulator}/src/rev_2_1` |
-| `latest` | `hw/latest/caliptra-ss` | `registers/generated-{firmware,emulator}/src/latest` |
+Functionality is gated by named capabilities rather than revision labels:
 
-Both subsystem snapshots initially pin the validated commit
-`3350c70a296bf897abe8c02e5ec0da69cc83ee16`, including its recorded nested
-dependencies. Update a subsystem gitlink and regenerate its interfaces together;
-do not independently advance nested RTL/I3C dependencies to branch tips.
-The production USB hardware upgrade is tracked separately in #2237.
+```rust
+#[cfg(hw_capability = "usb-support")]
+```
 
-Each hardware-input directory (`hw/rev-2_1` or `hw/latest`) also owns its local
-RDL files and `fuses.hjson`. Register generation selects `mcu.rdl`, `network.rdl`,
-their local includes and the fuse definitions from that same directory.
-The directories initially contain identical inputs, but are independent copies:
-updating latest's local definitions must not change 2.1. Shared tools and models
-remain in `hw/revision` and `hw/model`; the Vivado FPGA flow continues to use the
-validated 2.1 subsystem.
+The shared `caliptra-mcu-hw-revision` build helper derives these cfgs from the
+selected hardware revision and its pinned Core:
+
+| Capability | `2.1` | `latest` |
+| --- | --- | --- |
+| `usb-support` (compound USB registers and packet-memory windows) | No | Yes |
+| `recovery-interface-select` (Caliptra recovery register/signal routing) | No | Yes |
+| `owner-pk-hash-mailbox` (DOT owner hash via Core mailbox) | Yes | No |
+| `owner-pk-hash-registers` (DOT owner hash via architectural registers) | No | Yes |
+| `mbox-target-done` (mailbox completion requires DONE) | Yes | No |
+| `mbox-status-completion` (mailbox completion uses non-BUSY status) | No | Yes |
+
+Add capabilities and their revision mapping in `hw/revision/src/lib.rs`; each
+consuming crate's build script must call `emit_build_configuration()`. Ordinary
+Rust build scripts emit cfgs only for their own crate, not dependencies.
+Keep `hw_rev` gates for exact register snapshots, revision-specific constructor
+layouts, and temporary revision-specific test exclusions. Capabilities are not
+Cargo features: retain Cargo features for optional software and dependencies.
+USB availability does not select USB boot or initialize a USB controller; the
+ROM still defaults to I3C routing unless explicitly configured otherwise.
+
+## Caliptra software versions
+
+Use `cargo xtask switch-version` to select `2.1` or `latest` (default).
+Set `CALIPTRA_HW_REV` to the matching version when building.
+
+Initialize the submodules and switch to 2.1:
 
 ```shell
 git submodule update --init --recursive
+CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
 CALIPTRA_HW_REV=2.1 cargo xtask rom-build
+CALIPTRA_HW_REV=2.1 cargo xtask runtime-build
+```
+
+Switch back to latest:
+
+```shell
+CALIPTRA_HW_REV=2.1 cargo xtask switch-version latest
 CALIPTRA_HW_REV=latest cargo xtask rom-build
 CALIPTRA_HW_REV=latest cargo xtask runtime-build
 ```
 
-Changing the selector rebuilds affected crates without `cargo clean`. New
-firmware functionality must still have its own Cargo feature gates: selecting
-`latest` does not enable new behavior. The existing `hw-2-1` feature keeps its
-firmware semantics and is valid for both current snapshots.
-
-The emulator's `--hw-revision` is a runtime behavior contract, not a register
-selector. Both snapshots currently require `2.1.0`, now the emulator and
-`cargo xtask runtime` default; incompatible runtime revisions are rejected.
-This intentionally removes the previous implicit 2.0 emulator behavior.
-
-Default 2.1 firmware/archive filenames remain compatible with existing tooling.
-Latest outputs have a `latest-` prefix; explicit output paths remain caller-owned.
-Caliptra ROM/FW cache keys always include `rev_2_1-` or `latest-`, including
-separately sourced ROM builds. Core source builds run in a child process with
-the selected revision explicitly set, preserving upstream's registered firmware
-IDs and isolating its in-process firmware cache. ROM/runtime outputs have `.provenance.txt`
-sidecars, and firmware/emulator ZIPs include `hardware-provenance.txt`.
-These record subsystem and nested hardware commits, the Cargo Caliptra source,
-and the separately configured ROM source (`CALIPTRA_ROM_REF`), frozen ROM
-selection (`CPTRA_CI_ROM_VERSION`), and prebuilt directory, when applicable.
-Explicit externally supplied binaries remain the caller's compatibility responsibility.
-
-**Core integration boundary:** the pinned Caliptra core uses different
-subsystem commits (`753308dd...` for 2.1 and `01b0a352...` for latest).
-Equal selector names do not prove equivalent hardware. This change preserves
-the existing core dependency; core/MCU pin alignment and actual 2.2 validation
-remain in #2238. Both current MCU snapshots retain the existing 2.1 ROM contract,
-including the CI `CALIPTRA_ROM_REF=rom-2.1.2`. Prebuilt or separately sourced ROMs
-must be revalidated before advancing latest. Upstream core Verilator hardware
-selection is not fully revision-aware; this change does not claim dual-revision
-RTL simulation or FPGA validation.
+CI runs precheckin and emulator tests for both revisions. Stable aggregate checks
+retain the `main-2.1` required names (`precheckin` and `test_emulator (1)` through
+`test_emulator (8)`) and fail if either revision fails, is cancelled, or is skipped.
+Each emulator aggregate requires the entire revision/shard matrix to succeed.
+Build artifacts are retained for seven days to support queued jobs and reruns.
+FPGA and SPDM execution remains on the validated 2.1 bitstream; latest is
+build-only until its separate FPGA integration is qualified.
 
 ## Documentation
 
