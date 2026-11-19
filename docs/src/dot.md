@@ -1526,6 +1526,9 @@ ROM locked-state recovery
 The emulator ROM wires `Mbox0RecoveryTransport` into its locked-state handler
 chain when built with `test-dot-recovery`. This path exercises DOT_OVERRIDE over
 MCI mailbox 0 when no backup blob is available.
+The transport is for tests: the test host takes the place of the BMC. A BMC or
+another recovery agent has no access to the MCI mailboxes. ROM releases the lock
+that the MCU holds on mailbox 0 after a reset, so that the host can take it.
 
 **When:** Device is in Locked (ODD) state with a corrupted or missing DOT_BLOB. The BMC
 holds the DOT recovery private keys corresponding to the recovery key hash stored
