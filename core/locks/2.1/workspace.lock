@@ -1018,7 +1018,6 @@ dependencies = [
  "caliptra-auth-man-gen",
  "caliptra-auth-man-types",
  "caliptra-builder",
- "caliptra-hw-model-types",
  "caliptra-image-crypto",
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
