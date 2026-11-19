@@ -785,6 +785,8 @@ dependencies = [
  "caliptra-emu-types",
  "caliptra-hw-model-types",
  "caliptra-registers",
+ "caliptra-registers-latest",
+ "caliptra-registers-rev-2-1",
  "const-random",
  "fips204",
  "lazy_static",
@@ -1361,10 +1363,7 @@ dependencies = [
  "caliptra-mcu-emulator-consts",
  "caliptra-registers",
  "clap 4.5.51",
- "ctrlc",
  "elf",
- "gdbstub",
- "gdbstub_arch",
  "hex",
  "tock-registers",
 ]
@@ -1866,6 +1865,7 @@ dependencies = [
  "hex",
  "p384",
  "sha2",
+ "x509-parser",
  "zerocopy",
 ]
 
@@ -1885,7 +1885,6 @@ dependencies = [
  "caliptra-mcu-flash-image",
  "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
- "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -2848,6 +2847,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-registers-latest",
  "caliptra-registers-rev-2-1",
+ "caliptra-ureg",
 ]
 
 [[package]]
@@ -5453,6 +5453,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
+ "caliptra-mcu-registers-generated",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",

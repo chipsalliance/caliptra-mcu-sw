@@ -154,7 +154,7 @@ jobs:
         with:
           name: fpga-fw-${{ matrix.hw-revision }}-shard-${{ matrix.shard }}
           path: all-fw-shard-*.zip
-          retention-days: 1
+          retention-days: 7
 
   build_test_binaries:
     if: ${{ vars.RUN_FPGA_CI != 'false' }}
@@ -331,7 +331,7 @@ jobs:
         with:
           name: caliptra-bitstream-${{ matrix.hw-revision }}
           path: /tmp/caliptra-bitstream.pdi
-          retention-days: 1
+          retention-days: 7
 
 
       - name: 'Upload test binaries artifact'
@@ -339,14 +339,14 @@ jobs:
         with:
           name: caliptra-test-binaries-${{ matrix.hw-revision }}
           path: /tmp/caliptra-test-binaries.sqsh
-          retention-days: 1
+          retention-days: 7
 
       - name: 'Upload test firmware artifact'
         uses: actions/upload-artifact@v7
         with:
           name: caliptra-test-firmware-${{ matrix.hw-revision }}
           path: /tmp/caliptra-binaries
-          retention-days: 1
+          retention-days: 7
 
   test_artifacts:
     # Only the validated 2.1 bitstream is executed; latest remains build-only.

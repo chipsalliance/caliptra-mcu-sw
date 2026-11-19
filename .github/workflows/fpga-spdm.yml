@@ -208,28 +208,28 @@ jobs:
         with:
           name: caliptra-bitstream-${{ matrix.hw-revision }}
           path: /tmp/caliptra-bitstream.pdi
-          retention-days: 1
+          retention-days: 7
 
       - name: "Upload test binaries artifact"
         uses: actions/upload-artifact@v7
         with:
           name: caliptra-test-binaries-${{ matrix.hw-revision }}
           path: /tmp/caliptra-test-binaries.sqsh
-          retention-days: 1
+          retention-days: 7
 
       - name: "Upload test firmware artifact"
         uses: actions/upload-artifact@v7
         with:
           name: caliptra-test-firmware-${{ matrix.hw-revision }}
           path: /tmp/caliptra-binaries
-          retention-days: 1
+          retention-days: 7
 
       - name: "Upload spdm-emu binaries artifact"
         uses: actions/upload-artifact@v7
         with:
           name: spdm-emu-binaries-${{ matrix.hw-revision }}
           path: /tmp/spdm-emu-binaries
-          retention-days: 1
+          retention-days: 7
 
   test_spdm:
     # Only the validated 2.1 bitstream is executed; latest remains build-only.

@@ -98,6 +98,14 @@ CALIPTRA_HW_REV=latest cargo xtask rom-build
 CALIPTRA_HW_REV=latest cargo xtask runtime-build
 ```
 
+CI runs precheckin and emulator tests for both revisions. Stable aggregate checks
+retain the `main-2.1` required names (`precheckin` and `test_emulator (1)` through
+`test_emulator (8)`) and fail if either revision fails, is cancelled, or is skipped.
+Each emulator aggregate requires the entire revision/shard matrix to succeed.
+Build artifacts are retained for seven days to support queued jobs and reruns.
+FPGA and SPDM execution remains on the validated 2.1 bitstream; latest is
+build-only until its separate FPGA integration is qualified.
+
 ## Documentation
 
 The specification is published [here](https://chipsalliance.github.io/caliptra-mcu-sw/).

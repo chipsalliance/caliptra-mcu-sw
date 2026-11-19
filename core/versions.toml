@@ -1,7 +1,8 @@
 # Licensed under the Apache-2.0 license
 
 # Immutable caliptra-sw commits. The submodule gitlink defaults to latest.
-# 2.1 is the official baseline; latest pins upstream's caliptra-2.2-dev branch.
+# 2.1 preserves main-2.1's Core baseline. Latest is caliptra-2.2-dev plus
+# shared API compatibility backports: chipsalliance/caliptra-sw#4442.
 [versions]
-"2.1" = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb"
-latest = "5beeb0204f8c54b38134055431afdd64fec32e3c"
+"2.1" = "757b7445b18483d624612f03b195cbff2b415963"
+latest = "80b89df38ae16f57af4c0e19720e556158afe90e"

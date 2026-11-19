@@ -105,7 +105,7 @@ jobs:
           # Queued jobs and failed-job reruns can outlive a one-day retention.
           retention-days: 7
 
-  precheckin:
+  precheckin_revision:
     runs-on: e2-standard-8
     needs: [build-xtask]
     timeout-minutes: 45
@@ -152,6 +152,16 @@ jobs:
         run: |
           CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           /tmp/xtask precheckin
+
+  precheckin:
+    runs-on: ubuntu-latest
+    needs: [precheckin_revision]
+    if: always()
+    steps:
+      - name: Require both revision precheckins
+        env:
+          RESULT: ${{ needs.precheckin_revision.result }}
+        run: test "$RESULT" = success
 
   caliptra-util-host-precheckin:
     strategy:
@@ -382,7 +392,7 @@ jobs:
           path: /tmp/nextest-archive.tar.zst
           retention-days: 7
 
-  test_emulator:
+  test_emulator_revision:
     runs-on: e2-standard-4
     needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
     timeout-minutes: 120
@@ -497,10 +507,24 @@ jobs:
             /tmp/junit-release.xml
           retention-days: 1
 
+  # Preserve main-2.1's required check names while requiring both revisions.
+  test_emulator:
+    runs-on: ubuntu-latest
+    needs: [test_emulator_revision]
+    if: always()
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - name: Require all revision and shard tests
+        env:
+          RESULT: ${{ needs.test_emulator_revision.result }}
+        run: test "$RESULT" = success
+
   print_test_results:
     runs-on: ubuntu-latest
-    needs: [test_emulator]
-    if: ${{ always() && (needs.test_emulator.result == 'success' || needs.test_emulator.result == 'failure') }}
+    needs: [test_emulator_revision]
+    if: ${{ always() && (needs.test_emulator_revision.result == 'success' || needs.test_emulator_revision.result == 'failure') }}
     strategy:
       fail-fast: false
       matrix:
