@@ -27,7 +27,7 @@ The FPGA should have the following installed (If you are not using a Caliptra im
 - [cargo-nextest](https://github.com/nextest-rs/nextest)
   - `cargo-nextest` should be useable by the root user. Consider installing it to the system path `/usr/bin`.
 
-**Suggestion**: Download the latest FPGA Image from the Caliptra-SW FPGA Image build [job](https://github.com/chipsalliance/caliptra-sw/actions/workflows/fpga-image.yml). This ensures you are testing with the same system used in the FPGA CI. Developer images have a "-dev" suffix.
+**Suggestion**: Download the latest FPGA Image from the Caliptra-Infra FPGA Image build [job](https://github.com/chipsalliance/caliptra-infra/actions/workflows/fpga-image.yml). This ensures you are testing with the same system used in the FPGA CI. Developer images have a "-dev" suffix.
 
 ## Suggested Development Flow
 
