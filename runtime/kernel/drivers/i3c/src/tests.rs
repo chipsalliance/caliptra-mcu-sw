@@ -7,12 +7,7 @@
 use super::*;
 use crate::hil::I3CTarget;
 use kernel::hil::time::{Frequency, Ticks, Ticks32};
-use std::sync::{Mutex, MutexGuard};
 use tock_registers::registers::ReadWrite;
-
-// Tock's deferred-call registry is global and single-threaded. Serialize all
-// tests, including construction, and keep the total number of instances < 32.
-static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct TestFrequency;
 impl Frequency for TestFrequency {
@@ -127,8 +122,10 @@ impl TxClient for TxRecorder {
 
 struct RxRecorder {
     driver: &'static Driver,
+    tx: &'static TxRecorder,
     requested: Cell<usize>,
     calls: Cell<usize>,
+    tx_calls_at_rx: Cell<usize>,
     len: Cell<usize>,
     available: TakeCell<'static, [u8]>,
     received: TakeCell<'static, [u8]>,
@@ -144,6 +141,7 @@ impl RxClient for RxRecorder {
 
     fn receive_write(&self, buffer: &'static mut [u8], len: usize) {
         self.calls.set(self.calls.get() + 1);
+        self.tx_calls_at_rx.set(self.tx.calls.get());
         self.len.set(len);
         self.received.replace(buffer);
         // A real FIFO pop deasserts RxDescStat. Test RAM has no read side effects.
@@ -152,7 +150,6 @@ impl RxClient for RxRecorder {
 }
 
 struct Harness {
-    _guard: MutexGuard<'static, ()>,
     registers: Registers,
     driver: &'static Driver,
     alarm: &'static TestAlarm,
@@ -162,15 +159,12 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
-        let guard = TEST_LOCK.lock().unwrap();
-        assert!(!DeferredCall::has_tasks());
         let registers = Registers::new();
         let alarm = Box::leak(Box::new(TestAlarm::new()));
         let mux = Box::leak(Box::new(MuxAlarm::new(alarm)));
         alarm.set_alarm_client(mux);
         let driver = Box::leak(Box::new(Driver::new(registers.base(), mux)));
         driver.init();
-        DeferredCall::verify_setup();
         let tx = Box::leak(Box::new(TxRecorder {
             driver,
             calls: Cell::new(0),
@@ -179,8 +173,10 @@ impl Harness {
         }));
         let rx = Box::leak(Box::new(RxRecorder {
             driver,
+            tx,
             requested: Cell::new(0),
             calls: Cell::new(0),
+            tx_calls_at_rx: Cell::new(0),
             len: Cell::new(0),
             available: TakeCell::empty(),
             received: TakeCell::empty(),
@@ -188,7 +184,6 @@ impl Harness {
         driver.set_tx_client(tx);
         driver.set_rx_client(rx);
         Self {
-            _guard: guard,
             registers,
             driver,
             alarm,
@@ -227,10 +222,7 @@ impl Harness {
 
     fn complete_tx(&self) {
         self.ibi_done(0);
-        assert!(!DeferredCall::has_tasks());
         self.private_read_done();
-        assert!(DeferredCall::service_next_pending().is_some());
-        assert!(!DeferredCall::has_tasks());
     }
 }
 
@@ -291,7 +283,7 @@ fn tx_bounds_and_word_padding() {
 }
 
 #[test]
-fn tx_busy_until_deferred_completion_and_callback_can_send_next() {
+fn tx_busy_until_completion_and_callback_can_send_next() {
     let h = Harness::new();
     let first = buffer(4);
     let first_ptr = first.as_ptr();
@@ -309,12 +301,10 @@ fn tx_busy_until_deferred_completion_and_callback_can_send_next() {
         assert_eq!(returned.as_ptr(), busy_ptr);
         assert_eq!(h.tx.calls.get(), 0);
     }
-    assert!(!DeferredCall::has_tasks());
     let (error, _) = h.driver.transmit_read(buffer(0), 0).unwrap_err();
     assert_eq!(error, ErrorCode::BUSY);
-    h.private_read_done();
     h.tx.next.replace(second);
-    assert!(DeferredCall::service_next_pending().is_some());
+    h.private_read_done();
     assert_eq!(h.tx.calls.get(), 1);
     assert_eq!(h.tx.buffer.take().unwrap().as_ptr(), first_ptr);
     assert_eq!(h.driver.pending_ibi.get(), Some((MDB_PENDING_READ_MCTP, 4)));
@@ -330,11 +320,9 @@ fn private_read_before_ibi_keeps_buffer_until_both_complete() {
     let ptr = buf.as_ptr();
     h.driver.transmit_read(buf, 4).unwrap();
     h.private_read_done();
-    assert!(!DeferredCall::has_tasks());
     assert_eq!(h.tx.calls.get(), 0);
     assert!(h.driver.tx_buffer.is_some());
     h.ibi_done(0);
-    assert!(DeferredCall::service_next_pending().is_some());
     assert_eq!(h.tx.calls.get(), 1);
     assert_eq!(h.tx.buffer.take().unwrap().as_ptr(), ptr);
 }
@@ -377,7 +365,6 @@ fn failed_ibi_resends_without_completing_or_releasing_buffer() {
         assert_eq!(h.registers.port(0x280).get(), 5u16.swap_bytes() as u32);
         assert_eq!(h.driver.pending_ibi.get(), Some((MDB_PENDING_READ_MCTP, 5)));
         assert_eq!(h.tx.calls.get(), 0);
-        assert!(!DeferredCall::has_tasks());
         let busy = buffer(4);
         let busy_ptr = busy.as_ptr();
         let (error, returned) = h.driver.transmit_read(busy, 4).unwrap_err();
@@ -410,7 +397,6 @@ fn mdb_only_ibi_retries_and_preserves_completion_order() {
                 Some((MDB_PENDING_READ_MCTP, 256))
             );
             assert_eq!(h.tx.calls.get(), 0);
-            assert!(!DeferredCall::has_tasks());
         }
 
         if read_first {
@@ -419,19 +405,17 @@ fn mdb_only_ibi_retries_and_preserves_completion_order() {
             h.ibi_done(0);
         }
         assert_eq!(h.tx.calls.get(), 0);
-        assert!(!DeferredCall::has_tasks());
         assert!(h.driver.tx_buffer.is_some());
-        if read_first {
-            h.ibi_done(0);
-        } else {
-            h.private_read_done();
-        }
 
         let second = buffer(4);
         let second_ptr = second.as_ptr();
         h.tx.next.replace(second);
         h.registers.port(0x280).set(0);
-        assert!(DeferredCall::service_next_pending().is_some());
+        if read_first {
+            h.ibi_done(0);
+        } else {
+            h.private_read_done();
+        }
         assert_eq!(h.tx.calls.get(), 1);
         assert_eq!(h.tx.buffer.take().unwrap().as_ptr(), first_ptr);
         assert_eq!(h.registers.port(0x280).get(), descriptor);
@@ -448,11 +432,9 @@ fn pending_read_ibi_format_is_busy_until_buffer_returned() {
         let h = Harness::new();
         h.driver.set_pending_read_ibi_mdb_only(mdb_only).unwrap();
         h.driver.transmit_read(buffer(5), 5).unwrap();
-        for stage in 0..3 {
+        for stage in 0..2 {
             if stage == 1 {
                 h.ibi_done(0);
-            } else if stage == 2 {
-                h.private_read_done();
             }
             assert_eq!(
                 h.driver.set_pending_read_ibi_mdb_only(!mdb_only),
@@ -460,7 +442,7 @@ fn pending_read_ibi_format_is_busy_until_buffer_returned() {
             );
             assert_eq!(h.driver.pending_read_ibi_mdb_only.get(), mdb_only);
         }
-        assert!(DeferredCall::service_next_pending().is_some());
+        h.private_read_done();
         assert_eq!(h.tx.calls.get(), 1);
         h.driver.set_pending_read_ibi_mdb_only(!mdb_only).unwrap();
         h.driver.transmit_read(buffer(256), 256).unwrap();
@@ -479,16 +461,13 @@ fn pending_read_ibi_format_is_busy_until_buffer_returned() {
 fn spurious_ibi_does_not_complete_twice() {
     let h = Harness::new();
     h.ibi_done(0);
-    assert!(!DeferredCall::has_tasks());
     assert_eq!(h.registers.port(0x280).get(), 0);
     h.driver.transmit_read(buffer(4), 4).unwrap();
     // An empty interrupt must not release a still-pending IBI.
     h.driver.handle_interrupt();
     assert_eq!(h.tx.calls.get(), 0);
-    assert!(!DeferredCall::has_tasks());
     h.complete_tx();
     h.ibi_done(0);
-    assert!(!DeferredCall::has_tasks());
     assert_eq!(h.tx.calls.get(), 1);
 }
 
@@ -613,4 +592,28 @@ fn address_validity_and_interrupt_enable_disable() {
         .is_set(InterruptEnable::IbiDoneEn));
     h.driver.disable();
     assert_eq!(h.driver.registers.tti_interrupt_enable.get(), 0);
+}
+
+#[test]
+fn back_to_back_tx_complete_and_rx_completes_tx_before_delivering_rx() {
+    let h = Harness::new();
+    let tx_buf = buffer(4);
+    let tx_ptr = tx_buf.as_ptr();
+    h.rx.available.replace(buffer(4));
+
+    h.driver.transmit_read(tx_buf, 4).unwrap();
+    h.ibi_done(0);
+
+    // Controller completes private read and sends next private write before ISR runs.
+    h.receive(4, 0);
+    h.driver
+        .registers
+        .tti_interrupt_status
+        .write(InterruptStatus::TxDescComplete::SET + InterruptStatus::RxDescStat::SET);
+    h.driver.handle_interrupt();
+
+    assert_eq!(h.tx.calls.get(), 1);
+    assert_eq!(h.tx.buffer.take().unwrap().as_ptr(), tx_ptr);
+    assert_eq!(h.rx.calls.get(), 1);
+    assert_eq!(h.rx.tx_calls_at_rx.get(), 1);
 }
