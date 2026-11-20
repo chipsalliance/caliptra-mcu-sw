@@ -172,6 +172,9 @@ impl Mci {
         let delay = if now >= self.mtimecmp {
             1
         } else {
+            // MTIP is the level mtime >= mtimecmp, so it drops while mtimecmp is ahead.
+            self.timer
+                .schedule_action_in(1, TimerAction::MachineTimerInterruptClear);
             // Clamp to below i64::MAX to avoid overflow in the timer scheduler.
             // This can happen when software writes mtimecmp in two halves,
             // creating a temporary very large value.
@@ -1960,6 +1963,40 @@ mod tests {
 
         // Status set but enable mask zero → line low (per-bit enable still required).
         assert!(!compute_mci_irq_level(NOTIF_EN, 0, 0, 0x4, 0x0));
+    }
+
+    #[test]
+    fn test_mtimecmp_ahead_of_mtime_clears_mtip() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+            None,
+            [0, 0],
+            false,
+            Rc::new(Cell::new(true)),
+        );
+
+        // mtimecmp <= mtime: MTIP asserts.
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0);
+        mci.write_mci_reg_mcu_rv_mtimecmp_l(0);
+        assert_eq!(
+            next_action(&clock),
+            Some(TimerAction::MachineTimerInterrupt)
+        );
+
+        // mtimecmp moved past mtime: MTIP drops.
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(1);
+        assert_eq!(
+            next_action(&clock),
+            Some(TimerAction::MachineTimerInterruptClear)
+        );
     }
 
     #[test]
