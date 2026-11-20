@@ -24,7 +24,7 @@ register_bitfields![usize,
     mitcnt1 [
         counter OFFSET(0) NUMBITS(riscv::XLEN) []
     ],
-    /// Internal Timer Bound 1
+    /// Internal Timer Bound 0
     mitb0 [
         bound OFFSET(0) NUMBITS(riscv::XLEN) []
     ],
@@ -61,7 +61,7 @@ pub struct InternalTimers<'a> {
     #[allow(dead_code)]
     mitb1: ReadWriteRiscvCsr<usize, mitb0::Register, 0x7D6>,
     mitctl0: ReadWriteRiscvCsr<usize, mitctl0::Register, 0x7D4>,
-    mitctl1: ReadWriteRiscvCsr<usize, mitctl1::Register, 0x7D5>,
+    mitctl1: ReadWriteRiscvCsr<usize, mitctl1::Register, 0x7D7>,
     mcycle: ReadWriteRiscvCsr<usize, value::Register, { riscv_csr::csr::MCYCLE }>,
     mcycleh: ReadWriteRiscvCsr<usize, value::Register, { riscv_csr::csr::MCYCLEH }>,
 }
