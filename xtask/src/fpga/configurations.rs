@@ -246,10 +246,13 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let cmd = NextestArchiveCommand::new("/work-dir")
+        let mut cmd = NextestArchiveCommand::new("/work-dir")
             .feature("fpga_realtime")
-            .package_filter(args.package_filter.as_deref())
-            .build();
+            .package_filter(args.package_filter.as_deref());
+        if args.usb {
+            cmd = cmd.feature("usb");
+        }
+        let cmd = cmd.build();
 
         let mut container = build_base_container_command()?;
         container.arg(&cmd);
