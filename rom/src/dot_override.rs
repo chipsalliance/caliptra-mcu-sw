@@ -115,7 +115,7 @@ impl Mbox0Helpers {
     fn wait_for_mbox0_cmd(&self) -> u32 {
         let notif0 = &self.mci.intr_block_rf_notif0_internal_intr_r;
         while notif0.read(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts) == 0 {}
-        notif0.modify(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
+        notif0.write(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
         self.mci.mcu_mbox0_csr_mbox_cmd.get()
     }
 
