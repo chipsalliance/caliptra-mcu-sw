@@ -106,7 +106,13 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
 
     // SPDM: NEGOTIATE_ALGORITHMS + ALGORITHMS contribute to VCA.
     let head = pal.header_size();
-    state.transcript.append_vca(pal, io, io.request()).await?;
+    // Trim transport padding (e.g. PCIe-VDM DWORD alignment): NEGOTIATE_ALGORITHMS
+    // carries its own total request length (including the SPDM header) in the
+    // fixed body's Length field (DSP0274 Table 18); feed exactly that to VCA so
+    // it matches what the requester hashes.
+    let req_len = fixed.length.get() as usize;
+    let req_msg = req.get(..req_len).ok_or(SPDM_INVALID_REQUEST)?;
+    state.transcript.append_vca(pal, io, req_msg).await?;
     let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
     let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
     state.transcript.append_vca(pal, io, response).await?;
