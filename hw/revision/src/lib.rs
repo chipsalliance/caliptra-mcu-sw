@@ -16,6 +16,7 @@ pub enum Capability {
     MboxStatusCompletion,
     NumericSvnFloors,
     NamedSocIfcConfig,
+    VendorPkHashLockMasks,
 }
 
 impl Capability {
@@ -28,6 +29,7 @@ impl Capability {
         Self::MboxStatusCompletion,
         Self::NumericSvnFloors,
         Self::NamedSocIfcConfig,
+        Self::VendorPkHashLockMasks,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -40,6 +42,7 @@ impl Capability {
             Self::MboxStatusCompletion => "mbox-status-completion",
             Self::NumericSvnFloors => "numeric-svn-floors",
             Self::NamedSocIfcConfig => "named-soc-ifc-config",
+            Self::VendorPkHashLockMasks => "vendor-pk-hash-lock-masks",
         }
     }
 }
@@ -61,6 +64,7 @@ impl HardwareRevision {
                 Capability::MboxStatusCompletion,
                 Capability::NumericSvnFloors,
                 Capability::NamedSocIfcConfig,
+                Capability::VendorPkHashLockMasks,
             ],
         }
     }
@@ -206,6 +210,7 @@ mod tests {
                 MboxStatusCompletion,
                 NumericSvnFloors,
                 NamedSocIfcConfig,
+                VendorPkHashLockMasks,
             ]
         );
         for revision in [HardwareRevision::V2_1, HardwareRevision::Latest] {
@@ -223,6 +228,10 @@ mod tests {
             );
             assert_eq!(
                 revision.supports(NamedSocIfcConfig),
+                revision == HardwareRevision::Latest
+            );
+            assert_eq!(
+                revision.supports(VendorPkHashLockMasks),
                 revision == HardwareRevision::Latest
             );
         }

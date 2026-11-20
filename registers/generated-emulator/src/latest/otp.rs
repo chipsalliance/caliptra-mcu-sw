@@ -4349,9 +4349,18 @@ impl caliptra_emu_bus::Bus for OtpBus {
                     .write_secret_digest_read_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            0xf0..0xf4 => Ok(()),
-            0xf4..0xf8 => Ok(()),
-            0xf8..0xfc => Ok(()),
+            0xf0..0xf4 => {
+                self.periph.write_vendor_pk_hash_volatile_lock(val);
+                Ok(())
+            }
+            0xf4..0xf8 => {
+                self.periph.write_manuf_pk_hash_volatile_lock(val);
+                Ok(())
+            }
+            0xf8..0xfc => {
+                self.periph.write_ratchet_seed_volatile_lock(val);
+                Ok(())
+            }
             0x1ac..0x1b0 => {
                 self.periph
                     .write_csr0(caliptra_emu_bus::ReadWriteRegister::new(val));
