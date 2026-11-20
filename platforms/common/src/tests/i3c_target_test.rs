@@ -175,6 +175,11 @@ impl RxClient for I3CEchoTest {
         assert_eq!(buf[len - 1], pec(addr << 1, &buf[..len - 1]));
         buf[len - 1] = pec((addr << 1) | 1, &buf[..len - 1]);
         self.i3c.transmit_read(buf, len).unwrap();
+        // Announce the response with the pending-read MDB and its length, so
+        // the IBI path carries a payload in these fault tests.
+        self.i3c
+            .send_ibi(0xae, &(len as u16).to_be_bytes())
+            .unwrap();
     }
 }
 
