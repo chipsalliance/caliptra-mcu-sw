@@ -828,8 +828,6 @@ mod test {
                 None,
                 #[cfg(hw_rev = "latest")]
                 None,
-                #[cfg(hw_rev = "latest")]
-                None,
                 None,
                 None,
                 None,
@@ -854,8 +852,6 @@ mod test {
                 #[cfg(hw_rev = "latest")]
                 None,
                 Some(flash_controller),
-                #[cfg(hw_rev = "latest")]
-                None,
                 #[cfg(hw_rev = "latest")]
                 None,
                 #[cfg(hw_rev = "latest")]

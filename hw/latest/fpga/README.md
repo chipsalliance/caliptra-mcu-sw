@@ -103,8 +103,8 @@ Vivado exposes the `STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE` run property. Otherwis
 it prints a warning and uses the `Explore` directive alone. Check placement and
 timing results before using the generated image.
 
-This checkout uses Caliptra SS `743d5f7e` and its pinned `third_party/usb2`
-(`97aa9616`) submodule. The FPGA wrapper preserves the existing I3C and backdoor
+This checkout uses Caliptra SS `bb9d747e` and its pinned `third_party/usb2`
+(`e97acb6b`) submodule. The FPGA wrapper preserves the existing I3C and backdoor
 ROM/OTP interfaces, provides the 4 KiB MCU ROM-patch SRAM, and uses TRNG source 0
 with source 1 disabled. In **Architecture B**, the FPGA fabric also instantiates
 `caliptra_fpga_ulpi_host` (`0xA401_4000`), an internal synthesizable ULPI USB3320
@@ -115,6 +115,19 @@ card or loopback cable is required on the VCK-190 to run High-Speed USB 2.0
 enumeration or hardware-assisted OCP USB Recovery v1.1 alongside I3C recovery.
 The IP packager preserves the `lib/` and `generated/` header paths used by
 the Core RTL and USB sources, so their relative includes resolve during synthesis.
+The subsystem SPI host and UART peripherals have been removed upstream; Core
+and MCU logging still uses the FPGA wrapper's log and debug FIFOs.
+
+The 60 MHz USB synchronizer overlay uses context-anchored patch hunks so
+upstream source additions cannot silently move endpoint metadata sampling into
+the reset branch. Keep reset values under `Reset_N = '0'` and live endpoint
+metadata sampling under the `FsClk` rising-edge branch when updating USB RTL.
+
+The latest prebuilt-bitstream manifest selects the segmented build from
+[run 44345325904](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/44345325904),
+built at test-merge commit `24ac9445` with subsystem `bb9d747e`.
+Its PDI/XSA URLs use the published `subsystem/` GCS directory and their hashes
+match the generated bundle manifest. The 2.1 download manifest is unchanged.
 
 ### Build boot.bin: ###
 

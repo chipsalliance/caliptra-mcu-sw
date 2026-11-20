@@ -33,7 +33,6 @@ fn fixture() -> AutoRootBus {
         None,
         None,
         None,
-        None,
     );
     bus.usb_combo_periph = Some(UsbComboBus {
         periph: Box::new(UsbComboGenerated::new()),
