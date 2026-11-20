@@ -37,6 +37,7 @@ struct BootstrapArgs<'a> {
 
 struct BuildTestArgs<'a> {
     package_filter: &'a Option<String>,
+    usb: bool,
 }
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
@@ -174,6 +175,10 @@ pub(crate) enum Fpga {
         /// Uses a `cargo-nextest` package filter-set, e.g. `package(caliptra-rom)`.
         #[arg(long)]
         package_filter: Option<String>,
+
+        /// Include optional Subsystem USB host support (`--features usb`).
+        #[arg(long)]
+        usb: bool,
     },
     /// Run FPGA tests
     Test {
@@ -290,6 +295,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             configuration,
             target_host,
             package_filter,
+            usb,
         } => {
             println!("Building FPGA tests");
             let resolved_target = resolve_target_host(target_host.as_deref());
@@ -298,7 +304,10 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             config
                 .executor()
                 .set_target_host(resolved_target.as_deref())
-                .build_test(&BuildTestArgs { package_filter })?;
+                .build_test(&BuildTestArgs {
+                    package_filter,
+                    usb: *usb,
+                })?;
         }
         Fpga::Bootstrap {
             target_host,

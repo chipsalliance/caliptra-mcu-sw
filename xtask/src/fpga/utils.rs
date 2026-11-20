@@ -310,12 +310,16 @@ impl Container {
         let revision =
             caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
         let fuses = revision.fuses_hjson(Path::new("/work-dir"));
+        let otp_mmap = revision.otp_mmap(Path::new("/work-dir"));
+        let caliptra_sw_rev = caliptra_mcu_builder::caliptra_source_revision()?;
 
         self.run()
             .rm()
             .env("TERM", "xterm-256color")
             .env("CALIPTRA_HW_REV", revision.as_str())
+            .env("CALIPTRA_SW_REVISION", &caliptra_sw_rev)
             .env("CALIPTRA_MCU_FUSES_HJSON", &fuses.to_string_lossy())
+            .env("CALIPTRA_MCU_OTP_MMAP_HJSON", &otp_mmap.to_string_lossy())
             .volume(&project_root.to_string(), "/work-dir")
             .workdir("/work-dir")
             .volume(&format!("{home}/.cargo/registry"), "/root/.cargo/registry")
@@ -518,6 +522,10 @@ mod tests {
             format!(
                 "CALIPTRA_MCU_FUSES_HJSON={}",
                 revision.fuses_hjson(Path::new("/work-dir")).display()
+            ),
+            format!(
+                "CALIPTRA_MCU_OTP_MMAP_HJSON={}",
+                revision.otp_mmap(Path::new("/work-dir")).display()
             ),
         ] {
             assert!(args.windows(2).any(|pair| {
