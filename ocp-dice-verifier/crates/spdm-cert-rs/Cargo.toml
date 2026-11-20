@@ -1,0 +1,23 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "spdm-cert-rs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure Rust DMTF SPDM certificate chain unpacking and X.509 extension decoder"
+
+[dependencies]
+dice-rs.workspace = true
+thiserror.workspace = true
+x509-parser.workspace = true
+asn1.workspace = true
+sha2.workspace = true
+hex.workspace = true
+serde = { workspace = true, optional = true }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
