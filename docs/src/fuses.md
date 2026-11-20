@@ -10,6 +10,15 @@ The Runtime fuse API provides authorized MCU mailbox operations for reading and
 writing OTP and transport-neutral commands for supported provisioning and lock
 operations.
 
+## Emulator SVN initialization
+
+The emulator's `--fuse-soc-manifest-svn` and `--fuse-soc-manifest-max-svn`
+options initialize the generated SoC-manifest fuse entries for the selected
+hardware revision. Their offsets within the SVN partition differ between
+2.1 and latest; initialization must not modify the separate Core runtime
+firmware SVN bitmap. SoC-manifest SVN remains a bitmap, while its maximum
+is written as a little-endian 32-bit value.
+
 ## Fuse Defining
 
 We provide a new fuse definition `hjson` file format to assist in further defining fuses.

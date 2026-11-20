@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
 concurrency:
@@ -137,7 +140,6 @@ jobs:
         run: CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
 
       - name: Download bitstream
-        if: matrix.hw-revision == '2.1'
         run: |
           cargo xtask-fpga fpga download-bitstream
           mv caliptra-bitstream.pdi /tmp/caliptra-bitstream.pdi
@@ -203,7 +205,6 @@ jobs:
           cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
 
       - name: "Upload bitstream"
-        if: matrix.hw-revision == '2.1'
         uses: actions/upload-artifact@v7
         with:
           name: caliptra-bitstream-${{ matrix.hw-revision }}
@@ -231,15 +232,18 @@ jobs:
           path: /tmp/spdm-emu-binaries
           retention-days: 1
 
-  test_spdm:
-    # Only the validated 2.1 bitstream is executed; latest remains build-only.
+  test_spdm_revision:
     if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
     env:
-      CALIPTRA_HW_REV: "2.1"
-      CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/rev-2_1/fuses.hjson
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/${{ matrix.hw-revision == '2.1' && 'rev-2_1' || 'latest' }}/fuses.hjson
       RUSTUP_TOOLCHAIN: "1.96.1"
 
     steps:
@@ -251,25 +255,25 @@ jobs:
       - name: "Download Test Binaries Artifact"
         uses: actions/download-artifact@v8
         with:
-          name: caliptra-test-binaries-2.1
+          name: caliptra-test-binaries-${{ matrix.hw-revision }}
           path: /tmp/caliptra-test-binaries.sqsh
 
       - name: "Download Test Firmware Artifact"
         uses: actions/download-artifact@v8
         with:
-          name: caliptra-test-firmware-2.1
+          name: caliptra-test-firmware-${{ matrix.hw-revision }}
           path: /tmp/caliptra-binaries
 
       - name: "Download Bitstream"
         uses: actions/download-artifact@v8
         with:
-          name: caliptra-bitstream-2.1
+          name: caliptra-bitstream-${{ matrix.hw-revision }}
           path: /tmp/caliptra-bitstream
 
       - name: "Download spdm-emu binaries"
         uses: actions/download-artifact@v8
         with:
-          name: spdm-emu-binaries-2.1
+          name: spdm-emu-binaries-${{ matrix.hw-revision }}
           path: /tmp/spdm-emu-binaries
 
       - name: Make spdm-emu binaries executable
@@ -287,7 +291,7 @@ jobs:
       - name: Load bitstream
         run: |
           chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask switch-version 2.1
+          /tmp/caliptra-binaries/xtask switch-version "${{ matrix.hw-revision }}"
           /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
 
       - name: Mount binaries
@@ -313,7 +317,7 @@ jobs:
           # tee runs as the (non-sudo) runner user and writes into the runner-owned
           # /tmp/spdm-emu-binaries dir, so the later upload step can read the file.
           status=0
-          sudo CALIPTRA_HW_REV=2.1 CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip" \
+          sudo CALIPTRA_HW_REV="${{ matrix.hw-revision }}" CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip" \
               SPDM_VALIDATOR_DIR=/tmp/spdm-emu-binaries \
               cargo-nextest nextest run \
               --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
@@ -358,7 +362,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
-          name: caliptra-spdm-test-results-2.1
+          name: caliptra-spdm-test-results-${{ matrix.hw-revision }}
           path: |
             /tmp/spdm-emu-binaries/test.log
             /tmp/spdm-emu-binaries/spdm_requester_emu_output.txt
@@ -366,3 +370,13 @@ jobs:
             /tmp/spdm-emu-binaries/measurement_block_fd.bin
             /tmp/spdm-emu-binaries/certificate_chain_slot_00.der
             /tmp/spdm-emu-binaries/mcu-device.log
+
+  test_spdm:
+    if: ${{ always() && vars.RUN_FPGA_CI != 'false' }}
+    needs: test_spdm_revision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both SPDM FPGA revisions to pass
+        env:
+          RESULT: ${{ needs.test_spdm_revision.result }}
+        run: test "$RESULT" = success

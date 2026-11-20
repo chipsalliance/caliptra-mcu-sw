@@ -39,6 +39,35 @@ The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra
  - FPGA
    - [VCK190](https://www.xilinx.com/products/boards-and-kits/vck190.html)
 
+### Development FPGA CI ###
+
+The general FPGA and FPGA SPDM workflows execute both `2.1` and `latest` on
+`vck190-subsystem` runners with revision-specific firmware, tests and bitstreams.
+Stable `test_artifacts` and `test_spdm` gates require both revision jobs to pass;
+one revision's failure does not cancel the other.
+
+The latest Core pin includes the startup branch-prediction workaround from
+[chipsalliance/caliptra-sw#4428](https://github.com/chipsalliance/caliptra-sw/pull/4428).
+Debug-locked HTG bring-up hit `HW_FATAL.kv_error=0x10` and an ML-KEM readiness
+hang with prediction enabled. This workaround preserves enforcement and KATs;
+FPGA CI is intended to identify additional failures, not certify the workaround
+as a permanent hardware fix. The 2.1 software and bitstream pins are unchanged.
+
+Both revisions use `cargo xtask-fpga fpga download-bitstream`, which selects
+the revision-specific `bitstream_manifests/subsystem.toml` and verifies the
+download against its hash. The latest manifest pins the segmented PDI from
+successful
+[2.2 bitstream run 43534379286](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/43534379286).
+Its synthesis source is `9117a1a97a6542b32f355d60947fe75f5817efd1` (#2356's
+test merge), using subsystem `743d5f7eaa9a946f405b9087c7ffd2fbb38e1543`.
+The GCS object URLs include `/subsystem/` after the synthesis commit hash.
+The workflows no longer depend on the source run's expiring GitHub Actions
+artifact. Each workflow still uploads its downloaded PDI as a revision-specific
+artifact for its own execution jobs. To advance hardware, update the selected
+manifest's provenance, URLs and hashes together; changing the RTL submodule pin
+alone does not select a different prebuilt PDI. Manual bootstrap uses the same
+revision-specific manifest.
+
 ### Versal ###
 #### Processing system one time setup: ####
 1. Download VCK-190 image

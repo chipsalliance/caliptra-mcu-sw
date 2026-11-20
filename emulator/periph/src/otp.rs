@@ -176,13 +176,13 @@ impl Otp {
                 }
             }
 
-            partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
-                args.soc_manifest_max_svn.unwrap_or(0);
+            let maximum = fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset;
+            partitions[maximum..maximum + 4]
+                .copy_from_slice(&u32::from(args.soc_manifest_max_svn.unwrap_or(0)).to_le_bytes());
             if let Some(soc_manifest_svn) = args.soc_manifest_svn {
                 let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
-                partitions
-                    [fuses::SVN_PARTITION_BYTE_OFFSET + 20..fuses::SVN_PARTITION_BYTE_OFFSET + 36]
-                    .copy_from_slice(&svn_bitmap);
+                let start = fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset;
+                partitions[start..start + svn_bitmap.len()].copy_from_slice(&svn_bitmap);
             }
 
             if let Some(vendor_hashes_prod_partition) = args.vendor_hashes_prod_partition {
@@ -665,6 +665,27 @@ mod test {
     use tock_registers::interfaces::{Readable, Writeable};
 
     const HEK_RATCHET_SEED_SIZE: usize = 32;
+
+    #[test]
+    fn test_soc_manifest_svn_initialization_preserves_runtime_svn() {
+        let clock = Clock::new();
+        let otp = Otp::new(
+            &clock,
+            OtpArgs {
+                soc_manifest_svn: Some(9),
+                soc_manifest_max_svn: Some(13),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let partitions = otp.partitions.borrow();
+        let runtime = fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset;
+        let soc = fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset;
+        let maximum = fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset;
+        assert_eq!(&partitions[runtime..runtime + 16], &[0; 16]);
+        assert_eq!(&partitions[soc..soc + 16], &Otp::svn_to_bitmap(9));
+        assert_eq!(&partitions[maximum..maximum + 4], &13u32.to_le_bytes());
+    }
 
     #[test]
     fn test_bootup() {
