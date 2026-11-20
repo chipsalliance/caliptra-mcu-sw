@@ -45,6 +45,8 @@ pub mod debug_unlock;
 #[cfg(feature = "fpga_realtime")]
 pub mod flash_ctrl;
 mod fpga_regs;
+#[cfg(all(feature = "fpga_realtime", feature = "usb"))]
+pub mod fpga_usb;
 #[cfg(feature = "fpga_realtime")]
 pub mod jtag;
 #[cfg(feature = "fpga_realtime")]
