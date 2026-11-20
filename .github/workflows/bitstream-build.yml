@@ -29,6 +29,10 @@ on:
         description: Target branch recorded in the manifest
         required: true
         type: string
+      dual-itrng:
+        description: Build a standard lab image with two host-fed entropy sources
+        type: boolean
+        default: false
 
 jobs:
   build-bitstream:
@@ -36,7 +40,7 @@ jobs:
     timeout-minutes: 1440
     strategy:
       matrix:
-        segmented: [true, false]
+        segmented: ${{ fromJSON(inputs.dual-itrng && '[false]' || '[true,false]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -49,11 +53,12 @@ jobs:
         env:
           STAGING_DIR: ${{ runner.temp }}/bitstream
           FPGA_PATH: ${{ inputs.fpga-path }}
+          DUAL_ITRNG: ${{ inputs.dual-itrng && 'TRUE' || 'FALSE' }}
         run: |
           source /vck190-tools/Vivado/2024.2/settings64.sh
           mkdir -p "$STAGING_DIR"
           cd "$FPGA_PATH"
-          /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }}
+          /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }} DUAL_ITRNG="$DUAL_ITRNG"
           cp caliptra_build/*.xsa "$STAGING_DIR/"
           shopt -s nullglob
           PDI_FILES=(caliptra_build/*.pdi)

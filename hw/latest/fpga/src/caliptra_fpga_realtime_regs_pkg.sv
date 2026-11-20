@@ -7,6 +7,8 @@ package caliptra_fpga_realtime_regs_pkg;
     localparam CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH = 32;
     localparam CALIPTRA_FPGA_REALTIME_REGS_SIZE = 'ha4013200;
 
+    
+
     typedef struct {
         logic [31:0] next;
     } interface_regs__fpga_version__fpga_version__in_t;
@@ -48,6 +50,10 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__status__cptra_ss_mcu_halt_status_o__in_t;
 
     typedef struct {
+        logic next;
+    } interface_regs__status__dual_itrng_capable__in_t;
+
+    typedef struct {
         interface_regs__status__cptra_error_fatal__in_t cptra_error_fatal;
         interface_regs__status__cptra_error_non_fatal__in_t cptra_error_non_fatal;
         interface_regs__status__ready_for_fuses__in_t ready_for_fuses;
@@ -56,6 +62,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__status__mailbox_data_avail__in_t mailbox_data_avail;
         interface_regs__status__mailbox_flow_done__in_t mailbox_flow_done;
         interface_regs__status__cptra_ss_mcu_halt_status_o__in_t cptra_ss_mcu_halt_status_o;
+        interface_regs__status__dual_itrng_capable__in_t dual_itrng_capable;
     } interface_regs__status__in_t;
 
     typedef struct {
@@ -65,6 +72,14 @@ package caliptra_fpga_realtime_regs_pkg;
     typedef struct {
         interface_regs__cycle_count__cycle_count__in_t cycle_count;
     } interface_regs__cycle_count__in_t;
+
+    typedef struct {
+        logic swwe;
+    } interface_regs__entropy_ctrl__itrng1_en__in_t;
+
+    typedef struct {
+        interface_regs__entropy_ctrl__itrng1_en__in_t itrng1_en;
+    } interface_regs__entropy_ctrl__in_t;
 
     typedef struct {
         logic [31:0] next;
@@ -149,6 +164,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__fpga_version__in_t fpga_version;
         interface_regs__status__in_t status;
         interface_regs__cycle_count__in_t cycle_count;
+        interface_regs__entropy_ctrl__in_t entropy_ctrl;
         interface_regs__generic_output_wires__in_t generic_output_wires[2];
         interface_regs__ss_all_error__in_t ss_all_error;
         interface_regs__mci_generic_output_wires__in_t mci_generic_output_wires[2];
@@ -241,6 +257,19 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__msg_fifo_status__in_t;
 
     typedef struct {
+        logic next;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_empty__in_t;
+
+    typedef struct {
+        logic next;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_full__in_t;
+
+    typedef struct {
+        fifo_regs__itrng1_fifo_status__itrng_fifo_empty__in_t itrng_fifo_empty;
+        fifo_regs__itrng1_fifo_status__itrng_fifo_full__in_t itrng_fifo_full;
+    } fifo_regs__itrng1_fifo_status__in_t;
+
+    typedef struct {
         fifo_regs__log_fifo_data__in_t log_fifo_data;
         fifo_regs__log_fifo_status__in_t log_fifo_status;
         fifo_regs__itrng_fifo_status__in_t itrng_fifo_status;
@@ -248,6 +277,7 @@ package caliptra_fpga_realtime_regs_pkg;
         fifo_regs__dbg_fifo_status__in_t dbg_fifo_status;
         fifo_regs__msg_fifo_pop__in_t msg_fifo_pop;
         fifo_regs__msg_fifo_status__in_t msg_fifo_status;
+        fifo_regs__itrng1_fifo_status__in_t itrng1_fifo_status;
     } fifo_regs__in_t;
 
     typedef struct {
@@ -377,6 +407,10 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__status__cptra_ss_mcu_halt_status_o__out_t;
 
     typedef struct {
+        logic value;
+    } interface_regs__status__dual_itrng_capable__out_t;
+
+    typedef struct {
         interface_regs__status__cptra_error_fatal__out_t cptra_error_fatal;
         interface_regs__status__cptra_error_non_fatal__out_t cptra_error_non_fatal;
         interface_regs__status__ready_for_fuses__out_t ready_for_fuses;
@@ -385,6 +419,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__status__mailbox_data_avail__out_t mailbox_data_avail;
         interface_regs__status__mailbox_flow_done__out_t mailbox_flow_done;
         interface_regs__status__cptra_ss_mcu_halt_status_o__out_t cptra_ss_mcu_halt_status_o;
+        interface_regs__status__dual_itrng_capable__out_t dual_itrng_capable;
     } interface_regs__status__out_t;
 
     typedef struct {
@@ -410,6 +445,14 @@ package caliptra_fpga_realtime_regs_pkg;
     typedef struct {
         interface_regs__cycle_count__cycle_count__out_t cycle_count;
     } interface_regs__cycle_count__out_t;
+
+    typedef struct {
+        logic value;
+    } interface_regs__entropy_ctrl__itrng1_en__out_t;
+
+    typedef struct {
+        interface_regs__entropy_ctrl__itrng1_en__out_t itrng1_en;
+    } interface_regs__entropy_ctrl__out_t;
 
     typedef struct {
         logic [31:0] value;
@@ -685,6 +728,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__arm_user__out_t arm_user;
         interface_regs__itrng_divisor__out_t itrng_divisor;
         interface_regs__cycle_count__out_t cycle_count;
+        interface_regs__entropy_ctrl__out_t entropy_ctrl;
         interface_regs__generic_input_wires__out_t generic_input_wires[2];
         interface_regs__generic_output_wires__out_t generic_output_wires[2];
         interface_regs__cptra_obf_key__out_t cptra_obf_key[8];
@@ -831,6 +875,33 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__msg_fifo_status__out_t;
 
     typedef struct {
+        logic [31:0] value;
+        logic wr_swacc;
+    } fifo_regs__itrng1_fifo_data__itrng_data__out_t;
+
+    typedef struct {
+        fifo_regs__itrng1_fifo_data__itrng_data__out_t itrng_data;
+    } fifo_regs__itrng1_fifo_data__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_empty__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_full__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__itrng1_fifo_status__itrng_fifo_reset__out_t;
+
+    typedef struct {
+        fifo_regs__itrng1_fifo_status__itrng_fifo_empty__out_t itrng_fifo_empty;
+        fifo_regs__itrng1_fifo_status__itrng_fifo_full__out_t itrng_fifo_full;
+        fifo_regs__itrng1_fifo_status__itrng_fifo_reset__out_t itrng_fifo_reset;
+    } fifo_regs__itrng1_fifo_status__out_t;
+
+    typedef struct {
         fifo_regs__log_fifo_data__out_t log_fifo_data;
         fifo_regs__log_fifo_status__out_t log_fifo_status;
         fifo_regs__itrng_fifo_data__out_t itrng_fifo_data;
@@ -841,6 +912,8 @@ package caliptra_fpga_realtime_regs_pkg;
         fifo_regs__msg_fifo_pop__out_t msg_fifo_pop;
         fifo_regs__msg_fifo_push__out_t msg_fifo_push;
         fifo_regs__msg_fifo_status__out_t msg_fifo_status;
+        fifo_regs__itrng1_fifo_data__out_t itrng1_fifo_data;
+        fifo_regs__itrng1_fifo_status__out_t itrng1_fifo_status;
     } fifo_regs__out_t;
 
     typedef struct {

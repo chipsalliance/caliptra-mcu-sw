@@ -9,6 +9,8 @@ set CG_EN FALSE
 set RTL_VERSION latest
 set BOARD VCK190
 set ITRNG TRUE
+# Lab-only dual-iTRNG build. ES1 is a constant integration strap, not a host register.
+set DUAL_ITRNG FALSE
 set DEBUG FALSE
 set FAST_I3C TRUE
 set CORE_CLK_MHZ 18
@@ -79,6 +81,12 @@ if {$CG_EN} {
 if {$ITRNG} {
   # Add option to use Caliptra's internal TRNG instead of ETRNG
   lappend VERILOG_OPTIONS CALIPTRA_INTERNAL_TRNG
+}
+if {$DUAL_ITRNG} {
+  if {!$ITRNG} {
+    error "DUAL_ITRNG requires ITRNG=TRUE"
+  }
+  lappend VERILOG_OPTIONS CALIPTRA_FPGA_DUAL_ITRNG
 }
 if {$I3C_OUTSIDE} {
   lappend VERILOG_OPTIONS I3C_OUTSIDE

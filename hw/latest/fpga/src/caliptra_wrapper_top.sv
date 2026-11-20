@@ -1355,6 +1355,64 @@ trng_fifo_inst (
     assign itrng_valid = 1'b0;
 `endif
 
+`ifdef CALIPTRA_FPGA_DUAL_ITRNG
+    assign hwif_in.interface_regs.status.dual_itrng_capable.next = 1'b1;
+    // Only a cold reset permits changing the strap, not an SS-only reset.
+    assign hwif_in.interface_regs.entropy_ctrl.itrng1_en.swwe =
+        !hwif_out.interface_regs.control.cptra_ss_rst_b.value &&
+        !hwif_out.interface_regs.control.cptra_pwrgood.value;
+
+    // ES1 is driven independently of ES0 so the host can delay or withhold it.
+    logic etrng1_req, itrng1_valid, itrng1_wr_en, itrng1_rd_en;
+    logic itrng1_full, itrng1_empty, itrng1_wr_busy, itrng1_rd_busy;
+    logic [3:0] itrng1_data;
+    logic [31:0] itrng1_counter;
+    // Like ES0, only the FIFO reset register clears ES1; subsystem reset does not.
+    wire itrng1_reset = hwif_out.fifo_regs.itrng1_fifo_status.itrng_fifo_reset.value;
+    assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next = itrng1_empty;
+    assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next = itrng1_full | itrng1_wr_busy | itrng1_reset;
+    always_ff @(posedge core_clk) begin
+        if (itrng1_reset) begin
+            itrng1_wr_en <= 1'b0;
+            itrng1_rd_en <= 1'b0;
+            itrng1_counter <= '0;
+        end else begin
+            itrng1_wr_en <= hwif_out.fifo_regs.itrng1_fifo_data.itrng_data.wr_swacc;
+            itrng1_rd_en <= etrng1_req && (itrng1_counter == 0);
+            if (itrng1_counter == 0)
+                itrng1_counter <= hwif_out.interface_regs.itrng_divisor.itrng_divisor.value;
+            else
+                itrng1_counter <= itrng1_counter - 1;
+        end
+    end
+
+    xpm_fifo_sync #(
+        .CASCADE_HEIGHT(0), .DOUT_RESET_VALUE("0"), .ECC_MODE("no_ecc"),
+        .FIFO_MEMORY_TYPE("block"), .FIFO_READ_LATENCY(1), .FIFO_WRITE_DEPTH(1024),
+        .FULL_RESET_VALUE(0), .PROG_EMPTY_THRESH(10), .PROG_FULL_THRESH(10),
+        .RD_DATA_COUNT_WIDTH(13), .READ_DATA_WIDTH(4), .READ_MODE("std"),
+        .SIM_ASSERT_CHK(0), .USE_ADV_FEATURES("1000"), .WAKEUP_TIME(0),
+        .WRITE_DATA_WIDTH(32), .WR_DATA_COUNT_WIDTH(11)
+    ) itrng1_fifo_inst (
+        .almost_empty(), .almost_full(), .data_valid(itrng1_valid),
+        .dbiterr(), .dout(itrng1_data),
+        .empty(itrng1_empty), .full(itrng1_full),
+        .overflow(), .prog_empty(), .prog_full(), .rd_data_count(), .rd_rst_busy(itrng1_rd_busy),
+        .sbiterr(), .underflow(), .wr_ack(), .wr_data_count(), .wr_rst_busy(itrng1_wr_busy),
+        .din(hwif_out.fifo_regs.itrng1_fifo_data.itrng_data.value),
+        .injectdbiterr(1'b0), .injectsbiterr(1'b0),
+        .rd_en(itrng1_rd_en && !itrng1_empty && !itrng1_rd_busy && !itrng1_reset),
+        .rst(itrng1_reset), .sleep(1'b0), .wr_clk(core_clk),
+        .wr_en(itrng1_wr_en && !itrng1_full && !itrng1_wr_busy && !itrng1_reset)
+    );
+`else
+    assign hwif_in.interface_regs.status.dual_itrng_capable.next = 1'b0;
+    // Never write the strap, so the register stays at its reset value (0).
+    assign hwif_in.interface_regs.entropy_ctrl.itrng1_en.swwe = 1'b0;
+    assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_empty.next = 1'b1;
+    assign hwif_in.fifo_regs.itrng1_fifo_status.itrng_fifo_full.next = 1'b0;
+`endif
+
 // Track how many cycles Caliptra has been out of reset for timestamping events
 reg [31:0] cycle_count;
 always@(posedge core_clk or negedge hwif_out.interface_regs.control.cptra_ss_rst_b.value) begin
@@ -2861,13 +2919,19 @@ caliptra_ss_top #(
 `ifdef CALIPTRA_INTERNAL_TRNG
     // External Request
     .cptra_ss_cptra_core_etrng0_req_o(etrng_req),
-    .cptra_ss_cptra_core_etrng1_req_o(),
-    // Physical Source for Internal TRNG
     .cptra_ss_cptra_core_itrng0_data_i(itrng_data),
     .cptra_ss_cptra_core_itrng0_valid_i(itrng_valid),
+`ifdef CALIPTRA_FPGA_DUAL_ITRNG
+    .cptra_ss_cptra_core_etrng1_req_o(etrng1_req),
+    .cptra_ss_cptra_core_itrng1_data_i(itrng1_data),
+    .cptra_ss_cptra_core_itrng1_valid_i(itrng1_valid),
+    .cptra_ss_cptra_core_itrng1_en_i(hwif_out.interface_regs.entropy_ctrl.itrng1_en.value),
+`else
+    .cptra_ss_cptra_core_etrng1_req_o(),
     .cptra_ss_cptra_core_itrng1_data_i('0),
     .cptra_ss_cptra_core_itrng1_valid_i(1'b0),
     .cptra_ss_cptra_core_itrng1_en_i(1'b0),
+`endif
 `endif
 
     //.cptra_ss_mcu_rom_macro_req_if,
