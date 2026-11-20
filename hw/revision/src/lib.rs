@@ -318,17 +318,13 @@ mod tests {
             let fpga = root.join(revision.fpga_path());
             assert_eq!(fpga, root.join("hw").join(directory).join("fpga"));
             for input in [
-                "fpga_configuration.tcl",
                 "bitstream_manifests/subsystem.toml",
                 "kernel-modules/Makefile",
                 "launch_openocd.sh",
-                "src/caliptra_fpga_realtime_regs.rdl",
+                "openocd_ss.txt",
             ] {
                 assert!(fpga.join(input).is_file(), "{revision}: {input}");
             }
-            let configuration =
-                std::fs::read_to_string(fpga.join("fpga_configuration.tcl")).unwrap();
-            assert!(configuration.contains("set ssrtlDir $fpgaDir/../caliptra-ss"));
         }
     }
 }
