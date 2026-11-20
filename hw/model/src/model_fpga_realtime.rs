@@ -971,11 +971,7 @@ impl McuManager for &mut ModelFpgaRealtime {
 }
 
 impl SocManager for &mut ModelFpgaRealtime {
-    const SOC_IFC_ADDR: u32 = 0x3003_0000;
-    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
-    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
-
-    const MAX_WAIT_CYCLES: u32 = 20_000_000;
+    const MAX_WAIT_CYCLES: u32 = 40_000_000; // 100ms @400MHz
 
     type TMmio<'a>
         = BusMmio<FpgaRealtimeBus<'a>>
@@ -988,6 +984,10 @@ impl SocManager for &mut ModelFpgaRealtime {
 
     fn delay(&mut self) {
         self.step();
+    }
+
+    fn log_mailbox(&mut self, args: core::fmt::Arguments<'_>) {
+        writeln!(self.output().logger(), "{args}").unwrap()
     }
 }
 
