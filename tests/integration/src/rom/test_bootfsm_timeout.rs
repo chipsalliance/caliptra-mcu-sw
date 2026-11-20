@@ -23,7 +23,9 @@ mod test {
         })
         .unwrap();
 
-        hw.step_until(|m| m.cycle_count() > 11_000_000 || m.mci_fw_fatal_error().is_some());
+        // The ROM waits 10M cycles for BOOT_DONE, starting only after its own
+        // setup, which takes over 1M cycles on FPGA. Leave enough margin.
+        hw.step_until(|m| m.cycle_count() > 20_000_000 || m.mci_fw_fatal_error().is_some());
 
         let status = hw.mci_fw_fatal_error().expect("Expected a fatal error");
         assert_eq!(u32::from(McuError::ROM_BOOTFSM_TIMEOUT), status);
