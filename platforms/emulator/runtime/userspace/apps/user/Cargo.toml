@@ -103,6 +103,18 @@ spdm = [
   "mcu-mbox-service",
   "caliptra-mcu-spdm-stack/generic-large-request",
 ]
+# spdm-set-heartbeat (default off): the one switch for the SPDM HEARTBEAT liveness
+# watchdog. It turns on both halves together: the stack feature (HBEAT_CAP, the
+# non-zero HeartbeatPeriod, the run-loop watchdog and the handshake timeout) and the
+# PAL feature (the clock and timer the watchdog needs). Enabled alone, the stack
+# would advertise HBEAT_CAP with a clock that never advances, so never enable
+# caliptra-mcu-spdm-stack/spdm-set-heartbeat or caliptra-mcu-spdm-pal/spdm-set-heartbeat
+# directly. The fpga and emulator kernels declare the same name.
+spdm-set-heartbeat = [
+  "spdm",
+  "caliptra-mcu-spdm-pal/spdm-set-heartbeat",
+  "caliptra-mcu-spdm-stack/spdm-set-heartbeat",
+]
 streaming-boot = []
 flash-boot = []
 firmware-update = []

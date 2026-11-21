@@ -50,6 +50,10 @@ all-features = [
 	"mctp-vdm-service",
 ]
 spdm = ["mcu-mbox-service"]
+# spdm-set-heartbeat: the user-app SPDM heartbeat switch (see the user app's
+# Cargo.toml). Declared here so it can be passed through the shared --features
+# list; the kernel needs no heartbeat-specific code, only SPDM itself.
+spdm-set-heartbeat = ["spdm"]
 streaming-boot = []
 # Flash partitions and logging use the same flash mux. Keep the logging
 # FlashUser registered for boot and update images so partition I/O retains the
