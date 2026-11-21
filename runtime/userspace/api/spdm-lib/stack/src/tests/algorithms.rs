@@ -130,6 +130,9 @@ fn test_negotiate_algorithms_v13_accepts_multi_key_conn_when_cap_only() {
         response_other_params(&pal, &rsp) & OtherParamSupport::MULTI_KEY_CONN.into_bits(),
         0
     );
+    // Table 32 01b/1: the resolved MULTI_KEY_CONN_RSP (what DIGESTS,
+    // CERTIFICATE and SET_CERTIFICATE read) is true.
+    assert!(crate::stack::multi_key_conn_rsp(&state).unwrap());
 }
 
 /// MULTI_KEY_CAP = 00b with the bit clear is legal and negotiates the
@@ -147,6 +150,8 @@ fn test_negotiate_algorithms_v13_accepts_cleared_multi_key_conn_when_cap_not_sup
         response_other_params(&pal, &rsp) & OtherParamSupport::MULTI_KEY_CONN.into_bits(),
         0
     );
+    // Table 32 00b/0: the resolved MULTI_KEY_CONN_RSP is false.
+    assert!(!crate::stack::multi_key_conn_rsp(&state).unwrap());
 }
 
 /// MULTI_KEY_CAP = 10b leaves the choice to the Requester, so both
@@ -168,6 +173,12 @@ fn test_negotiate_algorithms_v13_multi_key_cap_negotiable_accepts_either_value()
         assert_eq!(
             response_other_params(&pal, &rsp) & OtherParamSupport::MULTI_KEY_CONN.into_bits(),
             requested.into_bits(),
+        );
+        // Table 32 10b: the resolved MULTI_KEY_CONN_RSP follows the
+        // Requester's choice (10b/0 -> false, 10b/1 -> true).
+        assert_eq!(
+            crate::stack::multi_key_conn_rsp(&state).unwrap(),
+            requested.contains(OtherParamSupport::MULTI_KEY_CONN)
         );
     }
 }
@@ -216,6 +227,21 @@ fn test_negotiate_algorithms_v12_masks_multi_key_conn_without_error() {
         response_other_params(&pal, &rsp) & OtherParamSupport::MULTI_KEY_CONN.into_bits(),
         0
     );
+    assert!(!crate::stack::multi_key_conn_rsp(&state).unwrap());
+    // The helper applies the same reserved-bit rule on its own, so a caller
+    // that skips the V1.3 gate still gets single-key, not InvalidRequest.
+    for cap in [
+        0,
+        MULTI_KEY_CAP_ONLY,
+        CapFlags::MULTI_KEY_CONN_RSP.into_bits(),
+    ] {
+        let flags =
+            with_multi_key_cap(state_at_capabilities(SpdmVersion::V12), cap).advertised_cap_flags;
+        assert_eq!(
+            crate::stack::multi_key_conn_value(SpdmVersion::V12, flags, true),
+            Ok(false)
+        );
+    }
 }
 
 /// The reserved `11b` MULTI_KEY_CAP encoding is refused outright.

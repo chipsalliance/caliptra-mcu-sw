@@ -310,8 +310,9 @@ pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmRes
 /// # Parameters
 ///
 /// * `version` — Negotiated (or, at NEGOTIATE_ALGORITHMS time,
-///   selected) SPDM version. `MultiKeyConn` is a V1.3 addition, so
-///   earlier versions must not carry the bit at all.
+///   selected) SPDM version. `MultiKeyConn` is a V1.3 addition; before
+///   V1.3 the bit is reserved, so it is ignored (never an error) and the
+///   connection resolves as single-key.
 /// * `advertised_cap_flags` — The responder's own CAPABILITIES flags,
 ///   whose `MULTI_KEY_CAP` field drives the table.
 /// * `multi_key_conn` — The `ResponderMultiKeyConn` bit: as requested
@@ -326,12 +327,10 @@ pub(crate) fn multi_key_conn_value(
     advertised_cap_flags: CapFlags,
     multi_key_conn: bool,
 ) -> SpdmResult<bool> {
+    // Pre-V1.3 the bit is reserved: ignored when read, never an error
+    // (DSP0274 1.2.3 reserved-field rule), and the connection is single-key.
     if version < SpdmVersion::V13 {
-        return if multi_key_conn {
-            Err(SPDM_INVALID_REQUEST)
-        } else {
-            Ok(false)
-        };
+        return Ok(false);
     }
 
     match (advertised_cap_flags.multi_key_field(), multi_key_conn) {
