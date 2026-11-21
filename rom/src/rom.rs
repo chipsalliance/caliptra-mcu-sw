@@ -520,11 +520,13 @@ impl Soc {
             pqc_caliptra_val
         );
 
-        // FMC Key Manifest SVN.
-        let svn = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN.byte_offset)
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_fmc_key_manifest_svn.set(svn);
+        #[cfg(hw_rev = "2.1")]
+        {
+            let svn = otp
+                .read_u32_at(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN.byte_offset)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            self.registers.fuse_fmc_key_manifest_svn.set(svn);
+        }
 
         // Vendor PK Hash.
 
