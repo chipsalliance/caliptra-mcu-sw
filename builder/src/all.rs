@@ -784,6 +784,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let test_roms: Result<Vec<(PathBuf, String)>> =
         maybe_into_par_iter(firmware::REGISTERED_FW.to_vec())
+            .filter(|_| platform != "fpga")
             .map(|fwid| {
                 let target_dir = if cfg!(feature = "parallel-build") {
                     Some(
@@ -808,6 +809,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let cptra_test_roms: Result<Vec<(PathBuf, String)>> =
         maybe_into_par_iter(firmware::CPTRA_REGISTERED_FW.to_vec())
+            .filter(|_| platform != "fpga")
             .map(|fwid| {
                 let filename = format!("cptra-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
                 let target_dir = if cfg!(feature = "parallel-build") {
@@ -989,32 +991,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let owner_auth_manifest = caliptra_builder.get_owner_auth_manifest(None)?;
     let owner_measurement_policy = caliptra_builder.get_owner_measurement_policy(None)?;
 
-    let mut builder_svn7 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        svn: Some(7),
-        ..Default::default()
-    });
-    let caliptra_fw_svn7 = builder_svn7.get_caliptra_fw()?;
-
-    let mut builder_svn128 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        svn: Some(128),
-        ..Default::default()
-    });
-    let caliptra_fw_svn128 = builder_svn128.get_caliptra_fw()?;
-    let mut builder_key2 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        use_second_key: true,
-        ..Default::default()
-    });
-    let caliptra_fw_key2 = builder_key2.get_caliptra_fw()?;
-
-    let mut builder_ocp_lock = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        ocp_lock: true,
-        ..Default::default()
-    });
-    let caliptra_fw_ocp_lock = builder_ocp_lock.get_caliptra_fw()?;
     let flash_image = create_flash_image(FlashImageBuildArgs {
         caliptra_fw_path: Some(caliptra_fw.clone()),
         soc_manifest_path: Some(soc_manifest.clone()),
@@ -1452,30 +1428,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &caliptra_fw,
         FirmwareBinaries::CALIPTRA_FW_NAME,
-        &mut zip,
-        options,
-    )?;
-    add_to_zip(
-        &caliptra_fw_svn7,
-        FirmwareBinaries::CALIPTRA_FW_SVN7_NAME,
-        &mut zip,
-        options,
-    )?;
-    add_to_zip(
-        &caliptra_fw_svn128,
-        FirmwareBinaries::CALIPTRA_FW_SVN128_NAME,
-        &mut zip,
-        options,
-    )?;
-    add_to_zip(
-        &caliptra_fw_key2,
-        FirmwareBinaries::CALIPTRA_FW_KEY2_NAME,
-        &mut zip,
-        options,
-    )?;
-    add_to_zip(
-        &caliptra_fw_ocp_lock,
-        FirmwareBinaries::CALIPTRA_FW_OCP_LOCK_NAME,
         &mut zip,
         options,
     )?;

@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
 
 SSH_KEY="${HOME}/.ssh/no_passwd_key"
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+SSH_OPTS="-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10"
 
 # Remote paths (must match build_fpga_artifacts.sh)
 REMOTE_DIR="/tmp/caliptra-binaries"
@@ -92,8 +92,12 @@ if $BOOTSTRAP; then
 fi
 
 # Build the environment variables block
-ENV_BLOCK="export RUST_BACKTRACE=1; \
+ENV_BLOCK="cd ${REMOTE_DIR}/workspace; \
+export RUST_BACKTRACE=1 CALIPTRA_HW_REV=latest; \
 export TEST_BIN=${REMOTE_TEST_DIR}; \
+export CPTRA_TEST_WORKSPACE=${REMOTE_DIR}/workspace; \
+export CALIPTRA_MCU_FUSES_HJSON=${REMOTE_DIR}/workspace/hw/latest/fuses.hjson; \
+export CALIPTRA_MCU_OTP_MMAP_HJSON=${REMOTE_DIR}/workspace/hw/latest/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson; \
 export CPTRA_FIRMWARE_BUNDLE=${REMOTE_DIR}/all-fw.zip"
 
 if $LIST_ONLY; then
@@ -110,6 +114,7 @@ fi
 
 echo "[*] Running FPGA tests on ${FPGA_IP}..."
 
+set +e
 if [[ -n "${TEST_FILTER}" ]]; then
     echo "[*] Test filter: ${TEST_FILTER}"
     run_remote "${ENV_BLOCK}; ${REMOTE_DIR}/xtask fpga test --test-filter 'package(caliptra-mcu-tests-integration) & test(${TEST_FILTER})'"
@@ -118,6 +123,7 @@ else
 fi
 
 STATUS=$?
+set -e
 
 # Try to fetch test results
 RESULTS_DIR="${SCRIPT_DIR}/fpga-test-results"

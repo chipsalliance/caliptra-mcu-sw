@@ -58,9 +58,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-network-boot",
 ];
 
-pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
-    "test-i3c-simple",
-];
+pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[];
 
 /// Release-profile runtime test features (emulator).
 /// These are the subset of tests we run against the release (512 KB SRAM)
@@ -71,12 +69,9 @@ pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] =
 /// ROM-only test features that need a prebuilt ROM but no custom runtime.
 /// These features exist in both the emulator and FPGA ROM crates; the
 /// standard runtime is used unmodified.
-pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
+pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[];
 
-];
-
-pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] =
-    &["test-lpcip-usb-enumeration", "test-lpcip-usb-ocp-recovery"];
+pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-ocp-recovery"];
 
 pub const LATEST_EMULATOR_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-host"];
 
@@ -94,11 +89,7 @@ pub fn latest_rom_only_test_features(
     features
 }
 
-pub const BARE_METAL_BINARIES: &[&str] = &[
-    "caliptra-mcu-bare-metal",
-    "caliptra-mcu-provisioning-test-unlocked-fw",
-    "caliptra-mcu-provisioning-manuf-fw",
-];
+pub const BARE_METAL_BINARIES: &[&str] = &[];
 
 /// A single ROM build target (platform + feature combo). Shared between
 /// `cargo xtask sizes` (size reporting), `test_panic_missing` (panic-free

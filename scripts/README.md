@@ -52,9 +52,29 @@ Mirrors the `build_test_binaries` CI job from `.github/workflows/fpga.yml` for l
 
 Builds explicitly use `CALIPTRA_HW_REV=latest` (Caliptra 2.2), overriding any
 inherited revision setting. The base ROM uses `core_test` without explicitly
-enabling `hw-2-1`. The normal FPGA runtime and ROM test lists are preserved,
-including the latest-only USB enumeration and recovery ROMs; this is not a
-USB-only build.
+enabling `hw-2-1`.
+
+For the current local PR #2373 USB run, the builder lists are temporarily
+restricted: no feature-specific FPGA runtimes, bare-metal binaries, registered
+test ROMs, or alternate Core firmware variants are built. Only the standalone
+`test-lpcip-usb-ocp-recovery` ROM is added to the base recovery images.
+The ARM archive is limited to the integration-test package, and execution is
+limited to `test_fpga_usb_arch_b_ocp_recovery_boot` with retries disabled.
+These local restrictions are not suitable for general CI.
+
+The internal ULPI host logs each control SETUP address, request fields, and eight
+raw bytes. It samples the first three handshake responses and any PID change,
+then reports attempt/NAK counts and elapsed time on ACK or the software deadline.
+Deadline errors include host status and diagnostics. These are host observations,
+not proof of which USB device generated a response; retry and timeout policy is
+unchanged.
+
+Use `--bitstream /absolute/path/runtime_24ac944.pdi` for the verified segmented
+PR #2373 bitstream (SHA-256
+`d7cff712eda672856ebfffa2502a590189fd08da75921077dbba9aaa428576ad`).
+Set `FPGA_ARTIFACTS_DIR` to keep this run separate from existing artifacts.
+`NATIVE_OPENSSL_DIR` and `ARM_OPENSSL_DIR` can reuse existing static-library
+installation directories. SSH requires a previously verified host key.
 
 Local builds explicitly select the MCU checkout's latest `fuses.hjson` and OTP
 memory map. The pinned Core generator honors that map and explicit partition

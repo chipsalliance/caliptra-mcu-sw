@@ -20,16 +20,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ARTIFACTS_DIR="${SCRIPT_DIR}/fpga-artifacts"
+ARTIFACTS_DIR="${FPGA_ARTIFACTS_DIR:-${SCRIPT_DIR}/fpga-artifacts}"
 ENV_FILE="${SCRIPT_DIR}/.env"
 
 # Default OpenSSL dirs (override with env vars if already built elsewhere)
 OPENSSL_CACHE_DIR="${OPENSSL_CACHE_DIR:-/tmp/openssl}"
-NATIVE_OPENSSL_DIR="${OPENSSL_CACHE_DIR}/native"
-ARM_OPENSSL_DIR="${OPENSSL_CACHE_DIR}/arm"
+NATIVE_OPENSSL_DIR="${NATIVE_OPENSSL_DIR:-${OPENSSL_CACHE_DIR}/native}"
+ARM_OPENSSL_DIR="${ARM_OPENSSL_DIR:-${OPENSSL_CACHE_DIR}/arm}"
 
 SSH_KEY="${HOME}/.ssh/no_passwd_key"
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+SSH_OPTS="-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10"
 
 DEPLOY=false
 DEPLOY_ONLY=false
@@ -37,6 +37,7 @@ BUILD_OPENSSL=false
 CONFIGURATION="subsystem"
 WITH_BITSTREAM=false
 REBUILD_TEST=false
+BITSTREAM=""
 export CALIPTRA_HW_REV=latest
 export CALIPTRA_MCU_FUSES_HJSON="${REPO_ROOT}/hw/latest/fuses.hjson"
 export CALIPTRA_MCU_OTP_MMAP_HJSON="${REPO_ROOT}/hw/latest/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson"
@@ -56,6 +57,7 @@ Options:
   --build-openssl   Build OpenSSL for native and ARM cross-compilation
   --configuration   FPGA configuration mode (default: subsystem)
   --with-bitstream  Download FPGA bitstream (skipped by default)
+  --bitstream PATH  Use an explicit verified PDI instead of the download manifest
   --rebuild-test    Force rebuild latest test binaries even if squashfs exists
   -h, --help        Show this help message
 EOF
@@ -69,6 +71,7 @@ while [[ $# -gt 0 ]]; do
         --build-openssl) BUILD_OPENSSL=true; shift ;;
         --configuration) CONFIGURATION="$2"; shift 2 ;;
         --with-bitstream) WITH_BITSTREAM=true; shift ;;
+        --bitstream) BITSTREAM="$(realpath -- "$2")"; shift 2 ;;
         --rebuild-test) REBUILD_TEST=true; shift ;;
         -h|--help)      usage ;;
         *) echo "Unknown option: $1"; usage ;;
@@ -170,6 +173,11 @@ set_openssl_env() {
 }
 
 download_bitstream() {
+    if [[ -n "$BITSTREAM" ]]; then
+        test -s "$BITSTREAM"
+        cp "$BITSTREAM" "${ARTIFACTS_DIR}/caliptra-bitstream.pdi"
+        return
+    fi
     if ! $WITH_BITSTREAM; then
         echo "[*] Skipping bitstream download (use --with-bitstream to include)."
         return
@@ -189,7 +197,7 @@ build_firmware() {
     cargo xtask-fpga fpga build \
         --configuration "${CONFIGURATION}" \
         --rom-features "core_test" \
-        --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
+        --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,none \
         --separate-runtimes
 
 #    echo "[*] Building FPGA release-profile runtime..."
@@ -215,15 +223,17 @@ build_test_binaries() {
     echo "[*] Building FPGA test binaries (hardware: ${CALIPTRA_HW_REV})..."
     cd "${REPO_ROOT}"
 
-    cargo xtask-fpga fpga build-test --configuration "${CONFIGURATION}" --no-container
+    cargo nextest archive -p caliptra-mcu-tests-integration --features fpga_realtime \
+        --target aarch64-unknown-linux-gnu --release \
+        --archive-file caliptra-test-binaries.tar.zst --target-dir cross-target/
 
     # Skip ARM xtask build if binary already exists
     if [[ -f "${ARTIFACTS_DIR}/xtask" ]]; then
         echo "[*] ARM xtask binary already exists, skipping. Delete ${ARTIFACTS_DIR}/xtask to rebuild."
     else
         echo "[*] Building xtask for ARM..."
-#        cargo build --package caliptra-mcu-xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-#        cp target/aarch64-unknown-linux-gnu/debug/caliptra-mcu-xtask "${ARTIFACTS_DIR}/xtask"
+        cargo build --package caliptra-mcu-xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
+        cp target/aarch64-unknown-linux-gnu/debug/caliptra-mcu-xtask "${ARTIFACTS_DIR}/xtask"
     fi
 
     # Extract the nextest archive into a staging dir and create a squashfs image
@@ -268,8 +278,9 @@ deploy_to_fpga() {
 
     # Copy xtask binary
     echo "[*] Copying xtask..."
-#    ${scp_cmd} "${ARTIFACTS_DIR}/xtask" "${remote}:${REMOTE_DIR}/"
-#    ${ssh_cmd} "${remote}" "chmod +x ${REMOTE_DIR}/xtask"
+    ${scp_cmd} "${ARTIFACTS_DIR}/xtask" "${remote}:${REMOTE_DIR}/"
+    ${ssh_cmd} "${remote}" "chmod +x ${REMOTE_DIR}/xtask"
+    ${scp_cmd} "${REPO_ROOT}/.config/nextest.toml" "${remote}:${REMOTE_DIR}/nextest.toml"
 
     # Copy firmware bundle
     echo "[*] Copying firmware bundle..."
@@ -277,11 +288,11 @@ deploy_to_fpga() {
 
     # Copy test binaries — prefer squashfs (smaller, faster mount), fall back to tar.zst
     if [[ -f "${ARTIFACTS_DIR}/caliptra-test-binaries.sqsh" ]]; then
+        ${ssh_cmd} "${remote}" "if mountpoint -q ${REMOTE_TEST_DIR}; then sudo umount ${REMOTE_TEST_DIR}; fi"
         echo "[*] Copying squashfs test binaries image..."
         ${scp_cmd} "${ARTIFACTS_DIR}/caliptra-test-binaries.sqsh" "${remote}:/tmp/"
         echo "[*] Mounting squashfs test binaries on FPGA..."
-        ${ssh_cmd} "${remote}" "sudo umount ${REMOTE_TEST_DIR} 2>/dev/null || true; \
-            rm -rf ${REMOTE_TEST_DIR}; \
+        ${ssh_cmd} "${remote}" "if mountpoint -q ${REMOTE_TEST_DIR}; then sudo umount ${REMOTE_TEST_DIR}; fi; \
             mkdir -p ${REMOTE_TEST_DIR}; \
             sudo mount /tmp/caliptra-test-binaries.sqsh ${REMOTE_TEST_DIR} -t squashfs -o loop"
     elif [[ -f "${ARTIFACTS_DIR}/caliptra-test-binaries.tar.zst" ]]; then
@@ -298,7 +309,7 @@ deploy_to_fpga() {
     if [[ -f "${ARTIFACTS_DIR}/caliptra-bitstream.pdi" ]]; then
         echo "[*] Bootstrapping bitstream on FPGA..."
         ${ssh_cmd} "${remote}" "sudo mkdir -p /lib/firmware"
-        ${ssh_cmd} "${remote}" "sudo mv ${REMOTE_BITSTREAM_DIR}/caliptra-bitstream.pdi /lib/firmware"
+        ${ssh_cmd} "${remote}" "sudo cp ${REMOTE_BITSTREAM_DIR}/caliptra-bitstream.pdi /lib/firmware"
         ${ssh_cmd} "${remote}" "sudo bash -c 'echo \"caliptra-bitstream.pdi\" > /sys/class/fpga_manager/fpga0/firmware'"
     else
         echo "[*] No bitstream to bootstrap, skipping."

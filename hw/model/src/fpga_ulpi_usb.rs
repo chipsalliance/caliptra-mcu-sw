@@ -267,16 +267,59 @@ impl FpgaUlpiUsbHost {
         step_fn: &mut F,
         deadline: Instant,
     ) -> Result<()> {
+        let started = Instant::now();
+        let mut attempts = 0u64;
+        let mut naks = 0u64;
+        let mut previous_pid = None;
+        println!(
+            "[usb-host-transaction] SETUP addr={addr} ep=0 bytes={setup:02x?} bmRequestType=0x{:02x} bRequest=0x{:02x} wValue=0x{:04x} wIndex=0x{:04x} wLength={} host={:?} diag={:?}",
+            setup[0],
+            setup[1],
+            u16::from_le_bytes([setup[2], setup[3]]),
+            u16::from_le_bytes([setup[4], setup[5]]),
+            u16::from_le_bytes([setup[6], setup[7]]),
+            self.status(),
+            self.diag()
+        );
         self.write_tx_buf(setup);
         loop {
             let rem = deadline
                 .checked_duration_since(Instant::now())
                 .filter(|d| !d.is_zero())
-                .ok_or_else(|| anyhow::anyhow!("SETUP stage timeout at addr={addr}"))?;
-            let st = self.exec_cmd(Self::make_cmd(OP_SETUP, false, addr, 0, 8), rem)?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "SETUP stage timeout at addr={addr}; bytes={setup:02x?}; attempts={attempts} NAKs={naks} elapsed={:?}; host={:?}; diag={:?}",
+                        started.elapsed(),
+                        self.status(),
+                        self.diag()
+                    )
+                })?;
+            attempts += 1;
+            let command = Self::make_cmd(OP_SETUP, false, addr, 0, 8);
+            let st = self.exec_cmd(command, rem).with_context(|| {
+                format!("SETUP addr={addr} bytes={setup:02x?} attempt={attempts}")
+            })?;
+            if st.rx_pid == PID_NIB_NAK {
+                naks += 1;
+            }
+            if attempts <= 3 || previous_pid != Some(st.rx_pid) {
+                println!(
+                    "[usb-host-transaction] SETUP addr={addr} attempt={attempts} cmd=0x{command:08x} rx_pid=0x{:x} elapsed={:?} host={st:?} diag={:?}",
+                    st.rx_pid,
+                    started.elapsed(),
+                    self.diag()
+                );
+            }
+            previous_pid = Some(st.rx_pid);
             ensure!(!st.timeout_err, "Ambiguous SETUP timeout: {st:?}");
             match st.rx_pid {
-                PID_NIB_ACK => return Ok(()),
+                PID_NIB_ACK => {
+                    println!(
+                        "[usb-host-transaction] SETUP ACK addr={addr} attempts={attempts} NAKs={naks} elapsed={:?}",
+                        started.elapsed()
+                    );
+                    return Ok(());
+                }
                 PID_NIB_NAK => {}
                 PID_NIB_STALL => bail!("Control SETUP STALL"),
                 other => bail!("Unexpected PID 0x{other:x} on SETUP: {st:?}"),

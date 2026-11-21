@@ -61,6 +61,11 @@ impl<'a> FpgaUlpiRecoveryTransport<'a> {
             .wait_and_enumerate(7, || hw.step(), Duration::from_secs(30))
             .context("enumerate Device 0 through the internal ULPI host");
         if let Err(error) = &enumeration {
+            println!(
+                "[arch-b-recovery] Enumeration failed: {error:#}; host={:?}; diag={:?}",
+                transport.host.status(),
+                transport.host.diag()
+            );
             log_host_otp_lc_snapshot(hw, "After enumeration failure, before teardown")
                 .with_context(|| {
                     format!("host snapshot failed; enumeration also failed: {error:#}")
