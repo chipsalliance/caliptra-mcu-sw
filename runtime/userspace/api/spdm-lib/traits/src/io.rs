@@ -137,7 +137,8 @@ pub trait SpdmPalIoTransport {
         Milliseconds(0)
     }
 
-    /// Sleep until at least `dur` has elapsed.
+    /// Sleep for about `dur`; the wake may come early or late, so callers
+    /// must re-read [`Self::now`] after it resolves.
     ///
     /// Raced against [`Self::recv_request`] in the responder run loop so a
     /// silent peer's session can be torn down on watchdog expiry.

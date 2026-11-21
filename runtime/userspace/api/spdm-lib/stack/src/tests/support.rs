@@ -137,6 +137,10 @@ pub struct TestPal {
     /// Number of `recv_request` futures created. The run loop must create one
     /// per received request and never drop and re-create it on a timer wake.
     pub recv_calls: Cell<usize>,
+    /// If set, `recv_request` moves the fake clock to this time as it
+    /// completes, so a test can let a deadline pass while the receive is
+    /// pending and then have the receive (not the timer) win the race.
+    pub now_on_recv_ms: Cell<Option<u64>>,
 }
 
 impl TestPal {
@@ -194,6 +198,7 @@ impl Default for TestPal {
             now_ms: RefCell::new(0),
             recv_pending_polls: Cell::new(0),
             recv_calls: Cell::new(0),
+            now_on_recv_ms: Cell::new(None),
         }
     }
 }
@@ -301,6 +306,9 @@ impl SpdmPalIoTransport for TestPal {
             core::task::Poll::Pending
         })
         .await;
+        if let Some(ms) = self.now_on_recv_ms.get() {
+            self.set_now_ms(ms);
+        }
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 

@@ -105,11 +105,11 @@ fn armed_session(pal: &TestPal) -> (Sessions<TestPal, 1>, u32) {
     (sessions, session_id)
 }
 
-// A request that arrives after a session's deadline does not keep that session
-// alive. The run loop reaps it even though the receive, not the timer, won.
+// A session already past its deadline when the run loop starts waiting is
+// reaped before the wait (no timer is armed).
 #[cfg(feature = "spdm-set-heartbeat")]
 #[test]
-fn recv_next_reaps_expired_session_when_request_arrives() {
+fn recv_next_reaps_expired_session_before_waiting() {
     let pal = TestPal::default();
     let (mut sessions, session_id) = armed_session(&pal);
     pal.set_now_ms(WINDOW_MS);
@@ -117,6 +117,26 @@ fn recv_next_reaps_expired_session_when_request_arrives() {
     assert_eq!(r.err(), Some(mcu_error::codes::NOT_IMPLEMENTED));
     assert!(sessions.find(session_id).is_none());
     assert_eq!(pal.recv_calls.get(), 1);
+}
+
+// A request that arrives after a session's deadline does not keep that session
+// alive. The session is live when the wait starts; the deadline passes while
+// the receive is pending, and the receive (not the timer) wins. The reap after
+// arrival must tear the session down before the request is dispatched.
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn recv_next_reaps_expired_session_when_request_arrives() {
+    let pal = TestPal::default();
+    let (mut sessions, session_id) = armed_session(&pal);
+    pal.now_on_recv_ms.set(Some(WINDOW_MS));
+    let r = block_on(recv_next(&pal, &mut sessions));
+    assert_eq!(r.err(), Some(mcu_error::codes::NOT_IMPLEMENTED));
+    assert!(sessions.find(session_id).is_none());
+    assert_eq!(pal.recv_calls.get(), 1);
+    // The fake sleep moves the clock forward when it runs. The clock still
+    // reads exactly the arrival time, so the timer never ran and only the
+    // post-arrival reap could have removed the session.
+    assert_eq!(pal.now().0, WINDOW_MS);
 }
 
 // A request that arrives before the deadline leaves the session in place.

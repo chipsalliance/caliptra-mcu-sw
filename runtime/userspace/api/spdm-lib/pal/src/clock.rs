@@ -20,7 +20,7 @@
 //! Compiled only when the `spdm-set-heartbeat` feature is enabled.
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_libtock_alarm::{Alarm, Convert, Milliseconds};
+use caliptra_mcu_libtock_alarm::Alarm;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::ops::DerefMut;
@@ -78,7 +78,16 @@ impl<P: DerefMut<Target = TockSubscribe> + Unpin> Drop for ArmedAlarm<P> {
     }
 }
 
-/// Sleep for at least `ms` alarm milliseconds. Safe to drop at any await point.
+/// Alarm ticks for `ms` milliseconds at `freq_hz`, rounded up. The multiply is
+/// done in u64: libtock's `Milliseconds::to_ticks` saturates `ms * freq` in
+/// u32, which caps a sleep at about 214 ms at 20 MHz. Only the final count is
+/// clamped to `u32::MAX` (about 214 s at 20 MHz).
+fn ms_to_ticks(ms: u32, freq_hz: u32) -> u32 {
+    u32::try_from((u64::from(ms) * u64::from(freq_hz)).div_ceil(1000)).unwrap_or(u32::MAX)
+}
+
+/// Sleep for about `ms` alarm milliseconds (the alarm can run early or late;
+/// see the module doc). Safe to drop at any await point.
 /// If the alarm is unavailable or rejects the request, this never resolves. It
 /// does not return early, because the run loop would then re-arm in a tight
 /// loop without yielding.
@@ -89,7 +98,7 @@ pub(crate) async fn sleep_ms(ms: u32) {
         core::future::pending::<()>().await;
         return;
     };
-    let ticks = Milliseconds(ms).to_ticks(freq).0;
+    let ticks = ms_to_ticks(ms, freq.0);
     let mut armed = ArmedAlarm {
         sub: TockSubscribe::subscribe::<DefaultSyscalls>(DRIVER_NUM, SUBSCRIBE_CALLBACK),
         done: false,
@@ -103,5 +112,23 @@ pub(crate) async fn sleep_ms(ms: u32) {
     drop(guard);
     if !fired {
         core::future::pending::<()>().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ms_to_ticks;
+
+    #[test]
+    fn ms_to_ticks_does_not_saturate_at_fpga_rate() {
+        // 20 MHz (FPGA): the u32 product would cap at ~214 ms of ticks.
+        assert_eq!(ms_to_ticks(6_000, 20_000_000), 120_000_000);
+        assert_eq!(ms_to_ticks(30_000, 20_000_000), 600_000_000);
+        // 1 MHz (emulator) and round-up of a partial tick.
+        assert_eq!(ms_to_ticks(30_000, 1_000_000), 30_000_000);
+        assert_eq!(ms_to_ticks(1, 1_500), 2);
+        // Only the final count is clamped.
+        assert_eq!(ms_to_ticks(u32::MAX, 20_000_000), u32::MAX);
+        assert_eq!(ms_to_ticks(0, 20_000_000), 0);
     }
 }
