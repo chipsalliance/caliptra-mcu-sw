@@ -71,6 +71,16 @@ For example:
 `CALIPTRA_HW_REV=2.1` selects FPGA inputs in [hw/rev-2_1/fpga](../../hw/rev-2_1/fpga/); `CALIPTRA_HW_REV=latest` selects [hw/latest/fpga](../../hw/latest/fpga/).
 The subsystem bitstream is pulled from that directory's `bitstream_manifests/subsystem.toml`. The core bitstream is pulled from "core.toml" from the active `caliptra-sw` folder.
 
+General and SPDM FPGA CI execute both `2.1` and `latest` using separate
+revision-specific firmware, test binaries, bitstreams, fuse inputs and results.
+The required `test_artifacts` and `test_spdm` checks aggregate both revisions.
+Latest selects the published Caliptra Infra `8232648` subsystem segmented image;
+USB remains outside the general CI test selection.
+FPGA, SPDM and emulator pipelines use a reusable workflow per revision, so
+2.1 builds/tests do not wait for latest builds/tests or vice versa. Only final
+required-check aggregation waits for both revisions. Available runner capacity
+can still limit physical-board concurrency.
+
 ### Ubuntu Image
 
 Follow the [2.1 FPGA instructions](../../hw/rev-2_1/fpga/README.md) or [latest FPGA instructions](../../hw/latest/fpga/README.md) on building and loading a bitstream. The [2.1 workflow](../../.github/workflows/bitstream-build_2.1.yml) and [2.2 workflow](../../.github/workflows/bitstream-build_2.2.yml) call the [shared bitstream build](../../.github/workflows/bitstream-build.yml) with the hardware version, repository, ref/SHA, FPGA and RTL paths, and target branch. Both callers support manual runs.

@@ -1,0 +1,660 @@
+# Licensed under the Apache-2.0 license
+
+name: Build and test revision
+
+on:
+  workflow_call:
+    inputs:
+      hw-revision:
+        required: true
+        type: string
+    outputs:
+      precheckin-result:
+        value: ${{ jobs.revision_results.outputs.precheckin }}
+      emulator-result:
+        value: ${{ jobs.revision_results.outputs.emulator }}
+
+env:
+  # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
+  RUSTUP_TOOLCHAIN: "1.96.1-x86_64-unknown-linux-gnu"
+
+jobs:
+  revision_results:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [precheckin_revision, test_emulator_revision]
+    outputs:
+      precheckin: ${{ steps.results.outputs.precheckin }}
+      emulator: ${{ steps.results.outputs.emulator }}
+    steps:
+      - id: results
+        env:
+          PRECHECKIN: ${{ needs.precheckin_revision.result }}
+          EMULATOR: ${{ needs.test_emulator_revision.result }}
+        run: |
+          echo "precheckin=$PRECHECKIN" >> "$GITHUB_OUTPUT"
+          echo "emulator=$EMULATOR" >> "$GITHUB_OUTPUT"
+
+  hardware-revisions:
+    runs-on: e2-standard-8
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qy
+          sudo apt-get install -qy build-essential libclang-dev llvm
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c rust-src,llvm-tools-preview,rustfmt -t riscv32imc-unknown-none-elf
+      - name: Select pinned Caliptra software before building
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+      - name: Check selected snapshot and cache isolation
+        run: |
+          cargo xtask registers-autogen --check
+          cargo test -p caliptra-mcu-hw-revision -p caliptra-mcu-registers-generated -p caliptra-mcu-emulator-registers-generated
+          cargo test -p caliptra-mcu-registers-systemrdl -p caliptra-mcu-registers-generator -p caliptra-mcu-mbox-common
+          cargo test -p caliptra-mcu-emulator-periph --lib
+          cargo test -p caliptra-mcu-builder --lib
+          cargo check -p caliptra-mcu-emulator -p caliptra-mcu-provisioning-fuses
+          cargo test -p caliptra-mcu-emulator --lib hardware_revision
+      - name: Build ROM and runtime against selected hardware
+        run: |
+          cargo xtask rom-build
+          cargo xtask runtime-build
+      - name: Switch revisions without cleaning
+        run: |
+          for revision in 2.1 latest 2.1; do
+            CALIPTRA_HW_REV=latest cargo xtask switch-version "$revision"
+            CALIPTRA_HW_REV="$revision" cargo test -p caliptra-mcu-registers-generated -p caliptra-mcu-emulator-registers-generated
+          done
+      - name: Reject unsupported selector
+        run: |
+          if CALIPTRA_HW_REV=2.2 cargo check -p caliptra-mcu-registers-generated > invalid-revision.log 2>&1; then
+            echo "Unsupported selector unexpectedly succeeded"
+            exit 1
+          fi
+          grep 'Unsupported CALIPTRA_HW_REV' invalid-revision.log
+
+  build-xtask:
+    runs-on: e2-standard-4
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Prebuild xtask
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          cargo build --package caliptra-mcu-xtask --features parallel-build
+          cp target/debug/caliptra-mcu-xtask /tmp/xtask
+
+      - name: Upload xtask binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/xtask
+          # Queued jobs and failed-job reruns can outlive a one-day retention.
+          retention-days: 7
+
+  precheckin_revision:
+    runs-on: e2-standard-8
+    needs: [build-xtask]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Lint: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Run precheckin
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask precheckin
+
+  precheckin:
+    runs-on: ubuntu-latest
+    needs: [precheckin_revision]
+    if: always()
+    steps:
+      - name: Require both revision precheckins
+        env:
+          RESULT: ${{ needs.precheckin_revision.result }}
+        run: test "$RESULT" = success
+
+  caliptra-util-host-precheckin:
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+    uses: ./.github/workflows/caliptra-util-host-validator.yml
+    with:
+      run-validator-tests: false
+      hw-revision: ${{ matrix.hw-revision }}
+
+  build-firmware:
+    runs-on: e2-standard-16-big-disk
+    needs: [build-xtask]
+    # Changes to shared userspace code invalidate every feature-specific runtime;
+    # a cold rebuild can exceed one hour before the release bundle is packaged.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+        shard: [0, 1, 2, 3, 4]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v8
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Build ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask all-build --platform emulator \
+            --output target/all-fw-shard-${{ matrix.shard }}.zip \
+            --rom-features "hw-2-1" \
+            --test-rom-features "ocp-lock,stable-owner-key,test-network-boot,test-flash-network-fallback" \
+            --network-rom-features "network-boot,test-network-boot-ipv6,test-network-boot-timeouts,test-network-boot-ipv6-dhcp-timeout,test-network-boot-ipv6-tftp-timeouts,test-network-mbox-comm,test-network-rom-dhcp-discover,test-network-rom-lwip-dhcp,test-network-rom-lwip-dhcp6,test-network-rom-lwip-tftp,test-network-rom-lwip-tftpv6" \
+            --separate-runtimes \
+            --shard-index ${{ matrix.shard }} \
+            --total-shards 5
+
+      - name: Build release ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
+        run: |
+          /tmp/xtask all-build \
+            --output target/all-fw-release-shard-${{ matrix.shard }}.zip \
+            --platform emulator --separate-runtimes \
+            --profile release \
+            --shard-index ${{ matrix.shard }} \
+            --total-shards 5
+
+      - name: Upload partial firmware bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bundle-${{ matrix.hw-revision }}-shard-${{ matrix.shard }}
+          path: target/all-fw*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  merge-firmware-bundles:
+    needs: build-firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+
+    steps:
+      - name: Install zip/unzip tools
+        run: sudo apt-get update -qy && sudo apt-get install -qy zip unzip
+
+      - name: Download all shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-bundle-${{ matrix.hw-revision }}-shard-*
+          path: staging/
+
+      - name: Merge firmware bundles
+        run: |
+          mkdir -p target/merged-all-fw target/merged-all-fw-release
+          for shard in 0 1 2 3 4; do
+            shard_dir="staging/firmware-bundle-${{ matrix.hw-revision }}-shard-$shard"
+            unzip -o "$shard_dir/all-fw-shard-$shard.zip" -d target/merged-all-fw/
+            unzip -o "$shard_dir/all-fw-release-shard-$shard.zip" -d target/merged-all-fw-release/
+          done
+
+          (cd target/merged-all-fw && zip -r ../all-fw.zip .)
+          (cd target/merged-all-fw-release && zip -r ../all-fw-release.zip .)
+
+      - name: Upload firmware bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-bundle-${{ matrix.hw-revision }}
+          path: target/all-fw.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload release firmware bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-firmware-bundle-${{ matrix.hw-revision }}
+          path: target/all-fw-release.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  build-emulator:
+    runs-on: e2-standard-16
+    needs: [build-xtask]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v8
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Build emulator binary
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          # Build a single emulator that supports all test features via runtime flags
+          /tmp/xtask emulator-build --output target/emulators.zip
+
+      - name: Upload emulator bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-bundle-${{ matrix.hw-revision }}
+          path: target/emulators.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  build-tests:
+    runs-on: e2-standard-8
+    needs: [build-xtask]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Build tests: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v8
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Build test archive
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask test-archive \
+            --archive /tmp/nextest-archive.tar.zst
+
+      - name: Upload test archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: nextest-archive-${{ matrix.hw-revision }}
+          path: /tmp/nextest-archive.tar.zst
+          retention-days: 7
+
+  test_emulator_revision:
+    runs-on: e2-standard-4
+    needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+      NEXTEST_PROFILE: ${{ github.event_name == 'schedule' && 'emulator' || 'pr-emulator' }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm dnsmasq && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Setup TAP interface for network tests
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask network tap setup
+
+      - name: Download firmware bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: firmware-bundle-${{ matrix.hw-revision }}
+          path: target/
+
+      - name: Download release firmware bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: release-firmware-bundle-${{ matrix.hw-revision }}
+          path: target/
+
+      - name: Download emulator bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: emulator-bundle-${{ matrix.hw-revision }}
+          path: target/
+
+      - name: Download test archive
+        uses: actions/download-artifact@v8
+        with:
+          name: nextest-archive-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      # To run these tests locally for debugging, first build the firmware and emulators:
+      #   cargo xtask all-build --platform emulator --separate-runtimes
+      #   cargo xtask emulator-build
+      # Then run the tests with:
+      #   cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
+      - name: Run tests (shard ${{ matrix.shard }}/8)
+        run: |
+          /tmp/xtask test \
+            --archive /tmp/nextest-archive.tar.zst \
+            --shard hash:${{ matrix.shard }}/8 \
+            --firmware-bundle "${PWD}/target/all-fw.zip" \
+            --emulator-bundle "${PWD}/target/emulators.zip" \
+            --workspace-remap . \
+            --nextest-profile "${{ env.NEXTEST_PROFILE }}"
+
+      - name: Move devel junit xml
+        if: success() || failure()
+        run: |
+          sudo mv /tmp/junit.xml /tmp/junit-${{ matrix.shard }}.xml
+
+      - name: Run release tests
+        if: matrix.shard == 1
+        run: |
+          /tmp/xtask test \
+            --archive /tmp/nextest-archive.tar.zst \
+            --firmware-bundle "${PWD}/target/all-fw-release.zip" \
+            --emulator-bundle "${PWD}/target/emulators.zip" \
+            --workspace-remap . \
+            --nextest-profile nightly-release
+
+      - name: Move release junit xml
+        if: (success() || failure()) && matrix.shard == 1
+        run: |
+          sudo mv /tmp/junit.xml /tmp/junit-release.xml
+
+      - name: 'Upload test results'
+        uses: actions/upload-artifact@v7
+        if: success() || failure()
+        with:
+          name: caliptra-test-results-${{ matrix.hw-revision }}-${{ matrix.shard }}
+          path: |
+            /tmp/junit-${{ matrix.shard }}.xml
+            /tmp/junit-release.xml
+          retention-days: 1
+
+  # Preserve main-2.1's required check names while requiring both revisions.
+  test_emulator:
+    runs-on: ubuntu-latest
+    needs: [test_emulator_revision]
+    if: always()
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - name: Require all revision and shard tests
+        env:
+          RESULT: ${{ needs.test_emulator_revision.result }}
+        run: test "$RESULT" = success
+
+  print_test_results:
+    runs-on: ubuntu-latest
+    needs: [test_emulator_revision]
+    if: ${{ always() && (needs.test_emulator_revision.result == 'success' || needs.test_emulator_revision.result == 'failure') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: 'Download test results'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: caliptra-test-results-${{ matrix.hw-revision }}-*
+          merge-multiple: true
+          path: /tmp/junit
+
+      - name: Install test-printer
+        run: |
+          cargo install --git https://github.com/chipsalliance/caliptra-infra test-printer --root /tmp/test-printer
+
+      - name: Print results
+        run: |
+          echo "## Test Results (${{ matrix.hw-revision }})" >> $GITHUB_STEP_SUMMARY
+          for xml in /tmp/junit/junit-*.xml; do
+            /tmp/test-printer/bin/test-printer --xml-path "$xml" >> $GITHUB_STEP_SUMMARY
+          done
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["${{ inputs.hw-revision }}"]
+
+    env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Download firmware bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: firmware-bundle-${{ matrix.hw-revision }}
+          path: target/
+
+      - name: Download emulator bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: emulator-bundle-${{ matrix.hw-revision }}
+          path: target/
+
+      - name: Download test archive
+        uses: actions/download-artifact@v8
+        with:
+          name: nextest-archive-${{ matrix.hw-revision }}
+          path: /tmp/
+
+      - name: Build ROM ELF for coverage analysis
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask rom-build
+
+      - name: Run tests with coverage collection
+        run: |
+          mkdir -p /tmp/mcu-coverage
+          CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" \
+          CPTRA_EMULATOR_BUNDLE="${PWD}/target/emulators.zip" \
+          MCU_COVERAGE_PATH=/tmp/mcu-coverage \
+          cargo nextest run \
+            --archive-file /tmp/nextest-archive.tar.zst \
+            --workspace-remap . \
+            -E 'not (test(test_firmware_update) | test(test_soc_boot) | test(test_dot::test::test_fw_manifest) | test(test_dot::test::test_dot_fuse) | test(test_new_unbooted))' \
+            || true
+
+      - name: Analyze coverage
+        run: |
+          MCU_COVERAGE_PATH=/tmp/mcu-coverage /tmp/xtask coverage --analyze-only 2>&1 | tee /tmp/coverage-results.txt
+          echo '## Code Coverage (${{ matrix.hw-revision }})' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '| Image | Metric | Value |' >> $GITHUB_STEP_SUMMARY
+          echo '|-------|--------|-------|' >> $GITHUB_STEP_SUMMARY
+          grep -E "^(MCU ROM Coverage|ICCM/SRAM Coverage|Instruction count|Coverage =|Bits set)" /tmp/coverage-results.txt | \
+          awk '
+            /MCU ROM Coverage/ { image="MCU ROM" }
+            /ICCM\/SRAM Coverage/ { match($0, /tag=[0-9]+/); image="ICCM/SRAM " substr($0, RSTART, RLENGTH) }
+            /Instruction count/ { print "| " image " | Instructions | " $NF " |" }
+            /Coverage =/ { print "| " image " | Coverage | " $NF " |" }
+            /Bits set =/ { for(i=1;i<=NF;i++){if($i=="=")a=$((i+1)); if($i=="/")b=$((i+1)); if($i~/\(/){p=$i}} print "| " image " | Bits set | " a " / " b " " p " |" }
+          ' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '_Full details in build log. Uncovered function list omitted from summary._' >> $GITHUB_STEP_SUMMARY
