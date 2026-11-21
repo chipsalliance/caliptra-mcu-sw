@@ -983,17 +983,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-attestation-build"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-hw-revision",
+ "caliptra-ocp-eat",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "caliptra-mcu-attestation-evidence"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-attestation-build",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-ocp-eat",
  "coset 0.4.2",
  "mcu-caliptra-api",
- "serde",
- "toml 0.8.23",
 ]
 
 [[package]]
@@ -2831,9 +2840,6 @@ dependencies = [
 [[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
-dependencies = [
- "arrayvec",
-]
 
 [[package]]
 name = "caliptra-okref"
