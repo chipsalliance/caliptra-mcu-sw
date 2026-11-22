@@ -315,8 +315,10 @@ pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmRes
 ///   connection resolves as single-key.
 /// * `advertised_cap_flags` — The responder's own CAPABILITIES flags,
 ///   whose `MULTI_KEY_CAP` field drives the table.
-/// * `multi_key_conn` — The `ResponderMultiKeyConn` bit: as requested
-///   in NEGOTIATE_ALGORITHMS, or as negotiated afterwards.
+/// * `multi_key_conn` — The `ResponderMultiKeyConn` bit as requested in
+///   NEGOTIATE_ALGORITHMS. Not the ALGORITHMS `OtherParamsSelection` bit
+///   held in `other_param_sel` (that is `RequesterMultiKeyConnSel`); after
+///   negotiation read `ConnectionState::multi_key_conn_rsp` instead.
 ///
 /// # Errors
 ///
