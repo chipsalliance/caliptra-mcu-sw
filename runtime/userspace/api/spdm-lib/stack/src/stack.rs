@@ -911,6 +911,13 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         {
             return Err(SPDM_DECRYPT_ERROR);
         }
+        // Keep-alive: an authenticated (successfully decrypted) request is
+        // session traffic (DSP0274 1.4.0 section 10.21), so it restarts the
+        // liveness watchdog before dispatch, whether the request then succeeds
+        // or draws an ERROR. A record that fails decryption does not count.
+        // Touch is a no-op before FINISH (the handshake timeout stays), FINISH
+        // re-arms below, and END_SESSION removes the session.
+        session.touch_heartbeat(pal.now().0);
     }
 
     // ── Parse app_data_length + spdm_msg ────────────────────────────
@@ -959,10 +966,9 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             session.key_schedule.destroy_handshake_secrets();
             session.state = SessionState::Established;
             // Arm the liveness watchdog at the FINISH_RSP transmission point
-            // (DSP0274 1.3.0 section 10.20). No-op when the negotiated period
-            // is zero (heartbeat disabled / feature off). This also replaces
-            // the handshake timeout armed at KEY_EXCHANGE (cleared when the
-            // period is zero).
+            // (DSP0274 1.3.0 section 10.20). When the negotiated period is zero
+            // (heartbeat disabled / feature off) this clears the deadline. This
+            // also replaces the handshake timeout armed at KEY_EXCHANGE.
             session.arm_heartbeat(pal.now().0);
             return Ok(rsp);
         }
@@ -1053,12 +1059,6 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         spdm_rsp,
     )
     .await?;
-
-    // Keep-alive: any successfully handled secured command restarts the
-    // liveness watchdog (DSP0274 1.3.0 section 10.20 "session traffic"). FINISH
-    // arms it and END_SESSION removes the session, and both return above;
-    // touch is a no-op on a session whose watchdog is unarmed.
-    session.touch_heartbeat(pal.now().0);
     Ok(rsp)
 }
 

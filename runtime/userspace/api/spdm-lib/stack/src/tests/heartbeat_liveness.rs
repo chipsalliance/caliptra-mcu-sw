@@ -295,6 +295,38 @@ fn secured_heartbeat_refreshes_deadline() {
     assert_eq!(session.deadline_ms, Some(1500 + WINDOW_MS));
 }
 
+// An authenticated in-session request that draws an ERROR is still session
+// traffic (DSP0274 1.4.0 section 10.21): GET_VERSION inside a session is
+// rejected with UnexpectedRequest, yet the watchdog deadline moves forward.
+#[test]
+fn secured_error_response_refreshes_deadline() {
+    let pal = TestPal::default();
+    let (mut state, mut sessions, session_id) = established_session(&pal);
+    {
+        let session = sessions.find_mut(session_id).unwrap();
+        session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
+        session.arm_heartbeat(0);
+        assert_eq!(session.deadline_ms, Some(WINDOW_MS));
+    }
+
+    pal.set_now_ms(1500);
+    let inner = vec![state.version.to_u8(), ReqRespCode::GET_VERSION.0, 0, 0];
+    let io = secured_io(session_id, &inner);
+    let rsp = block_on(handle_secured_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        &NoVdmBackend,
+    ))
+    .expect("secured handler must not fatally error")
+    .expect("an ERROR response must be produced");
+
+    assert_eq!(secured_spdm_response(&rsp)[1], ReqRespCode::ERROR.0);
+    let session = sessions.find(session_id).unwrap();
+    assert_eq!(session.deadline_ms, Some(1500 + WINDOW_MS));
+}
+
 // With the feature enabled, the responder advertises HBEAT_CAP.
 #[cfg(feature = "spdm-set-heartbeat")]
 #[test]

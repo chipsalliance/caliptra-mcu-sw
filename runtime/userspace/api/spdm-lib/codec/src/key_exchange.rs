@@ -28,8 +28,9 @@ pub const KEY_EXCHANGE_RANDOM_DATA_LEN: usize = 32;
 pub const KEY_EXCHANGE_RSP_FIXED_BODY_SIZE: usize = 6 + KEY_EXCHANGE_RANDOM_DATA_LEN;
 
 /// KEY_EXCHANGE_RSP HeartbeatPeriod (Param1 of the response, DSP0274): a count
-/// of **seconds**. Zero is a distinguished value — heartbeat is supported but
-/// not desired on this session, so no liveness watchdog runs. Wrapping the raw
+/// of **seconds**. Zero is a distinguished value: one of the endpoints does not
+/// support heartbeat (DSP0274 1.4.0 requires zero then), or it is supported but
+/// not desired, on this session, so no liveness watchdog runs. Wrapping the raw
 /// byte keeps the unit and that semantics in the type instead of passing bare
 /// `u8`s around.
 #[repr(transparent)]
@@ -37,7 +38,7 @@ pub const KEY_EXCHANGE_RSP_FIXED_BODY_SIZE: usize = 6 + KEY_EXCHANGE_RANDOM_DATA
 pub struct HeartBeatPeriod(pub u8);
 
 impl HeartBeatPeriod {
-    /// Heartbeat supported but not desired: no watchdog on this session.
+    /// Heartbeat not supported or not desired: no watchdog on this session.
     pub const DISABLED: HeartBeatPeriod = HeartBeatPeriod(0);
 
     /// Whole seconds carried by this period.

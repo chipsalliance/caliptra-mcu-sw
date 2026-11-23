@@ -176,8 +176,9 @@ impl<K: Clone, S> SessionInfo<K, S> {
 
     /// Arm the liveness watchdog at session establishment. Sets the deadline to
     /// `now_ms + HEARTBEAT_TIMEOUT_MULTIPLIER * period` (the DSP0274 "terminate
-    /// after two successive missed HeartbeatPeriods" rule). No-op when the
-    /// negotiated period is zero (heartbeat disabled for this session).
+    /// after two successive missed HeartbeatPeriods" rule). When the negotiated
+    /// period is zero (heartbeat disabled for this session) it clears the
+    /// deadline, which also drops the handshake timeout armed at KEY_EXCHANGE.
     pub fn arm_heartbeat(&mut self, now_ms: u64) {
         self.deadline_ms = self.heartbeat_deadline(now_ms);
     }
