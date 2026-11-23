@@ -171,11 +171,35 @@ optional MCU header verification and reset handoff are unchanged.
 USB uses the existing **recovery watchdog strap policy**: Caliptra timers use
 `cptra_wdt_cfg0/1`; MCU timers select debug, manufacturing or production values
 according to security state. These are platform build-time constants, not USB
-host commands. ROM does not disable watchdogs or refresh them indefinitely.
+host commands. During normal recovery, ROM does not disable watchdogs or
+refresh them indefinitely.
 Missing images remain awaiting recovery until the configured watchdog expires;
-authentication and hardware errors fail explicitly. PHY/service failures and
-disconnects report `ROM_USB_RECOVERY_ERROR`. An interrupted FIFO batch is
+authentication and hardware errors fail explicitly. PHY/service failures
+report `ROM_USB_RECOVERY_ERROR`. An interrupted FIFO batch is
 reported through the hardware's general protocol-error mechanism.
+
+If VBUS is lost during USB recovery, MCU ROM stops the boot flow and disables
+its own recovery watchdog, but continues servicing USB control requests until
+cold reset. Reconnection resets the USB address/configuration and permits
+enumeration and OCP status reads. Recovery remains failed; MCU does not resume
+image loading or jump to partially transferred firmware. Existing Core
+authentication/fatal status and its watchdog policy are preserved. Caliptra Core
+may still enter fatal error independently. This diagnostic service does not
+promise a firmware recovery retry without cold reset.
+In this state ROM disables hardware OCP claims and serves read-only protocol
+capabilities, device identity, device/recovery/hardware status and FIFO status
+from the existing CSRs through firmware EP0. OCP writes, including activation
+and image data, STALL; a subsequent status SETUP remains serviceable.
+
+`UsbParams::enable_hub` optionally selects the hardware-serviced upstream hub,
+with Device 0 on port 1. The shared driver applies power policy while the hub is
+disconnected and connects it only after PHY initialization and VBUS readiness.
+Direct-device fixtures leave this option disabled.
+`UsbParams::enable_logs` enables bring-up/link-state messages, without payload
+or per-poll logging. Error reporting is independent of verbose logging.
+ROM records one read-only failure snapshot of OCP and Core error/status
+registers, including hardware-only Core faults with zero firmware fatal status.
+The diagnostic never clears errors, resets Core or changes monitoring policy.
 
 At successful completion, `recovery_status_open` leaves USB recovery status in
 the booting/open state; otherwise ROM publishes recovery success and healthy

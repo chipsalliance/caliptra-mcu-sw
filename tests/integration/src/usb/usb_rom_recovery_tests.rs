@@ -337,24 +337,108 @@ fn test_lpcip_usb_common_rom_rejects_corrupt_soc_manifest() -> Result<()> {
 }
 
 #[test]
-fn test_lpcip_usb_common_rom_reports_disconnect_before_images() -> Result<()> {
+fn test_lpcip_usb_common_rom_reenumerates_after_interrupted_image() -> Result<()> {
     let _lock = TEST_LOCK.lock().unwrap();
     let mut transport = Transport::new()?;
+    transport.write(
+        RecoveryCommand::IndirectFifoCtrl,
+        &[0, 1, 8, 0, 0, 0],
+        Duration::from_secs(2),
+    )?;
+    transport.write(
+        RecoveryCommand::IndirectFifoData,
+        &[1, 2, 3, 4],
+        Duration::from_secs(2),
+    )?;
     transport.model.lpcip_usb_host_controller.set_vbus(false);
     let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        match transport.step(100) {
-            Err(error) => {
-                ensure!(
-                    format!("{error:#}").contains("0x10048"),
-                    "unexpected error: {error:#}"
-                );
-                return Ok(());
-            }
-            Ok(()) if Instant::now() >= deadline => bail!("USB disconnect did not fail explicitly"),
-            Ok(()) => {}
-        }
+    while !transport
+        .model
+        .output()
+        .peek()
+        .contains("servicing USB status until cold reset")
+    {
+        transport.step(100)?;
+        ensure!(Instant::now() < deadline, "disconnect was not observed");
     }
+    assert_eq!(
+        transport.mci_read(0xb0)? & 1,
+        0,
+        "MCU watchdog disabled in status-only mode"
+    );
+    transport.step(1000)?;
+    transport.model.lpcip_usb_host_controller.set_vbus(true);
+    let reconnect_deadline = Instant::now() + Duration::from_secs(5);
+    while !transport.model.lpcip_usb_host_controller.connected() {
+        transport.step(1000)?;
+        ensure!(
+            Instant::now() < reconnect_deadline,
+            "USB did not reconnect while servicing status"
+        );
+    }
+    transport
+        .model
+        .lpcip_usb_host_controller
+        .bus_reset(LpcipUsbSpeed::High)?;
+    transport.step(1000)?;
+    transport.address = 0;
+    transport
+        .model
+        .lpcip_usb_host_controller
+        .host_setup(0, &[0x80, 6, 0, 1, 0, 0, 18, 0])?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let descriptor = transport.input(deadline)?;
+    assert_eq!(descriptor.len(), 18);
+    transport.output(&[], deadline)?;
+    transport.step(1000)?;
+    transport
+        .model
+        .lpcip_usb_host_controller
+        .host_setup(0, &[0, 5, 7, 0, 0, 0, 0, 0])?;
+    assert!(transport.input(deadline)?.is_empty());
+    transport.step(1000)?;
+    transport.address = 7;
+    transport
+        .model
+        .lpcip_usb_host_controller
+        .host_setup(7, &[0, 9, 1, 0, 0, 0, 0, 0])?;
+    assert!(transport.input(deadline)?.is_empty());
+    transport.step(1000)?;
+    let mut status = [0; CONTROL_MAX_BYTES];
+    transport.read(
+        RecoveryCommand::DeviceStatus,
+        &mut status,
+        Duration::from_secs(2),
+    )?;
+    assert_eq!(status[0] & 0xf, 2, "device reports error");
+    transport.read(
+        RecoveryCommand::RecoveryStatus,
+        &mut status,
+        Duration::from_secs(2),
+    )?;
+    assert_eq!(status[0] & 0xf, 0xc, "recovery remains failed");
+    assert!(
+        transport
+            .write(
+                RecoveryCommand::RecoveryCtrl,
+                &[0, 0, 0x0f],
+                Duration::from_secs(2),
+            )
+            .is_err(),
+        "status-only mode must reject activation"
+    );
+    transport.read(
+        RecoveryCommand::RecoveryStatus,
+        &mut status,
+        Duration::from_secs(2),
+    )?;
+    assert_eq!(status[0] & 0xf, 0xc);
+    assert!(!transport
+        .model
+        .mci_boot_milestones()
+        .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
+    assert!(transport.activated.is_empty());
+    Ok(())
 }
 
 #[test]

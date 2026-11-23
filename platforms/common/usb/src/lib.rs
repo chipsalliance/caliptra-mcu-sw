@@ -18,8 +18,11 @@
 //! their platform diagnostics. Neither VBUS nor successful PHY startup is faked.
 //!
 //! The platform owns MMIO mappings and the exclusive Device 0 SRAM reservation.
-//! The driver does not configure the internal hub, Device 1, recovery images or
-//! boot policy. `LpcipUsbDriver::poll` is nonblocking between host transactions;
+//! `UsbParams::enable_hub` selects the hardware-serviced hub and applies the
+//! caller's power policy before connecting it. `enable_logs` controls optional
+//! bring-up/link diagnostics; callers still report errors independently.
+//! The driver does not configure Device 1, recovery images or boot policy.
+//! `LpcipUsbDriver::poll` is nonblocking between host transactions;
 //! ROM and runtime can schedule it without a persistent compliance-mode loop.
 //! `test-host` keeps the enumeration-only test fixture servicing EP0 after
 //! configuration for Linux/libusb tests; it does not implement recovery boot.

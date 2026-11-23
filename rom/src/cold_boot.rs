@@ -1865,7 +1865,7 @@ impl BootFlow for ColdBoot {
                     .status()
                     .cmd_busy()
                 {
-                    recovery.poll();
+                    recovery.poll(mci, soc);
                     soc.check_hw_errors();
                     if soc.cptra_fw_fatal_error() {
                         fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
@@ -1883,6 +1883,10 @@ impl BootFlow for ColdBoot {
                     _ => {
                         caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
                     }
+                }
+                #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+                if let Some(recovery) = usb_recovery.as_mut() {
+                    recovery.serve_failed_recovery(mci, soc);
                 }
                 fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
             }
@@ -1952,7 +1956,7 @@ impl BootFlow for ColdBoot {
             while !soc.ready_for_runtime() {
                 #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
                 if let Some(recovery) = usb_recovery.as_mut() {
-                    recovery.poll();
+                    recovery.poll(mci, soc);
                 }
                 soc.check_hw_errors();
             }
@@ -1988,7 +1992,7 @@ impl BootFlow for ColdBoot {
             soc.wait_for_firmware_ready_with(mci, || {
                 #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
                 if let Some(recovery) = usb_recovery.as_mut() {
-                    recovery.poll();
+                    recovery.poll(mci, soc);
                 }
             });
             caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
@@ -2029,7 +2033,7 @@ impl BootFlow for ColdBoot {
             while !soc.ready_for_runtime() {
                 #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
                 if let Some(recovery) = usb_recovery.as_mut() {
-                    recovery.poll();
+                    recovery.poll(mci, soc);
                 }
                 soc.check_hw_errors();
             }

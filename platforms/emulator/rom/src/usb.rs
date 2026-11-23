@@ -13,6 +13,8 @@ pub fn test_parameters() -> caliptra_mcu_usb_common::UsbParams {
     // The emulator supplies released PHY reset and a running ULPI clock.
     // These mappings and test-only values are not release device identity.
     UsbParams {
+        enable_hub: false,
+        enable_logs: false,
         registers: unsafe { StaticRef::new(usb_combo::USB_COMBO_ADDR as *const _) },
         packet_memory: unsafe { StaticRef::new(usb_dev0_mem::USB_DEV0_MEM_ADDR as *const _) },
         vendor_id: 0xffff,
