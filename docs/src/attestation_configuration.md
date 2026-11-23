@@ -2,6 +2,12 @@
 
 ## 1. Introduction
 
+The attestation template generator uses the selected `CALIPTRA_HW_REV`.
+Its build-support crate selects the Core EAT/COSE encoding API at compile time:
+2.1 retains its existing API, while latest uses the in-place encoding API.
+Changing the revision rebuilds the generator; the generated token format and
+platform configuration remain shared.
+
 Attestation configuration specifies how measured boot and attestation evidence collection are carried out across a SoC that integrates Caliptra Subsystem. The configuration consists of three artifacts:
 
 1. **SoC Authorization Manifest**: Authorizes the firmware images permitted to run. Caliptra Core verifies the manifest signature and uses its image metadata to authenticate component reference digests and validate load/staging addresses.
