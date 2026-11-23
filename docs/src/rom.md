@@ -143,9 +143,15 @@ sequenceDiagram
 With `CALIPTRA_HW_REV=latest`, enable the common ROM's `usb-recovery` feature,
 select `RomParameters::recovery_interface = RecoveryInterface::Usb`, and provide
 `RomParameters::usb` with the platform's generated Device 0 CSR/SRAM mappings,
-approved USB identity and VBUS power budget. The platform must release USB3320
-reset and supply its clocks. There are no production identity or power defaults.
-Hub topology and Device 1 remain platform responsibilities.
+approved USB identity and VBUS power budget. The platform must release its PHY
+reset and supply the required clocks. There are no production identity or power
+defaults. Hub topology and Device 1 remain platform responsibilities.
+
+The subsystem USB controller does not mandate a particular PHY. Integrators
+choose the PHY, supported controller interface and board-level configuration.
+The supplied reference driver uses ULPI and checks the reference PHY identity;
+a different PHY or interface requires corresponding initialization and driver
+support. Reference platform configurations are not subsystem requirements.
 
 On 2.2, cold and warm boot explicitly select the hardware recovery interface
 before Caliptra boot-go and verify readback, preserving other capability bits.

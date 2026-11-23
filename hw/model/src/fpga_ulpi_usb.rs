@@ -2,7 +2,7 @@
 
 //! Host-side MMIO driver for `caliptra_fpga_ulpi_host` (`S_AXI_WRAPPER + 0x4000`,
 //! physical address `0xA401_4000`), providing zero-cable internal FPGA ULPI
-//! USB3320 PHY emulation + USB 2.0 High-Speed Host transactions ("Architecture B").
+//! reference PHY emulation + USB 2.0 High-Speed Host transactions ("Architecture B").
 
 use anyhow::{bail, ensure, Context, Result};
 use std::time::{Duration, Instant};
@@ -27,6 +27,7 @@ const OP_BUS_RESET_HS: u32 = 1;
 const OP_SETUP: u32 = 2;
 const OP_OUT: u32 = 3;
 const OP_IN: u32 = 4;
+const OP_SEND_RXCMD: u32 = 5;
 
 const PID_NIB_ACK: u8 = 0x2;
 const PID_NIB_NYET: u8 = 0x6;
@@ -178,6 +179,26 @@ impl FpgaUlpiUsbHost {
         std::thread::sleep(Duration::from_micros(10));
         self.write_reg(REG_CTRL, CTRL_VBUS_VALID);
         self.write_reg(REG_TIMEOUT, 200_000);
+    }
+
+    /// Change the emulated PHY's VBUS and notify the link without resetting it.
+    pub fn set_vbus(&mut self, present: bool) -> Result<()> {
+        self.write_reg(REG_CTRL, u32::from(present));
+        // Stop SOFs and send an idle SE0 RXCMD carrying the new VBUS state.
+        let status = self.exec_cmd(
+            Self::make_cmd(OP_SEND_RXCMD, false, 0, 0, 0),
+            Duration::from_secs(1),
+        )?;
+        ensure!(
+            !status.timeout_err,
+            "VBUS update failed: status={status:?}, diag={:?}",
+            self.diag()
+        );
+        if !present {
+            self.device_addr = 0;
+            self.ocp_interface = 0;
+        }
+        Ok(())
     }
 
     fn write_tx_buf(&self, data: &[u8]) {
@@ -985,6 +1006,27 @@ mod tests {
         assert_eq!(diag.sof_count, 18);
         assert_eq!(diag.ulpi_reg_op_count, 15);
         assert_eq!(diag.last_ulpi_cmd, 0x4b);
+    }
+
+    #[test]
+    fn vbus_loss_and_restore_notify_the_link_without_resetting_the_host() {
+        let mut registers = vec![0u32; 0x10000 / 4];
+        let base = ULPI_HOST_WRAPPER_WORD_OFFSET;
+        registers[base + REG_MAGIC] = ULPI_HOST_MAGIC;
+        registers[base + REG_STATUS] = 1 << 1;
+        let mut host =
+            unsafe { FpgaUlpiUsbHost::from_wrapper_ptr(registers.as_mut_ptr()) }.unwrap();
+        host.device_addr = 7;
+        host.ocp_interface = 3;
+        for present in [false, true] {
+            host.set_vbus(present).unwrap();
+            assert_eq!(registers[base + REG_CTRL], u32::from(present));
+            assert_eq!(registers[base + REG_CMD], OP_SEND_RXCMD);
+            assert_eq!(host.device_address(), 0);
+            assert_eq!(host.ocp_interface(), 0);
+        }
+        registers[base + REG_STATUS] |= 1 << 2;
+        assert!(host.set_vbus(false).is_err());
     }
 
     #[test]

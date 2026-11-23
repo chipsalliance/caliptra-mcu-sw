@@ -3,16 +3,19 @@
 //! Shared, polling LPCIP Device 0 enumeration for ROM and runtime on latest/2.2.
 //!
 //! The caller supplies all configuration in `UsbParams`. There is no default
-//! VID/PID: USB3320's PHY identity is not a release USB device identity. Power
+//! VID/PID: a PHY's identity is not a release USB device identity. Power
 //! values describe USB VBUS consumption, not total board power. Remote wakeup
 //! and LPM are not implemented or advertised.
 //!
 //! # Platform prerequisites
 //!
-//! Before `LpcipUsbDriver::initialize`, the platform must release the external
-//! PHY reset, provide its reference/ULPI clock and enable CSR/SRAM clocks.
+//! The reference driver uses ULPI and checks the reference PHY identity.
+//! Integrators using a different PHY or controller interface must provide
+//! corresponding initialization and driver support.
+//! Before `LpcipUsbDriver::initialize`, the platform must release the PHY reset,
+//! provide the clocks required by its configuration and enable CSR/SRAM clocks.
 //! These board-level operations are not expressible through the LPCIP CSRs.
-//! Initialization preserves FORCE_NEEDCLK and USB3320 SUSPENDM so that gateway
+//! Reference initialization preserves FORCE_NEEDCLK and ULPI SUSPENDM so gateway
 //! transactions and enumeration retain the PHY clock. ULPI, VBUS and endpoint
 //! cancellation waits are bounded; callers must report returned errors through
 //! their platform diagnostics. Neither VBUS nor successful PHY startup is faked.

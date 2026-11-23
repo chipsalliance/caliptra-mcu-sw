@@ -12,7 +12,7 @@ pub fn test_parameters() -> caliptra_mcu_usb_common::UsbParams {
     use caliptra_mcu_romtime::StaticRef;
     use caliptra_mcu_usb_common::UsbParams;
 
-    // The board/gateware must release external USB3320 reset and supply its
+    // The board/gateware must release the PHY reset and supply its
     // reference/ULPI and CSR/SRAM clocks before entering this test. No PHY
     // reset GPIO is assumed here. Failed startup is reported by the driver.
     // Placeholder identity/power values are gated test policy, not release IDs
