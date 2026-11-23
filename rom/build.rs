@@ -5,6 +5,13 @@ use std::{path::Path, process::Command};
 fn main() {
     let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env()
         .unwrap_or_else(|error| panic!("{error}"));
+    // The Core pin check applies to ROM firmware builds. Host builds, such as
+    // the emulator used through a Cargo git dependency, can take caliptra-sw
+    // from elsewhere and cannot switch this checkout's submodule.
+    if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("riscv32") {
+        revision.emit_build_configuration();
+        return;
+    }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let versions = root.join("core/versions.toml");
     println!("cargo:rerun-if-changed={}", versions.display());
