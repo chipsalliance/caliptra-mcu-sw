@@ -54,8 +54,10 @@ jobs:
       - id: source
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          # The Core firmware that ships with the current runtime.
-          core="$(grep -oP 'caliptra-sw", rev = "\K[0-9a-f]{40}' Cargo.toml | head -1)"
+          # The Core firmware that ships with the current runtime: the pinned
+          # caliptra-sw commit for CALIPTRA_HW_REV in core/versions.toml.
+          key="${CALIPTRA_HW_REV//./\\.}"
+          core="$(sed -nE "s/^\"?${key}\"?[[:space:]]*=[[:space:]]*\"([0-9a-f]{40})\".*/\1/p" core/versions.toml)"
           test -n "$core"
           echo "core=$core" >> "$GITHUB_OUTPUT"
 
