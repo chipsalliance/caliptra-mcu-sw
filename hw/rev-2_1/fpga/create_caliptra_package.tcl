@@ -121,6 +121,14 @@ exec sed -i {/`ifdef CALIPTRA_FUSE_GRANULARITY_32/,/`endif/calways_comb soc_ifc_
 remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ]
 add_files $outputDir/soc_ifc_top.sv
 
+# Replace abr_ctrl with a version that writes the signature challenge register once.
+# The original repeats the same assignment SIGNATURE_NUM_DWORDS times, and Vivado needs
+# over an hour and 160 GB of memory to reduce that.
+file copy $adbDir/src/abr_top/rtl/abr_ctrl.sv $outputDir/abr_ctrl.sv
+exec sed -i {/dword < SIGNATURE_NUM_DWORDS; dword++) begin$/{N;N;s/.*\n\(.*\)\n.*/\1/}} $outputDir/abr_ctrl.sv
+remove_files $adbDir/src/abr_top/rtl/abr_ctrl.sv
+add_files $outputDir/abr_ctrl.sv
+
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]
 

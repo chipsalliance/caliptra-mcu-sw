@@ -127,6 +127,12 @@ puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {mcu_
 puts $xdc_fd {set_false_path -from [get_clocks {cal_jtag_clk}] -to [get_clocks {clk_pl_0}]}
 puts $xdc_fd {set_false_path -from [get_clocks {lcc_jtag_clk}] -to [get_clocks {clk_pl_0}]}
 puts $xdc_fd {set_false_path -from [get_clocks {mcu_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+if {$FAST_I3C} {
+  # The core clock and the I3C clock are unrelated. Limit the paths between them to one I3C clock period.
+  set i3c_period_ns [format %.3f [expr {1000.0 / $I3C_CLK_MHZ}]]
+  puts $xdc_fd "set_max_delay -datapath_only -from \[get_clocks {clk_pl_0}\] -to \[get_clocks {clk_pl_1}\] $i3c_period_ns"
+  puts $xdc_fd "set_max_delay -datapath_only -from \[get_clocks {clk_pl_1}\] -to \[get_clocks {clk_pl_0}\] $i3c_period_ns"
+}
 close $xdc_fd
 
 #### Add AXI Infrastructure
@@ -365,6 +371,11 @@ update_compile_order -fileset sources_1
 create_ip_run [get_files *caliptra_fpga_project_bd.bd]
 set_property STEPS.SYNTH_DESIGN.ARGS.GATED_CLOCK_CONVERSION $GATED_CLOCK_CONVERSION [get_runs caliptra_fpga_project_bd_caliptra_package_top_0_0_synth_1]
 
+# Skip the simulation netlists of caliptra_package_top. Writing them takes hours and nothing reads them.
+# The IP cache is disabled because every build starts from an empty project.
+config_ip_cache -disable_cache
+set_property STEPS.SYNTH_DESIGN.TCL.POST [file normalize $fpgaDir/skip_sim_netlist.tcl] [get_runs caliptra_fpga_project_bd_caliptra_package_top_0_0_synth_1]
+
 # Add DDR pin placement constraints
 file copy $fpgaDir/src/ddr4_constraints.xdc $outputDir/ddr4_constraints.xdc
 add_files -fileset constrs_1 $outputDir/ddr4_constraints.xdc
@@ -450,10 +461,6 @@ save_bd_design
 if {$SEGMENTED} {
   set_property initial_boot true [get_noc_logical_paths]
 }
-
-# Set place design directives to avoid SLICE overlaps
-set_property STEPS.PLACE_DESIGN.ARGS.DIRECTIVE Explore [get_runs impl_1]
-set_property STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE { Floorplan.ForceSpreading.high GPlace.ForceSpreading.high GPlace.ReduceCongestion.high DPlace.ReducePinDensity.med} [get_runs impl_1]
 
 # Load a previous NCR
 if {$SEGMENTED} {
