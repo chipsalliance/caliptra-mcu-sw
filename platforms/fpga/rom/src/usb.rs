@@ -16,6 +16,8 @@ pub fn test_parameters() -> caliptra_mcu_usb_common::UsbParams {
     // Placeholder identity/power values are gated test policy, not release IDs
     // or an approved board VBUS budget. The driver leaves hub topology alone.
     UsbParams {
+        enable_hub: false,
+        enable_logs: false,
         registers: unsafe { StaticRef::new(usb_combo::USB_COMBO_ADDR as *const _) },
         packet_memory: unsafe { StaticRef::new(usb_dev0_mem::USB_DEV0_MEM_ADDR as *const _) },
         vendor_id: 0xffff,
