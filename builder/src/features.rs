@@ -118,6 +118,8 @@ pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] =
 
 pub const LATEST_EMULATOR_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-host"];
 
+pub const LATEST_FPGA_ROM_ONLY_TEST_FEATURES: &[&str] = &["htg940"];
+
 pub fn latest_rom_only_test_features(
     revision: caliptra_mcu_hw_revision::HardwareRevision,
     platform: &str,
@@ -128,6 +130,8 @@ pub fn latest_rom_only_test_features(
     let mut features = LATEST_ROM_ONLY_TEST_FEATURES.to_vec();
     if platform == "emulator" {
         features.extend_from_slice(LATEST_EMULATOR_ROM_ONLY_TEST_FEATURES);
+    } else if platform == "fpga" {
+        features.extend_from_slice(LATEST_FPGA_ROM_ONLY_TEST_FEATURES);
     }
     features
 }
@@ -274,16 +278,22 @@ mod tests {
         }
         assert!(latest.contains(&RomVariant::new(None, Some("test-lpcip-usb-host"))));
         assert!(!latest.contains(&RomVariant::new(Some("fpga"), Some("test-lpcip-usb-host"))));
+        assert!(latest.contains(&RomVariant::new(Some("fpga"), Some("htg940"))));
+        assert!(!latest.contains(&RomVariant::new(None, Some("htg940"))));
     }
 
     #[test]
-    fn host_fixture_is_prebuilt_only_for_latest_emulator() {
+    fn platform_fixtures_are_prebuilt_only_for_latest() {
         for revision in [HardwareRevision::V2_1, HardwareRevision::Latest] {
             for platform in ["emulator", "fpga"] {
                 let features = latest_rom_only_test_features(revision, platform);
                 assert_eq!(
                     features.contains(&"test-lpcip-usb-host"),
                     revision == HardwareRevision::Latest && platform == "emulator"
+                );
+                assert_eq!(
+                    features.contains(&"htg940"),
+                    revision == HardwareRevision::Latest && platform == "fpga"
                 );
                 assert_eq!(
                     features.contains(&"test-lpcip-usb-enumeration"),

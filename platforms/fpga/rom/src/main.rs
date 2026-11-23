@@ -15,6 +15,9 @@ Abstract:
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![no_main]
 
+#[cfg(all(feature = "htg940", not(hw_rev = "latest")))]
+compile_error!("HTG-940 USB recovery requires CALIPTRA_HW_REV=latest");
+
 #[cfg(all(feature = "test-lpcip-usb-enumeration", not(hw_rev = "latest")))]
 compile_error!("LPCIP USB enumeration requires CALIPTRA_HW_REV=latest");
 
