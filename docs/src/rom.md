@@ -161,8 +161,11 @@ no DOT flash backend. It installs the fixed development signing-key hash only
 when the slot is zero, accepts an existing matching hash, and fails on a
 different hash or failed readback. This is not physical OTP provisioning and
 must not be used with production hardware or different signing keys. The
-ordinary FPGA ROM remains unchanged; no separate HTG fuse map, watchdog override,
-ROM repacking or hardware programming is performed by this build command.
+HTG variant uses a 3,600,000,000-cycle MCU recovery watchdog budget for GUI
+bring-up (60 seconds at 60 MHz) in production, manufacturing and debug states.
+Core watchdog settings and the ordinary FPGA MCU watchdog budget remain
+unchanged. No separate HTG fuse map, ROM repacking or hardware programming is
+performed by this build command.
 Latest FPGA CI bundles also include `mcu-test-rom-feature-htg940.bin` alongside
 the ordinary MCU ROM. This variant is not included in emulator or 2.1 bundles.
 

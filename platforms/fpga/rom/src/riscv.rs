@@ -160,7 +160,15 @@ pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = {
+    let mut straps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
+    if cfg!(all(hw_rev = "latest", feature = "htg940")) {
+        straps.mcu_wdt_cfg0 = 3_600_000_000;
+        straps.mcu_wdt_cfg0_manufacturing = 3_600_000_000;
+        straps.mcu_wdt_cfg0_debug = 3_600_000_000;
+    }
+    straps
+};
 
 #[cfg_attr(not(feature = "test-i3c-services"), allow(dead_code))]
 unsafe fn init_static<T>(s: *mut core::mem::MaybeUninit<T>, value: T) -> &'static mut T {
@@ -225,7 +233,13 @@ pub extern "C" fn rom_entry() -> ! {
     }
 
     #[cfg(all(hw_rev = "latest", feature = "htg940"))]
-    initialize_development_vendor_hash();
+    {
+        initialize_development_vendor_hash();
+        caliptra_mcu_romtime::println!(
+            "[htg940] MCU recovery watchdog: {} cycles",
+            MCU_STRAPS.mcu_wdt_cfg0
+        );
+    }
 
     caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
