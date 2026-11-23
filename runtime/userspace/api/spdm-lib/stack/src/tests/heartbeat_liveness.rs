@@ -4,8 +4,10 @@
 //!
 //! Covers the per-session watchdog independent of the run loop: arming at
 //! establishment, keep-alive on secured traffic, and teardown after two missed
-//! HeartbeatPeriods. The wire-level "period advertised iff both caps" and
-//! feature-off behavior are also asserted.
+//! HeartbeatPeriods. Also asserted: HBEAT_CAP advertisement, feature-off
+//! behavior, and the HeartbeatPeriod that KEY_EXCHANGE_RSP selects
+//! (`heartbeat_period_for`: non-zero only when both endpoints set HBEAT_CAP).
+//! The KEY_EXCHANGE_RSP encoding of that byte is not checked here.
 
 extern crate std;
 
@@ -281,7 +283,7 @@ fn secured_heartbeat_refreshes_deadline() {
     pal.set_now_ms(1500);
     let inner = vec![state.version.to_u8(), ReqRespCode::HEARTBEAT.0, 0, 0];
     let io = secured_io(session_id, &inner);
-    block_on(handle_secured_request(
+    let rsp = block_on(handle_secured_request(
         &mut state,
         &mut sessions,
         &pal,
@@ -291,8 +293,41 @@ fn secured_heartbeat_refreshes_deadline() {
     .expect("secured handler must not fatally error")
     .expect("a HEARTBEAT_ACK must be produced");
 
+    // An encrypted ERROR would also pass the expects above; check the bytes.
+    assert_eq!(
+        secured_spdm_response(&rsp),
+        &[state.version.to_u8(), ReqRespCode::HEARTBEAT_ACK.0, 0, 0]
+    );
+
     let session = sessions.find(session_id).unwrap();
     assert_eq!(session.deadline_ms, Some(1500 + WINDOW_MS));
+}
+
+// KEY_EXCHANGE_RSP HeartbeatPeriod: non-zero only when the feature is on and
+// both endpoints set HBEAT_CAP; zero in every other case.
+#[test]
+fn heartbeat_period_requires_both_caps() {
+    use caliptra_mcu_spdm_codec::CapFlags;
+    let hbeat = |flags: CapFlags, on: bool| {
+        let mask = if on { CapFlags::HBEAT.into_bits() } else { 0 };
+        CapFlags::from_bits((flags.into_bits() & !CapFlags::HBEAT.into_bits()) | mask)
+    };
+    let on = HeartBeatPeriod(crate::heartbeat::DEFAULT_HEARTBEAT_PERIOD_SECS);
+    for (ours, peer) in [(true, true), (true, false), (false, true), (false, false)] {
+        let mut state = negotiated_state(SpdmVersion::V12);
+        state.cap_flags = hbeat(state.cap_flags, ours);
+        state.peer_cap_flags = hbeat(state.peer_cap_flags, peer);
+        let expected = if cfg!(feature = "spdm-set-heartbeat") && ours && peer {
+            on
+        } else {
+            HeartBeatPeriod::DISABLED
+        };
+        assert_eq!(
+            crate::key_exchange::heartbeat_period_for::<TestPal>(&state),
+            expected,
+            "ours={ours} peer={peer}"
+        );
+    }
 }
 
 // An authenticated in-session request that draws an ERROR is still session

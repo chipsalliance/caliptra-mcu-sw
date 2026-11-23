@@ -618,7 +618,8 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 /// Enabled only when both the responder and the peer set HBEAT_CAP; otherwise
 /// `DISABLED` (per DSP0274, zero when either endpoint lacks Heartbeat support).
 /// Always `DISABLED` when the `spdm-set-heartbeat` feature is off.
-fn heartbeat_period_for<Pal: SpdmPal>(state: &ConnState<'_, Pal>) -> HeartBeatPeriod {
+// pub(crate) so the stack heartbeat tests can check the cap matrix.
+pub(crate) fn heartbeat_period_for<Pal: SpdmPal>(state: &ConnState<'_, Pal>) -> HeartBeatPeriod {
     use caliptra_mcu_spdm_codec::CapFlags;
     if cfg!(feature = "spdm-set-heartbeat")
         && state.cap_flags.contains(CapFlags::HBEAT)
