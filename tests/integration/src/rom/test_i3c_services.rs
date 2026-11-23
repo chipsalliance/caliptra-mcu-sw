@@ -24,15 +24,28 @@ mod test {
     fn wait_for_i3c_ready(hw: &mut impl McuHwModel) {
         let start = std::time::Instant::now();
         hw.step_until(|m| {
-            m.mci_boot_checkpoint() >= I3C_SERVICES_READY_CHECKPOINT
+            m.mci_boot_checkpoint() == I3C_SERVICES_READY_CHECKPOINT
                 || m.mci_fw_fatal_error().is_some()
                 || start.elapsed().as_secs() > 60
         });
-        assert!(
-            hw.mci_boot_checkpoint() >= I3C_SERVICES_READY_CHECKPOINT,
-            "ROM did not enter I3C services mode within timeout (checkpoint: {})",
-            hw.mci_boot_checkpoint()
+        assert_eq!(
+            hw.mci_fw_fatal_error(),
+            None,
+            "ROM failed before I3C services"
         );
+        assert_eq!(
+            hw.mci_boot_checkpoint(),
+            I3C_SERVICES_READY_CHECKPOINT,
+            "ROM did not enter I3C services mode within timeout"
+        );
+    }
+
+    fn start_i3c_services_controller(model: &mut impl McuHwModel) {
+        // The FPGA controller is already active for recovery. Do not reset
+        // its dynamic address assignment until ROM has entered services.
+        #[cfg(feature = "fpga_realtime")]
+        wait_for_i3c_ready(model);
+        model.start_i3c_controller();
     }
 
     /// Boot into I3C services, connect, and send a packetized command. Returns
@@ -48,7 +61,7 @@ mod test {
             ..Default::default()
         });
 
-        hw.start_i3c_controller();
+        start_i3c_services_controller(&mut hw);
 
         let port = hw.i3c_port().unwrap();
         let target_addr = hw.i3c_address().unwrap();
@@ -98,7 +111,7 @@ mod test {
             ..Default::default()
         });
 
-        hw.start_i3c_controller();
+        start_i3c_services_controller(&mut hw);
 
         let port = hw.i3c_port().unwrap();
         let target_addr = hw.i3c_address().unwrap();
@@ -156,7 +169,7 @@ mod test {
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });
-        hw.start_i3c_controller();
+        start_i3c_services_controller(&mut hw);
         let target_addr = hw.i3c_address().unwrap();
         let socket =
             TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], hw.i3c_port().unwrap()))).unwrap();
@@ -312,7 +325,7 @@ mod test {
             ..Default::default()
         });
 
-        hw.start_i3c_controller();
+        start_i3c_services_controller(&mut hw);
         let port = hw.i3c_port().unwrap();
         let target_addr = hw.i3c_address().unwrap();
 
@@ -493,7 +506,7 @@ mod test {
             ..Default::default()
         });
 
-        hw.start_i3c_controller();
+        start_i3c_services_controller(&mut hw);
 
         let port = hw.i3c_port().unwrap();
         let target_addr = hw.i3c_address().unwrap();
@@ -564,7 +577,7 @@ mod test {
             ..Default::default()
         });
 
-        hw.start_i3c_controller();
+        start_i3c_services_controller(&mut hw);
 
         let port = hw.i3c_port().unwrap();
         let target_addr = hw.i3c_address().unwrap();
