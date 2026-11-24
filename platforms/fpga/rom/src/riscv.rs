@@ -184,6 +184,11 @@ pub extern "C" fn rom_entry() -> ! {
 
     caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
+    #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-enumeration"))]
+    if cfg!(feature = "test-lpcip-usb-enumeration") {
+        crate::usb::enumeration_test();
+    }
+
     // Initialize the primary flash controller
     let primary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
 
