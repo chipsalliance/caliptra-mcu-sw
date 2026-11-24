@@ -279,7 +279,7 @@ The PLDM package only contains a single component which contains a full flash im
 
 To support full image updates, a SoC-defined staging memory must be provided to store the incoming payload. The designated staging area for the Component must be accessible by the Caliptra ROM to fetch and authorize the image. This staging area could be located in MCU SRAM or MCI mailbox SRAM, as defined in Caliptra 2.1. If the SoC-defined staging memory does not meet this requirement, the image must be copied to the compliant region, which may slightly impact performance. For other components, if the staging memory (e.g., a staging partition on flash) is not directly accessible by the Caliptra core's DMA engine for reading and hashing the image, the MCU must perform the cryptographic operations to compute the hash. The computed hash is then sent via a mailbox command for authorization.
 
-If Caliptra's DMA can read the staging memory, its `StagingMemory` implementation can return the staging base address, as Caliptra sees it, from `caliptra_axi_base()`. When the Caliptra runtime also reports the `RT_SHA_DMA` capability, the MCU hashes each staged image with one `CM_SHA_DMA` mailbox command and the image data does not pass through the MCU. An image that is empty, does not start and end on a 4-byte boundary, or crosses a 4 GiB boundary is still hashed with `CM_SHA`. A staging window reported through `caliptra_axi_base()` has these constraints:
+If Caliptra's DMA can read the staging memory, its `StagingMemory` implementation can return the staging base address, as Caliptra sees it, from `caliptra_axi_base()`. The MCU then hashes each staged image with one `CM_SHA_DMA` mailbox command, so the image data does not pass through the MCU. The Caliptra runtime running when the update is verified must implement `CM_SHA_DMA`; otherwise verification fails, since it does not fall back to `CM_SHA`. An image that is empty, does not start and end on a 4-byte boundary, or crosses a 4 GiB boundary is still hashed with `CM_SHA`. A staging window reported through `caliptra_axi_base()` has these constraints:
 
 - Caliptra's DMA must read at that address the same bytes that `read()` returns, with no buffering or translation in between.
 - Caliptra's DMA must be able to read the whole window with burst reads, since `CM_SHA_DMA` has no single-DWORD mode. A read the DMA cannot complete stops Caliptra until it is reset, and the kernel mailbox driver does not time out a command in progress.
@@ -424,7 +424,8 @@ pub trait StagingMemory {
     /// AXI address at which Caliptra's DMA reads the same bytes that `read()`
     /// returns from offset 0, or `None` to hash staged images with `CM_SHA`.
     /// Caliptra's DMA must be able to burst-read all of `size()` within its
-    /// command watchdog.
+    /// command watchdog. Return `Some` only if the running Caliptra runtime
+    /// implements `CM_SHA_DMA`: verification does not fall back to `CM_SHA`.
     fn caliptra_axi_base(&self) -> Option<u64> {
         None
     }

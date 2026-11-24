@@ -48,8 +48,8 @@ use core::fmt::Write;
 use core::mem::offset_of;
 
 use crate::{
-    core_capabilities, sha_dma, sha_finish, sha_init, sha_update, supports_sha_dma, HashAlgo,
-    ScratchAlloc, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+    sha_dma, sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CHUNK_SIZE,
+    SHA_CONTEXT_SIZE,
 };
 
 async fn read_flash_header(
@@ -553,7 +553,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 .await?;
         }
 
-        let sha_dma_base = self.sha_dma_base().await;
+        let sha_dma_base = self.sha_dma_base();
         for i in 0..flash_header.image_count as usize {
             let image_header = self
                 .get_image_toc_by_index(
@@ -679,7 +679,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
         let owner_manifest = self.get_staged_owner_manifest(flash_header).await;
 
-        let sha_dma_base = self.sha_dma_base().await;
+        let sha_dma_base = self.sha_dma_base();
         for i in 0..flash_header.image_count as usize {
             let image_header = self
                 .get_image_toc_by_index(
@@ -1065,34 +1065,23 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         Ok(())
     }
 
-    /// Caliptra's AXI address of the staging memory if staged images can be
-    /// hashed with `CM_SHA_DMA`, else `None` for `CM_SHA`.
-    async fn sha_dma_base(&self) -> Option<u64> {
+    /// Caliptra's AXI address of the staging memory, if it reports one, for
+    /// `CM_SHA_DMA`; else `None` for `CM_SHA`.
+    fn sha_dma_base(&self) -> Option<u64> {
         let base = self.staging_memory.caliptra_axi_base()?;
-        let reason = match core_capabilities().await {
-            Ok(caps) if supports_sha_dma(&caps) => {
-                console_writeln!(
-                    Console::<DefaultSyscalls>::writer(),
-                    "[FW Upd] Hashing staged images with CM_SHA_DMA"
-                );
-                return Some(base);
-            }
-            Ok(_) => "not supported by Caliptra",
-            Err(_) => "CAPABILITIES failed",
-        };
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] CM_SHA_DMA {}, hashing with CM_SHA",
-            reason
+            "[FW Upd] Hashing staged images with CM_SHA_DMA"
         );
-        None
+        Some(base)
     }
 
     /// SHA-384 of the `len` staged bytes at `offset`, which must end within `limit`.
     ///
-    /// Uses `CM_SHA_DMA` when `sha_dma_base` is set and Caliptra accepts the range,
-    /// else streams the bytes through `CM_SHA`. A `CM_SHA_DMA` error is not retried
-    /// with `CM_SHA`, so a wrong staging address fails verification.
+    /// Uses `CM_SHA_DMA` when `sha_dma_base` is set and `sha_dma_range()` accepts
+    /// the range, else streams the bytes through `CM_SHA`. A `CM_SHA_DMA` error is
+    /// not retried with `CM_SHA`, so a wrong staging address or a Caliptra runtime
+    /// without `CM_SHA_DMA` fails verification.
     async fn hash_staged_image(
         &self,
         sha_dma_base: Option<u64>,
@@ -1268,7 +1257,8 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     /// AXI address at which Caliptra's DMA reads the same bytes that `read()`
     /// returns from offset 0, or `None` to hash staged images with `CM_SHA`.
     /// Caliptra's DMA must be able to burst-read all of `size()` within its
-    /// command watchdog.
+    /// command watchdog. Return `Some` only if the running Caliptra runtime
+    /// implements `CM_SHA_DMA`: verification does not fall back to `CM_SHA`.
     fn caliptra_axi_base(&self) -> Option<u64> {
         None
     }

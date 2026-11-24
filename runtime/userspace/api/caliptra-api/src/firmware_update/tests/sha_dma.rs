@@ -3,10 +3,8 @@
 use super::svn::{run_with_upcalls, TestAlloc, TestDmaMapping, TestMailbox, TestOtp};
 use super::*;
 use caliptra_api::mailbox::{
-    CapabilitiesResp, CmShaDmaReq, CmShaInitResp, CmShaUpdateReq, MailboxRespHeader,
-    MailboxRespHeaderVarSize,
+    CmShaDmaReq, CmShaInitResp, CmShaUpdateReq, MailboxRespHeader, MailboxRespHeaderVarSize,
 };
-use caliptra_api::Capabilities;
 use caliptra_mcu_libsyscall_caliptra::system;
 use caliptra_mcu_libtock_unittest::{command_return, ExpectedSyscall};
 use core::mem::size_of;
@@ -24,7 +22,6 @@ const MCU_OFFSET: usize =
 const MCU_LEN: usize = 2 * SHA_CHUNK_SIZE + 76;
 const MCU_TOC_ENTRY_OFFSET: usize = size_of::<FlashHeaderV1>() + 2 * size_of::<ImageHeaderV1V2>();
 
-const CAPS: u32 = CommandId::CAPABILITIES.0;
 const CMSA: u32 = CommandId::CM_SHA_DMA.0;
 const CMSI: u32 = CommandId::CM_SHA_INIT.0;
 const CMSU: u32 = CommandId::CM_SHA_UPDATE.0;
@@ -136,16 +133,6 @@ fn toc_entry(identifier: u32, offset: usize, size: usize) -> ImageHeaderV1V2 {
     image.image_header_checksum =
         calculate_checksum(&image.as_bytes()[..offset_of!(ImageHeaderV1V2, image_header_checksum)]);
     image
-}
-
-fn capabilities_response(sha_dma: bool) -> Vec<u8> {
-    let mut caps = Capabilities::RT_BASE;
-    if sha_dma {
-        caps |= Capabilities::RT_SHA_DMA;
-    }
-    let mut rsp = CapabilitiesResp::new_zeroed();
-    rsp.capabilities = caps.to_bytes();
-    rsp.as_bytes().to_vec()
 }
 
 /// `CM_SHA_DMA` and `CM_SHA_FINAL` share this variable-size digest response.
@@ -285,12 +272,9 @@ fn verify_hashes_an_axi_staged_image_with_one_sha_dma() {
     let mut fixture = Fixture::for_verify(Some(AXI_BASE), MCU_OFFSET);
     fixture
         .mailbox
-        .respond(CommandId::CAPABILITIES, &capabilities_response(true));
-    fixture
-        .mailbox
         .respond(CommandId::CM_SHA_DMA, &digest_response(&DIGEST));
     fixture.verify().unwrap();
-    assert_eq!(fixture.hashing_commands(), [CAPS, CMSA]);
+    assert_eq!(fixture.hashing_commands(), [CMSA]);
 
     let requests = fixture.mailbox.requests.borrow();
     let (_, request) = requests.iter().find(|(cmd, _)| *cmd == CMSA).unwrap();
@@ -304,35 +288,7 @@ fn verify_hashes_an_axi_staged_image_with_one_sha_dma() {
 }
 
 #[test]
-fn verify_uses_cm_sha_when_caliptra_lacks_sha_dma() {
-    let _guard = PLDM_TEST_LOCK.lock().unwrap();
-    let mut fixture = Fixture::for_verify(Some(AXI_BASE), MCU_OFFSET);
-    fixture
-        .mailbox
-        .respond(CommandId::CAPABILITIES, &capabilities_response(false));
-    fixture.respond_cm_sha(&DIGEST);
-    fixture.verify().unwrap();
-    assert_eq!(fixture.hashing_commands(), [&[CAPS][..], &CM_SHA].concat());
-    fixture.assert_cm_sha_streamed(MCU_OFFSET);
-}
-
-#[test]
-fn verify_uses_cm_sha_when_capabilities_fails() {
-    let _guard = PLDM_TEST_LOCK.lock().unwrap();
-    let mut fixture = Fixture::for_verify(Some(AXI_BASE), MCU_OFFSET);
-    // One byte short, so the response does not parse.
-    let caps = capabilities_response(true);
-    fixture
-        .mailbox
-        .respond(CommandId::CAPABILITIES, &caps[..caps.len() - 1]);
-    fixture.respond_cm_sha(&DIGEST);
-    fixture.verify().unwrap();
-    assert_eq!(fixture.hashing_commands(), [&[CAPS][..], &CM_SHA].concat());
-    fixture.assert_cm_sha_streamed(MCU_OFFSET);
-}
-
-#[test]
-fn verify_skips_capabilities_without_an_axi_staging_address() {
+fn verify_uses_cm_sha_without_an_axi_staging_address() {
     let _guard = PLDM_TEST_LOCK.lock().unwrap();
     let mut fixture = Fixture::for_verify(None, MCU_OFFSET);
     fixture.respond_cm_sha(&DIGEST);
@@ -345,12 +301,9 @@ fn verify_skips_capabilities_without_an_axi_staging_address() {
 fn verify_uses_cm_sha_for_an_unaligned_image() {
     let _guard = PLDM_TEST_LOCK.lock().unwrap();
     let mut fixture = Fixture::for_verify(Some(AXI_BASE), MCU_OFFSET + 2);
-    fixture
-        .mailbox
-        .respond(CommandId::CAPABILITIES, &capabilities_response(true));
     fixture.respond_cm_sha(&DIGEST);
     fixture.verify().unwrap();
-    assert_eq!(fixture.hashing_commands(), [&[CAPS][..], &CM_SHA].concat());
+    assert_eq!(fixture.hashing_commands(), CM_SHA);
     fixture.assert_cm_sha_streamed(MCU_OFFSET + 2);
 }
 
@@ -362,12 +315,9 @@ fn sha_dma_failure_or_mismatch_fails_verification_without_cm_sha() {
         digest_response(&[0x11; 48]),
     ] {
         let mut fixture = Fixture::for_verify(Some(AXI_BASE), MCU_OFFSET);
-        fixture
-            .mailbox
-            .respond(CommandId::CAPABILITIES, &capabilities_response(true));
         fixture.mailbox.respond(CommandId::CM_SHA_DMA, &response);
         assert!(matches!(fixture.verify(), Err(ErrorCode::Fail)));
-        assert_eq!(fixture.hashing_commands(), [CAPS, CMSA]);
+        assert_eq!(fixture.hashing_commands(), [CMSA]);
     }
 }
 
@@ -381,9 +331,6 @@ fn running_image_match_hashes_with_sha_dma() {
         .respond(CommandId::FW_INFO, FwInfoResp::new_zeroed().as_bytes());
     fixture
         .mailbox
-        .respond(CommandId::CAPABILITIES, &capabilities_response(true));
-    fixture
-        .mailbox
         .respond(CommandId::CM_SHA_DMA, &digest_response(&DIGEST));
     assert_eq!(
         run_with_upcalls(fixture.updater.verify_running_image_match(&header)),
@@ -391,7 +338,7 @@ fn running_image_match_hashes_with_sha_dma() {
     );
     assert_eq!(
         *fixture.mailbox.commands.borrow(),
-        [CommandId::FW_INFO.0, CAPS, CMSA]
+        [CommandId::FW_INFO.0, CMSA]
     );
 }
 
@@ -425,16 +372,15 @@ fn toc_entry_grown_after_the_layout_check_is_not_hashed() {
         let mut staging = AxiStagingMemory::new(bytes, Some(AXI_BASE));
         staging.later_mcu_entry = Some(toc_entry(MCU_RT_IDENTIFIER, MCU_OFFSET, MCU_LEN + growth));
         let mut fixture = Fixture::with_staging(staging);
-        if running {
+        let before = if running {
             fixture
                 .mailbox
                 .respond(CommandId::FW_INFO, FwInfoResp::new_zeroed().as_bytes());
+            CommandId::FW_INFO
         } else {
             fixture.expect_verify();
-        }
-        fixture
-            .mailbox
-            .respond(CommandId::CAPABILITIES, &capabilities_response(true));
+            CommandId::VERIFY_AUTH_MANIFEST
+        };
         let result = if running {
             let header = FlashHeader::parse(&fixture.staging.bytes).unwrap();
             run_with_upcalls(fixture.updater.verify_running_image_match(&header))
@@ -442,7 +388,8 @@ fn toc_entry_grown_after_the_layout_check_is_not_hashed() {
             run_with_upcalls(fixture.updater.verify(image_len)).map(|_| ())
         };
         assert_eq!(result, Err(ErrorCode::Size));
-        assert_eq!(fixture.mailbox.commands.borrow().last(), Some(&CAPS));
+        // Nothing hashed: the last command is the one before hashing starts.
+        assert_eq!(fixture.mailbox.commands.borrow().last(), Some(&before.0));
     }
 }
 

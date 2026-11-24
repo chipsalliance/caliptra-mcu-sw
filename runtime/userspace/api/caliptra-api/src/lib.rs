@@ -95,7 +95,7 @@ pub use auth_stash::{
 #[cfg(feature = "mailbox-io")]
 pub use caliptra_mcu_scratch_alloc::{ScratchAlloc, ScratchAllocProvider};
 #[cfg(feature = "mailbox-io")]
-pub use capabilities::{core_capabilities, supports_sha_dma, CORE_CAPABILITIES_SIZE};
+pub use capabilities::{core_capabilities, CORE_CAPABILITIES_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use cert::{
     get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384, get_idev_csr_mldsa87,
