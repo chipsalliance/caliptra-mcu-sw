@@ -16,6 +16,7 @@ fpga_realtime = [
     "dep:caliptra-mcu-config-fpga",
     "caliptra-hw-model/fpga_subsystem",
 ]
+usb = []
 itrng = []
 
 [dependencies]
