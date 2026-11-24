@@ -1,16 +1,19 @@
 // Licensed under the Apache-2.0 license
 
+use crate::addr_map;
 use caliptra_ureg::MmioMut;
 
+/// Access to the MCU peripherals of a model. The addresses default to the
+/// shared [`addr_map`], which all models decode.
 pub trait McuManager {
-    const I3C_ADDR: u32;
-    const MCI_ADDR: u32;
-    const TRACE_BUFFER_ADDR: u32;
-    const MBOX_0_ADDR: u32;
-    const MBOX_1_ADDR: u32;
-    const MCU_SRAM_ADDR: u32;
-    const OTP_CTRL_ADDR: u32;
-    const LC_CTRL_ADDR: u32;
+    const I3C_ADDR: u32 = addr_map::I3C_ADDR;
+    const MCI_ADDR: u32 = addr_map::MCI_ADDR;
+    const TRACE_BUFFER_ADDR: u32 = addr_map::TRACE_BUFFER_ADDR;
+    const MBOX_0_ADDR: u32 = addr_map::MBOX_0_ADDR;
+    const MBOX_1_ADDR: u32 = addr_map::MBOX_1_ADDR;
+    const MCU_SRAM_ADDR: u32 = addr_map::MCU_SRAM_ADDR;
+    const OTP_CTRL_ADDR: u32 = addr_map::OTP_CTRL_ADDR;
+    const LC_CTRL_ADDR: u32 = addr_map::LC_CTRL_ADDR;
 
     type TMmio<'a>: MmioMut
     where

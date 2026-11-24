@@ -39,6 +39,7 @@ use zerocopy::FromBytes;
 #[cfg(feature = "builder")]
 pub use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 
+pub mod addr_map;
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
 pub mod debug_unlock;

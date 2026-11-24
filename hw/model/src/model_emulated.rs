@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::addr_map;
 use crate::bus_logger::BusLogger;
 use crate::bus_logger::LogFile;
 use crate::otp_provision::lc_generate_memory;
@@ -28,7 +29,9 @@ use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
 use caliptra_hw_model::Output;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
-use caliptra_mcu_config_emulator::{DEFAULT_MCU_MBOX_AXI_PAUSER, EMULATOR_MEMORY_MAP};
+use caliptra_mcu_config_emulator::{
+    DEFAULT_MCU_MBOX_AXI_PAUSER, EMULATOR_CALIPTRA_AXI_MCI_OFFSET, EMULATOR_MEMORY_MAP,
+};
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::start_caliptra;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
@@ -366,10 +369,13 @@ impl McuHwModel for ModelEmulated {
         // wasm32 cannot set environment variables, so set the offset in the
         // Caliptra emulator directly there.
         #[cfg(target_arch = "wasm32")]
-        caliptra_emu_periph::dma::axi_root_bus::set_ss_mci_offset(0x0000_0000_a800_0000);
+        caliptra_emu_periph::dma::axi_root_bus::set_ss_mci_offset(EMULATOR_CALIPTRA_AXI_MCI_OFFSET);
         #[cfg(not(target_arch = "wasm32"))]
         if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
-            std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
+            std::env::set_var(
+                "CPTRA_EMULATOR_SS_MCI_OFFSET",
+                format!("0x{EMULATOR_CALIPTRA_AXI_MCI_OFFSET:016x}"),
+            );
         }
 
         let caliptra_tb_services_cb = params.caliptra_uart_to_output.then(|| {
@@ -420,7 +426,7 @@ impl McuHwModel for ModelEmulated {
         // an ACTIVATE_FIRMWARE reset, before Caliptra has completed the command.
         let soc_ifc = unsafe {
             caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
-                0x3003_0000 as *mut u32,
+                addr_map::CALIPTRA_SOC_IFC_ADDR as *mut u32,
                 BusMmio::new(
                     caliptra_cpu
                         .bus
@@ -894,7 +900,7 @@ impl EmulatedAxiBus<'_> {
             self.model.mcu_mbox_axi_user,
         );
         match addr {
-            0x2140_0000..=0x217f_ffff => {
+            addr_map::MBOX_0_ADDR..addr_map::MBOX_1_ADDR => {
                 self.model
                     .mcu_mailbox0
                     .regs
@@ -910,7 +916,7 @@ impl EmulatedAxiBus<'_> {
                     .set_requester(caliptra_mcu_emulator_periph::MciMailboxRequester::Mcu);
                 res
             }
-            0x2180_0000..=0x21bf_ffff => {
+            addr_map::MBOX_1_ADDR..addr_map::MCU_SRAM_ADDR => {
                 self.model
                     .mcu_mailbox1
                     .regs
@@ -935,7 +941,9 @@ impl Bus for EmulatedAxiBus<'_> {
     fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
         let result = self.with_soc_mbox_requester(addr, |this| {
             let bus: &mut dyn Bus = match addr {
-                0x3002_0000..=0x3003_ffff => &mut this.model.soc_to_caliptra_bus,
+                addr_map::CALIPTRA_MBOX_ADDR..addr_map::CALIPTRA_SOC_END => {
+                    &mut this.model.soc_to_caliptra_bus
+                }
                 _ => &mut this.model.cpu.bus,
             };
             bus.read(size, addr)
@@ -946,7 +954,9 @@ impl Bus for EmulatedAxiBus<'_> {
     fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
         let result = self.with_soc_mbox_requester(addr, |this| {
             let bus: &mut dyn Bus = match addr {
-                0x3002_0000..=0x3003_ffff => &mut this.model.soc_to_caliptra_bus,
+                addr_map::CALIPTRA_MBOX_ADDR..addr_map::CALIPTRA_SOC_END => {
+                    &mut this.model.soc_to_caliptra_bus
+                }
                 _ => &mut this.model.cpu.bus,
             };
             bus.write(size, addr, val)
@@ -965,15 +975,6 @@ impl McuManager for &mut ModelEmulated {
     fn mmio_mut(&mut self) -> Self::TMmio<'_> {
         BusMmio::new(self.caliptra_axi_bus())
     }
-
-    const I3C_ADDR: u32 = 0x2000_4000;
-    const MCI_ADDR: u32 = 0x2100_0000;
-    const TRACE_BUFFER_ADDR: u32 = 0x2101_0000;
-    const MBOX_0_ADDR: u32 = 0x2140_0000;
-    const MBOX_1_ADDR: u32 = 0x2180_0000;
-    const MCU_SRAM_ADDR: u32 = 0x21c0_0000;
-    const OTP_CTRL_ADDR: u32 = 0x7000_0000;
-    const LC_CTRL_ADDR: u32 = 0x7000_0400;
 }
 
 impl SocManager for &mut ModelEmulated {
@@ -990,9 +991,9 @@ impl SocManager for &mut ModelEmulated {
         BusMmio::new(self.caliptra_axi_bus())
     }
 
-    const SOC_IFC_ADDR: u32 = 0x3003_0000;
-    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
-    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+    const SOC_IFC_ADDR: u32 = addr_map::CALIPTRA_SOC_IFC_ADDR;
+    const SOC_IFC_TRNG_ADDR: u32 = addr_map::CALIPTRA_SOC_IFC_ADDR;
+    const SOC_MBOX_ADDR: u32 = addr_map::CALIPTRA_MBOX_ADDR;
 
     const MAX_WAIT_CYCLES: u32 = 20_000_000;
 }

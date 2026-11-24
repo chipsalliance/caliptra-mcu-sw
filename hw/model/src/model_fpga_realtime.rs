@@ -2,7 +2,7 @@
 
 #![allow(clippy::mut_from_ref)]
 
-use crate::{InitParams, McuHwModel, McuManager, NetworkManager};
+use crate::{addr_map, InitParams, McuHwModel, McuManager, NetworkManager};
 use anyhow::{bail, Result};
 use caliptra_api::SocManager;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
@@ -56,14 +56,14 @@ impl CaliptraMmio {
     #[allow(unused)]
     fn mbox(&self) -> &mut caliptra_mcu_registers_generated::mbox::regs::Mbox {
         unsafe {
-            &mut *(self.ptr.offset(0x2_0000 / 4)
+            &mut *(self.ptr.add(addr_map::CALIPTRA_MBOX_OFFSET as usize / 4)
                 as *mut caliptra_mcu_registers_generated::mbox::regs::Mbox)
         }
     }
     #[allow(unused)]
     fn soc(&self) -> &mut caliptra_mcu_registers_generated::soc::regs::Soc {
         unsafe {
-            &mut *(self.ptr.offset(0x3_0000 / 4)
+            &mut *(self.ptr.add(addr_map::CALIPTRA_SOC_IFC_OFFSET as usize / 4)
                 as *mut caliptra_mcu_registers_generated::soc::regs::Soc)
         }
     }
@@ -912,20 +912,24 @@ pub struct FpgaRealtimeBus<'a> {
 
 impl FpgaRealtimeBus<'_> {
     fn ptr_for_addr(&mut self, addr: RvAddr) -> Option<*mut u32> {
-        let addr = addr as usize;
-        unsafe {
-            match addr {
-                0x2000_4000..0x2000_5000 => Some(self.i3c_mmio.add((addr - 0x2000_4000) / 4)),
-                0x2100_0000..0x21e0_0000 => Some(self.mci_mmio.add((addr - 0x2100_0000) / 4)),
-                0x3002_0000..0x3004_0000 => Some(self.caliptra_mmio.add((addr - 0x3000_0000) / 4)),
-                0x7000_0000..0x7000_0140 => Some(self.otp_mmio.add((addr - 0x7000_0000) / 4)),
-                0x7000_0400..0x7000_048c => Some(self.lc_mmio.add((addr - 0x7000_0400) / 4)),
-                _ => {
-                    println!("Invalid FPGA address 0x{addr:x}");
-                    None
-                }
+        // Each MMIO mapping starts at the address of its block; the Caliptra
+        // mapping covers the whole Caliptra address space.
+        let (mmio, base) = match addr {
+            addr_map::I3C_ADDR..addr_map::I3C_END => (self.i3c_mmio, addr_map::I3C_ADDR),
+            addr_map::MCI_ADDR..addr_map::MCI_END => (self.mci_mmio, addr_map::MCI_ADDR),
+            addr_map::CALIPTRA_MBOX_ADDR..addr_map::CALIPTRA_SOC_END => {
+                (self.caliptra_mmio, addr_map::CALIPTRA_ADDR)
             }
-        }
+            addr_map::OTP_CTRL_ADDR..addr_map::OTP_CTRL_END => {
+                (self.otp_mmio, addr_map::OTP_CTRL_ADDR)
+            }
+            addr_map::LC_CTRL_ADDR..addr_map::LC_CTRL_END => (self.lc_mmio, addr_map::LC_CTRL_ADDR),
+            _ => {
+                println!("Invalid FPGA address 0x{addr:x}");
+                return None;
+            }
+        };
+        Some(unsafe { mmio.add((addr - base) as usize / 4) })
     }
 }
 
@@ -959,21 +963,12 @@ impl McuManager for &mut ModelFpgaRealtime {
     fn mmio_mut(&mut self) -> Self::TMmio<'_> {
         BusMmio::new(self.caliptra_axi_bus())
     }
-
-    const I3C_ADDR: u32 = 0x2000_4000;
-    const MCI_ADDR: u32 = 0x2100_0000;
-    const TRACE_BUFFER_ADDR: u32 = 0x2101_0000;
-    const MBOX_0_ADDR: u32 = 0x2140_0000;
-    const MBOX_1_ADDR: u32 = 0x2180_0000;
-    const MCU_SRAM_ADDR: u32 = 0x21c0_0000;
-    const OTP_CTRL_ADDR: u32 = 0x7000_0000;
-    const LC_CTRL_ADDR: u32 = 0x7000_0400;
 }
 
 impl SocManager for &mut ModelFpgaRealtime {
-    const SOC_IFC_ADDR: u32 = 0x3003_0000;
-    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
-    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+    const SOC_IFC_ADDR: u32 = addr_map::CALIPTRA_SOC_IFC_ADDR;
+    const SOC_IFC_TRNG_ADDR: u32 = addr_map::CALIPTRA_SOC_IFC_ADDR;
+    const SOC_MBOX_ADDR: u32 = addr_map::CALIPTRA_MBOX_ADDR;
 
     const MAX_WAIT_CYCLES: u32 = 20_000_000;
 
