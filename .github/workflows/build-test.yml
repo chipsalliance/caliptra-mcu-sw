@@ -45,8 +45,32 @@ jobs:
         run: |
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
+      - name: Install Python packages for register generation
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install systemrdl-compiler==1.33.0
+          echo "PEAKRDL_TOCK_PYTHON=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+
       - name: Run precheckin
         run: cargo xtask precheckin
+
+  peakrdl-tock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install peakrdl-tock
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -e './peakrdl-tock[cli,test]'
+
+      - name: Run tests
+        run: .venv/bin/pytest peakrdl-tock
 
   caliptra-util-host-precheckin:
     uses: ./.github/workflows/caliptra-util-host-validator.yml
