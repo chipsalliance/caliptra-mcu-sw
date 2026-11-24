@@ -6,7 +6,8 @@
 //! establishment, keep-alive on secured traffic, and teardown after two missed
 //! HeartbeatPeriods. Also asserted: HBEAT_CAP advertisement, feature-off
 //! behavior, and the HeartbeatPeriod that KEY_EXCHANGE_RSP selects
-//! (`heartbeat_period_for`: non-zero only when both endpoints set HBEAT_CAP).
+//! (`heartbeat_period_for`: non-zero only when both endpoints set HBEAT_CAP),
+//! and that a secured HEARTBEAT is acknowledged only under that same rule.
 //! The KEY_EXCHANGE_RSP encoding of that byte is not checked here.
 
 extern crate std;
@@ -272,6 +273,8 @@ fn recv_next_tears_down_abandoned_handshake() {
 fn secured_heartbeat_refreshes_deadline() {
     let pal = TestPal::default();
     let (mut state, mut sessions, session_id) = established_session(&pal);
+    // HEARTBEAT is acknowledged only when both endpoints set HBEAT_CAP.
+    set_hbeat_both(&mut state);
     {
         let session = sessions.find_mut(session_id).unwrap();
         session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
@@ -301,6 +304,54 @@ fn secured_heartbeat_refreshes_deadline() {
 
     let session = sessions.find(session_id).unwrap();
     assert_eq!(session.deadline_ms, Some(1500 + WINDOW_MS));
+}
+
+// Sets HBEAT_CAP on both the responder and the peer, as after a GET_CAPABILITIES
+// exchange in which both advertised heartbeat support.
+#[cfg(feature = "spdm-set-heartbeat")]
+fn set_hbeat_both(state: &mut ConnectionState<TestHashState, Vec<u8>>) {
+    use caliptra_mcu_spdm_codec::CapFlags;
+    let hbeat = CapFlags::HBEAT.into_bits();
+    state.cap_flags = CapFlags::from_bits(state.cap_flags.into_bits() | hbeat);
+    state.peer_cap_flags = CapFlags::from_bits(state.peer_cap_flags.into_bits() | hbeat);
+}
+
+// With the feature on, a secured HEARTBEAT from a Requester that did not set
+// HBEAT_CAP is answered with ERROR(UnsupportedRequest), not HEARTBEAT_ACK
+// (HEARTBEAT applies only if both endpoints support it, as in libspdm).
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn secured_heartbeat_unsupported_without_peer_hbeat_cap() {
+    use caliptra_mcu_spdm_codec::CapFlags;
+    let pal = TestPal::default();
+    let (mut state, mut sessions, session_id) = established_session(&pal);
+    set_hbeat_both(&mut state);
+    state.peer_cap_flags =
+        CapFlags::from_bits(state.peer_cap_flags.into_bits() & !CapFlags::HBEAT.into_bits());
+    assert!(!state.heartbeat_enabled());
+
+    let inner = vec![state.version.to_u8(), ReqRespCode::HEARTBEAT.0, 0, 0];
+    let io = secured_io(session_id, &inner);
+    let rsp = block_on(handle_secured_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        &NoVdmBackend,
+    ))
+    .expect("secured handler must not fatally error")
+    .expect("an ERROR response must be produced");
+
+    assert_eq!(
+        secured_spdm_response(&rsp),
+        &[
+            state.version.to_u8(),
+            ReqRespCode::ERROR.0,
+            SPDM_UNSUPPORTED_REQUEST.spec_byte(),
+            ReqRespCode::HEARTBEAT.0,
+        ]
+    );
+    assert!(sessions.find(session_id).is_some());
 }
 
 // KEY_EXCHANGE_RSP HeartbeatPeriod: non-zero only when the feature is on and

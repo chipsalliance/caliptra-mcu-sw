@@ -220,6 +220,12 @@ impl<S, L> ConnectionState<S, L> {
         self.cap_flags.contains(CapFlags::CHUNK) && self.peer_cap_flags.contains(CapFlags::CHUNK)
     }
 
+    /// Returns true when both peers set HBEAT_CAP. DSP0274 section 10.21
+    /// HEARTBEAT applies only if both the Requester and Responder support it.
+    pub(crate) fn heartbeat_enabled(&self) -> bool {
+        self.cap_flags.contains(CapFlags::HBEAT) && self.peer_cap_flags.contains(CapFlags::HBEAT)
+    }
+
     pub(crate) fn effective_data_transfer_size<Pal: SpdmPal>(&self, pal: &Pal) -> usize {
         let peer = if self.peer_data_transfer_size == 0 {
             pal.mtu()
@@ -992,6 +998,13 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         // unsupported request rather than one to acknowledge.
         #[cfg(not(feature = "spdm-set-heartbeat"))]
         ReqRespCode::HEARTBEAT => return Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
+        // With the feature, HEARTBEAT is still unsupported on a connection where
+        // the Requester did not set HBEAT_CAP (HeartbeatPeriod is then 0). This
+        // matches the libspdm responder.
+        #[cfg(feature = "spdm-set-heartbeat")]
+        ReqRespCode::HEARTBEAT if !state.heartbeat_enabled() => {
+            return Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0))
+        }
         #[cfg(feature = "spdm-set-heartbeat")]
         ReqRespCode::HEARTBEAT => {
             let heartbeat_ack = heartbeat::handle_heartbeat(version, spdm_msg)?;
