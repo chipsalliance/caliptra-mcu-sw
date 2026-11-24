@@ -11,7 +11,7 @@ use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_rom_common::{fatal_error, RomEnv};
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_romtime::McuResetReason;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{Readable, Writeable};
 
 fn wait_for_firmware_ready(mci: &caliptra_mcu_romtime::Mci, cptra: &caliptra_mcu_rom_common::Soc) {
     let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
@@ -23,7 +23,7 @@ fn wait_for_firmware_ready(mci: &caliptra_mcu_romtime::Mci, cptra: &caliptra_mcu
         }
     }
     // Clear the reset request interrupt
-    notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
+    notif0.write(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
 }
 
 fn cold_boot(env: &mut RomEnv) -> ! {

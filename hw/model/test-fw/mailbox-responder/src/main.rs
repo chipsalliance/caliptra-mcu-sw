@@ -32,7 +32,7 @@ fn run() -> ! {
         while notif0.read(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts) == 0 {
             // Wait for a request from the SoC.
         }
-        notif0.modify(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
+        notif0.write(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
         let cmd = mci.registers.mcu_mbox0_csr_mbox_cmd.get();
 
         let dlen = &mci.registers.mcu_mbox0_csr_mbox_dlen;
