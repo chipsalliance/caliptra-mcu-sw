@@ -17,7 +17,6 @@ use zerocopy::{transmute, FromBytes, IntoBytes};
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
     soc_ifc_addr: u32,
-    soc_ifc_trng_addr: u32,
     soc_mbox_addr: u32,
 }
 
@@ -42,13 +41,8 @@ impl SocManager for CaliptraSoC {
         core::hint::spin_loop();
     }
 
-    // The register blocks live at the addresses passed to `CaliptraSoC::new`.
     fn soc_ifc_addr(&self) -> u32 {
         self.soc_ifc_addr
-    }
-
-    fn soc_ifc_trng_addr(&self) -> u32 {
-        self.soc_ifc_trng_addr
     }
 
     fn soc_mbox_addr(&self) -> u32 {
@@ -57,15 +51,10 @@ impl SocManager for CaliptraSoC {
 }
 
 impl CaliptraSoC {
-    pub fn new(
-        soc_ifc_addr: Option<u32>,
-        soc_ifc_trng_addr: Option<u32>,
-        soc_mbox_addr: Option<u32>,
-    ) -> Self {
+    pub fn new(soc_ifc_addr: Option<u32>, soc_mbox_addr: Option<u32>) -> Self {
         CaliptraSoC {
             _private: (),
             soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR),
-            soc_ifc_trng_addr: soc_ifc_trng_addr.unwrap_or(soc::SOC_IFC_REG_ADDR),
             soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR),
         }
     }
