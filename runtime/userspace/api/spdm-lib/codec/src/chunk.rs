@@ -2,9 +2,12 @@
 
 //! SPDM chunking wire types.
 
+use crate::SpdmVersion;
 use zerocopy::{
     little_endian::U16, little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned,
 };
+
+use crate::WireError;
 
 /// CHUNK_SEND sender attribute bit: this is the final chunk.
 pub const CHUNK_ATTR_LAST_CHUNK: u8 = 0x01;
@@ -23,17 +26,42 @@ pub const LARGE_RESPONSE_SIZE_FIELD_SIZE: usize = 4;
 pub struct ChunkSendReqBody {
     pub chunk_sender_attr: u8,
     pub handle: u8,
-    // TODO
-    // SPDM 1.4 extends the sequence number to 32-bit.
-    // We leave it at 16-bit for now and error if a larger sequence number is encountered.
-    // See: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2165
-    pub chunk_seq_num: U16,
-    pub reserved: U16,
+    /// Chunk sequence number.
+    /// Has to be <= `u16::MAX` for SPDM <=v1.3.
+    /// Extended to 32-bit in SPDM v1.4.
+    chunk_seq_num: U32,
     pub chunk_size: U32,
 }
 
 impl ChunkSendReqBody {
     pub const SIZE: usize = 10;
+
+    /// Get the chunk sequence number, checked against the given SPDM version.
+    ///
+    /// For SPDM v1.3 and earlier, the sequence number is a 16-bit field, so the
+    /// value must fit in a `u16`. In SPDM v1.4 and later, the field is expanded
+    /// to 32-bit using the previously reserved 16-bit that follow.
+    ///
+    /// # Arguments
+    /// * `version` - The negotiated SPDM version of the connection.
+    ///
+    /// # Returns
+    /// * `Ok(u32)` - The chunk sequence number.
+    /// * `Err(WireError)` - If `version` is v1.3 or earlier and the sequence number is
+    ///   greater than `u16::MAX`.
+    pub fn get_chunk_seq_num(&self, version: SpdmVersion) -> Result<u32, WireError> {
+        if version <= SpdmVersion::V13 {
+            let seq_num = self.chunk_seq_num.get();
+            if seq_num > u16::MAX as u32 {
+                // Upper 16-bit of this field are reserved prior to v1.4.
+                Err(WireError)
+            } else {
+                Ok(seq_num)
+            }
+        } else {
+            Ok(self.chunk_seq_num.get())
+        }
+    }
 }
 
 const _: () = assert!(core::mem::size_of::<ChunkSendReqBody>() == ChunkSendReqBody::SIZE);
@@ -158,17 +186,60 @@ const _: () = assert!(core::mem::size_of::<ChunkGetReqBodyV14>() == ChunkGetReqB
 pub struct ChunkResponseBody {
     pub chunk_sender_attr: u8,
     pub handle: u8,
-    // TODO
-    // SPDM 1.4 extends the sequence number to 32-bit.
-    // We leave it at 16-bit for now and error if a larger sequence number is encountered.
-    // See: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2165
-    pub chunk_seq_num: U16,
-    pub reserved: U16,
+    /// Chunk sequence number.
+    /// Has to be <= `u16::MAX` for SPDM <=v1.3.
+    /// Extended to 32-bit in SPDM v1.4.
+    chunk_seq_num: U32,
     pub chunk_size: U32,
 }
 
 impl ChunkResponseBody {
     pub const SIZE: usize = 10;
+
+    pub fn new(
+        chunk_sender_attr: u8,
+        handle: u8,
+        chunk_seq_num: u32,
+        chunk_size: u32,
+        version: SpdmVersion,
+    ) -> Result<Self, WireError> {
+        if version <= SpdmVersion::V13 && chunk_seq_num > u16::MAX as u32 {
+            return Err(WireError);
+        }
+        Ok(ChunkResponseBody {
+            chunk_sender_attr,
+            handle,
+            chunk_seq_num: chunk_seq_num.into(),
+            chunk_size: chunk_size.into(),
+        })
+    }
+
+    /// Get the chunk sequence number, checked against the given SPDM version.
+    ///
+    /// For SPDM v1.3 and earlier, the sequence number is a 16-bit field, so the
+    /// value must fit in a `u16`. In SPDM v1.4 and later, the field is expanded
+    /// to 32-bit using the previously reserved 16-bit that follow.
+    ///
+    /// # Arguments
+    /// * `version` - The negotiated SPDM version of the connection.
+    ///
+    /// # Returns
+    /// * `Ok(u32)` - The chunk sequence number.
+    /// * `Err(WireError)` - If `version` is v1.3 or earlier and the sequence number is
+    ///   greater than `u16::MAX`.
+    pub fn get_chunk_seq_num(&self, version: SpdmVersion) -> Result<u32, WireError> {
+        if version <= SpdmVersion::V13 {
+            let seq_num = self.chunk_seq_num.get();
+            if seq_num > u16::MAX as u32 {
+                // Upper 16-bit of this field are reserved prior to v1.4.
+                Err(WireError)
+            } else {
+                Ok(seq_num)
+            }
+        } else {
+            Ok(self.chunk_seq_num.get())
+        }
+    }
 }
 
 const _: () = assert!(core::mem::size_of::<ChunkResponseBody>() == ChunkResponseBody::SIZE);

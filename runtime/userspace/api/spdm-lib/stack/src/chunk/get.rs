@@ -8,7 +8,7 @@ use caliptra_mcu_spdm_codec::{
     LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
-use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
+use zerocopy::{little_endian::U32, FromBytes};
 
 use crate::build::alloc_padded;
 use crate::error::{
@@ -88,13 +88,14 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
             state.version,
             ReqRespCode::CHUNK_RESPONSE,
         ))?;
-        w.write(&ChunkResponseBody {
-            chunk_sender_attr: if last_chunk { CHUNK_ATTR_LAST_CHUNK } else { 0 },
+        let body = ChunkResponseBody::new(
+            if last_chunk { CHUNK_ATTR_LAST_CHUNK } else { 0 },
             handle,
-            chunk_seq_num: U16::new(seq_num),
-            reserved: U16::new(0),
-            chunk_size: U32::new(chunk_size as u32),
-        })?;
+            seq_num as u32,
+            chunk_size as u32,
+            state.version,
+        )?; // Error path should be unreachable.
+        w.write(&body)?;
         if seq_num == 0 {
             w.write(&U32::new(large_response_size as u32))?;
         }
