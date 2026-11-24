@@ -260,16 +260,24 @@ impl LpcipUsbDriver {
         registers.hub_control.set(control);
         if !connected {
             for index in [1, 49] {
-                let word = registers.hub_descriptor_high[index].get();
+                // Checked lookup keeps ROM builds free of bounds-check panic paths.
+                let attributes_register = registers
+                    .hub_descriptor_high
+                    .get(index)
+                    .ok_or(UsbError::HubConfigurationMismatch)?;
+                let power_register = registers
+                    .hub_descriptor_high
+                    .get(index + 1)
+                    .ok_or(UsbError::HubConfigurationMismatch)?;
+                let word = attributes_register.get();
                 let attributes = if self.params.self_powered {
                     0xc0u32
                 } else {
                     0x80
                 };
-                registers.hub_descriptor_high[index].set((word & 0x00ff_ffff) | (attributes << 24));
-                let word = registers.hub_descriptor_high[index + 1].get();
-                registers.hub_descriptor_high[index + 1]
-                    .set((word & !0xff) | u32::from(self.params.max_power_2ma));
+                attributes_register.set((word & 0x00ff_ffff) | (attributes << 24));
+                let word = power_register.get();
+                power_register.set((word & !0xff) | u32::from(self.params.max_power_2ma));
             }
         }
         let mask = Control::Enable::SET.value | Control::Dcon::SET.value;
