@@ -29,6 +29,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod switch_version;
 mod test;
 #[cfg(feature = "cherry-picker")]
 mod vertex_ai;
@@ -48,10 +49,15 @@ struct Xtask {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Explicitly check out a pinned Caliptra software version (does not set CALIPTRA_HW_REV).
+    SwitchVersion {
+        #[arg(value_parser = ["2.1", "latest"])]
+        version: String,
+    },
     /// Build and Run Runtime image
     Runtime {
-        /// HW revision in semver format (e.g., "2.0.0")
-        #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+        /// Runtime HW contract; must match the selected register snapshot (currently 2.1.0).
+        #[arg(long, value_parser = semver::Version::parse, default_value = "2.1.0")]
         hw_revision: semver::Version,
 
         /// Run with tracing options
@@ -356,11 +362,11 @@ enum Commands {
         #[arg(short, long)]
         addrmap: Vec<String>,
 
-        /// Path to fuses.hjson file. Default: hw/fuses.hjson
+        /// Path to fuses.hjson. Defaults to the CALIPTRA_HW_REV-selected hardware inputs.
         #[arg(long)]
         fuses_hjson: Option<PathBuf>,
 
-        /// Path to otp_ctrl_mmap.hjson file. Default: hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
+        /// Path to otp_ctrl_mmap.hjson. Defaults to the CALIPTRA_HW_REV-selected subsystem.
         #[arg(long)]
         otp_mmap_hjson: Option<PathBuf>,
     },
@@ -579,8 +585,8 @@ Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
 CoMID/CoRIM CBOR files with reference value digests for each firmware component.
 
 Components are auto-discovered from image metadata entries in the bundle's Base
-and optional Owner SoC manifests, including MCU runtime:
-    mkey 1: SoC firmware  - Vendor and Owner image reference measurements
+and optional Owner SoC manifests, including MCU runtime. Each measurement is
+identified by its firmware class ID; measurement keys are omitted.
 
 Manifest preambles are not included. References may include components absent
 from EAT evidence; missing evidence does not pass appraisal.
@@ -652,8 +658,26 @@ fn resolve_variants(
 }
 
 fn main() {
+    if std::env::var_os("CALIPTRA_HW_REV").is_none() {
+        std::env::set_var("CALIPTRA_HW_REV", "2.1");
+    }
     let cli = Xtask::parse();
+    if !matches!(cli.xtask, Commands::SwitchVersion { .. }) {
+        if let Err(error) = caliptra_mcu_builder::caliptra_source_revision() {
+            eprintln!("{error:#}");
+            std::process::exit(1);
+        }
+    }
+    let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env().unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(1);
+    });
+    println!(
+        "MCU hardware revision: {revision} ({})",
+        revision.hardware_path()
+    );
     let result = match &cli.xtask {
+        Commands::SwitchVersion { version } => switch_version::switch_version(version),
         Commands::AllBuild {
             output,
             platform,

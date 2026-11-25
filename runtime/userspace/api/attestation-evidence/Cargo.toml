@@ -17,12 +17,8 @@ default = []
 pcr-quote = []
 
 [build-dependencies]
-caliptra-ocp-eat = { workspace = true }
-serde = { workspace = true }
-toml = { workspace = true }
+caliptra-mcu-attestation-build.workspace = true
 
 [dev-dependencies]
 caliptra-ocp-eat = { workspace = true }
 coset = "0.4.1"
-serde = { workspace = true }
-toml = { workspace = true }

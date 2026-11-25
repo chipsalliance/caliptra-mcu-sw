@@ -48,6 +48,8 @@ bitflags::bitflags! {
         const DOT_ENABLE = 1 << 14;
         const OCP_LOCK_PROGRAM_HEK = 1 << 15;
         const OCP_LOCK_ZERO_HEK = 1 << 16;
+        // Bit 17 is reserved (retired ZEROIZE_UDS_FE_AND_ENTER_RMA).
+        const AUTH_SET_CERT_CHAIN = 1 << 18;
     }
 }
 
@@ -137,6 +139,10 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
             1 << 2
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN.bits(),
+            1 << 18
         );
     }
 

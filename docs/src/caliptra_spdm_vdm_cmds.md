@@ -105,6 +105,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
+| `0x4D41_5343` (`MASC`) | AuthSetCertChain           | Supported     | Authorize a certificate-chain write or erase for a managed PKI slot. |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
 | `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated [OCP LOCK subcommands](#ocp-lock-commands). |
 | `VU00`-`VUFF`           | VendorUnique               | Reserved      | Vendor-unique innermost commands; unsupported by the reference MCU. |
@@ -183,9 +184,14 @@ cannot use the original manifest as a fallback when the Owner manifest is
 unavailable. The reference original-manifest generator requires vendor IMC
 signatures as well as owner authentication.
 
-The initial Runtime command policy permits **Owner-only** authorization for all
-currently implemented protected commands. Vendor+Owner permissions must be
-enabled explicitly for individual commands or targets through
+The Runtime command policy (`CommandAuthorizer::permits_authority`) permits
+**Owner-only** (`2`) authorization for all currently implemented protected
+commands except `AuthSetCertChain` (`0x4D41_5343`), where `PkiEntitySlot::Vendor`
+(Slot 0) accepts either **Vendor+Owner** (`1`) or **Owner-only** (`2`),
+`PkiEntitySlot::Owner` (Slot 1) requires **Owner-only** (`2`), and
+`PkiEntitySlot::Tenant` (Slot 2) has no authority (writes are permitted without
+`AuthSetCertChain` by default). Additional Vendor+Owner permissions
+must be enabled explicitly for individual commands or targets through
 `CommandAuthorizer::permits_authority`. A trusted key alone does not grant
 permission.
 

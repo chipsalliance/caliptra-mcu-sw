@@ -699,6 +699,11 @@ authorized_fuse_handler!(
     fuse::ProvisionOwnerPkHashRequest,
     fuse::MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID
 );
+authorized_fuse_handler!(
+    handle_auth_set_cert_chain,
+    certificate::AuthSetCertChainRequest,
+    certificate::MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID
+);
 fn handle_authorized_ocp_lock_command(
     subcommand: u32,
     request: &[u8],
@@ -1189,6 +1194,18 @@ mod tests {
             ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
+        let masc = certificate::AuthSetCertChainRequest {
+            pki_entity_slot: 1,
+            algorithm: 2,
+            total_size: 4096,
+            expected_sha384: [0x5A; certificate::CERT_CHAIN_DIGEST_SIZE],
+            metadata: Default::default(),
+            nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
+            ecc_pub_x: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
+            sig: sig.clone(),
+        };
 
         let signature_bytes = {
             let mut bytes = vec![0x11; 48];
@@ -1227,6 +1244,11 @@ mod tests {
         rvkh_fields.extend_from_slice(&0x5152_5354u32.to_le_bytes());
         let ifpk_fields = 0x6162_6364u32.to_le_bytes();
         let popk_fields = [0xC3; 48];
+        let mut masc_fields = Vec::new();
+        for field in [1u32, 2, 4096] {
+            masc_fields.extend_from_slice(&field.to_le_bytes());
+        }
+        masc_fields.extend_from_slice(&[0x5A; certificate::CERT_CHAIN_DIGEST_SIZE]);
 
         let cases: Vec<(&[u8], Vec<u8>, VdmCommandHandlerFnForTest)> = vec![
             (
@@ -1273,6 +1295,14 @@ mod tests {
                     &popk_fields,
                 ),
                 handle_provision_owner_pk_hash,
+            ),
+            (
+                masc.as_bytes(),
+                make_golden(
+                    certificate::MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+                    &masc_fields,
+                ),
+                handle_auth_set_cert_chain,
             ),
         ];
 

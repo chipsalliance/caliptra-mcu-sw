@@ -1,0 +1,16 @@
+# Licensed under the Apache-2.0 license
+schema_version = "1"
+repository = "chipsalliance/caliptra-infra"
+hw_major_version = "2.2"
+target_branch = "main"
+caliptra_variant = "subsystem-2.2-segmented"
+date = "2026-11-21T12:18:06.744018007+00:00"
+commit_hash = "82326488b6227a373166ec19956cc532d699c68a"
+caliptra_ss_commit = "bb9d747e57597d6056d0dc043d2782a8f459ca7d"
+job_id = "44829684837-build-bitstream"
+segmented = true
+name = "subsystem-2.2-segmented-bitstream"
+xsa_url = "https://storage.googleapis.com/caliptra-github-ci-bitstreams/v1/82326488b6227a373166ec19956cc532d699c68a/subsystem-2.2-segmented/xsa_ss2p2_8232648_segmented.xsa"
+pdi_url = "https://storage.googleapis.com/caliptra-github-ci-bitstreams/v1/82326488b6227a373166ec19956cc532d699c68a/subsystem-2.2-segmented/runtime_8232648.pdi"
+xsa_hash = "07b930d4f3a6b9b651ba36d7f7317f02580ceb9bb2eacf780cf9574e91e58973"
+pdi_hash = "dca1bfecadce112e601aab7e18b4abc6ffb34f3f93d41f2fbfa59e0af1b3e7b7"

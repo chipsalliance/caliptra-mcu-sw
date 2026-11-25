@@ -60,6 +60,9 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::OcpLockSetPermaHek as u32 => {
             Some(commands::handle_ocp_lock_set_perma_hek)
         }
+        x if x == CaliptraCommandId::AuthSetCertChain as u32 => {
+            Some(commands::handle_auth_set_cert_chain)
+        }
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(commands::handle_get_auth_challenge)
         }
@@ -107,6 +110,7 @@ mod tests {
             CaliptraCommandId::ProvisionOwnerPkHash,
             CaliptraCommandId::OcpLockRotateHek,
             CaliptraCommandId::OcpLockSetPermaHek,
+            CaliptraCommandId::AuthSetCertChain,
             CaliptraCommandId::GetAuthCmdChallenge,
             CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,

@@ -1,8 +1,29 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api::mailbox::CommandId as CaliptraCommandId;
 pub use caliptra_api::mailbox::{
-    HpkeHandle, OcpLockEnumerateHpkeHandlesResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
+    CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq, CmAesEncryptInitResp,
+    CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
+    CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq,
+    CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq, CmAesGcmDecryptUpdateResp,
+    CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalResp,
+    CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq, CmAesGcmEncryptInitResp,
+    CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, CmAesGcmEncryptUpdateRespHeader,
+    CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhFinishResp,
+    CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaPublicKeyResp,
+    CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq, CmHkdfExpandResp,
+    CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq,
+    CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaPublicKeyResp,
+    CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq, CmRandomGenerateReq, CmRandomGenerateResp,
+    CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
+    CmStatusResp, Cmk, EcdsaVerifyReq, HpkeHandle, LmsVerifyReq, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, OcpLockEnumerateHpkeHandlesResp,
+    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
+    MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_CMB_DATA_SIZE,
 };
+pub use caliptra_api::{calc_checksum, verify_checksum};
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
@@ -10,29 +31,6 @@ use caliptra_mcu_registers_generated::fuses::{
 use core::convert::From;
 use core::mem::size_of;
 use core::num::NonZeroU32;
-use mcu_caliptra_api::mailbox::CommandId as CaliptraCommandId;
-pub use mcu_caliptra_api::mailbox::{
-    calc_checksum, verify_checksum, CmAesDecryptInitReq, CmAesDecryptUpdateReq,
-    CmAesEncryptInitReq, CmAesEncryptInitResp, CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq,
-    CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader,
-    CmAesGcmDecryptInitReq, CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq,
-    CmAesGcmDecryptUpdateResp, CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq,
-    CmAesGcmEncryptFinalResp, CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq,
-    CmAesGcmEncryptInitResp, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp,
-    CmAesGcmEncryptUpdateRespHeader, CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq,
-    CmEcdhFinishReq, CmEcdhFinishResp, CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq,
-    CmEcdsaPublicKeyResp, CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq,
-    CmHkdfExpandResp, CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq,
-    CmHmacKdfCounterResp, CmHmacReq, CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage,
-    CmMldsaPublicKeyReq, CmMldsaPublicKeyResp, CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq,
-    CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
-    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, EcdsaVerifyReq, LmsVerifyReq,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
-    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
-    MAX_CMB_DATA_SIZE,
-};
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
@@ -180,6 +178,7 @@ impl CommandId {
     pub const MC_GET_CERT_CHAIN: Self = Self(0x4D47_4343); // "MGCC"
     pub const MC_SET_CERT_CHAIN: Self = Self(0x4D53_4343); // "MSCC"
     pub const MC_PROVISION_IDEV_CERT: Self = Self(0x4D50_4943); // "MPIC"
+    pub const MC_AUTH_SET_CERT_CHAIN: Self = Self(0x4D41_5343); // "MASC"
 
     // OCP Lock commands
     pub const MC_OCP_LOCK: Self = Self(0x0000_0013);
@@ -1816,7 +1815,7 @@ impl Request for McuFeProgReq {
     type Resp = FuseWriteResp; // Reuse FuseWriteResp as it only contains header
 }
 
-/// MC_FE_STATUS request: Query whether all field entropy partitions are provisioned.
+/// MC_FE_STATUS request: Query field entropy partition status.
 #[repr(transparent)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuFeStatusReq(pub MailboxReqHeader);
@@ -1830,7 +1829,7 @@ impl Request for McuFeStatusReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuFeStatusResp {
     pub hdr: MailboxRespHeader,
-    pub already_provisioned: u32,
+    pub fe_status: u32,
 }
 impl Response for McuFeStatusResp {}
 
@@ -2357,6 +2356,54 @@ pub struct ProvisionIdevCertResp {
 }
 impl Response for ProvisionIdevCertResp {}
 impl Response for SetCertChainResp {}
+
+/// Payload carried inside `MC_AUTHORIZED_COMMAND` (`0x12` on VDM) for
+/// `CommandId::MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343` - `"MASC"`).
+///
+/// Authorizes a subsequent `SET_CERTIFICATE` / `MC_SET_CERT_CHAIN` update or
+/// erase on `(pki_entity_slot, algorithm)` matching `(total_size, expected_sha384)`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
+pub struct AuthSetCertChainPayload {
+    /// PKI entity slot (0=Vendor, 1=Owner, 2=Tenant).
+    pub pki_entity_slot: u32,
+    /// Asymmetric algorithm (1=ECC384, 2=MLDSA87).
+    pub algorithm: u32,
+    /// Total DER endorsement chain byte length (`0` for erase).
+    pub total_size: u32,
+    /// Expected SHA-384 digest over the raw DER endorsement chain (`[0; 48]` when `total_size == 0`).
+    pub expected_sha384: [u8; 48],
+}
+impl Default for AuthSetCertChainPayload {
+    fn default() -> Self {
+        Self {
+            pki_entity_slot: 0,
+            algorithm: 0,
+            total_size: 0,
+            expected_sha384: [0u8; 48],
+        }
+    }
+}
+
+/// MC_AUTH_SET_CERT_CHAIN request (`0x4D41_5343`, `"MASC"`, authorized via `0x12`).
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct AuthSetCertChainReq {
+    pub hdr: MailboxReqHeader,
+    pub payload: AuthSetCertChainPayload,
+}
+impl Request for AuthSetCertChainReq {
+    const ID: CommandId = CommandId::MC_AUTH_SET_CERT_CHAIN;
+    type Resp = AuthSetCertChainResp;
+}
+
+/// MC_AUTH_SET_CERT_CHAIN response (`0x4D41_5343`, `"MASC"`).
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct AuthSetCertChainResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for AuthSetCertChainResp {}
 
 // ============================================================================
 // MC_GET_ATTESTATION Command (0x4D47_4154 - "MGAT")
@@ -3287,9 +3334,85 @@ impl Default for GetDotBackupBlobResp {
 
 impl Response for GetDotBackupBlobResp {}
 
+/// Wire sizes of the Caliptra mailbox structs re-exported from `caliptra-api`.
+///
+/// The MCU mailbox wrappers (`Mcu*Req`/`Mcu*Resp`) forward these layouts to
+/// Caliptra unchanged, so a size change in the pinned `caliptra-api` revision
+/// is a wire-format change and must fail the build here.
+const _: () = {
+    assert!(size_of::<MailboxReqHeader>() == 4);
+    assert!(size_of::<MailboxRespHeader>() == 8);
+    assert!(size_of::<MailboxRespHeaderVarSize>() == 12);
+    assert!(size_of::<Cmk>() == 128);
+    assert!(size_of::<ProductionAuthDebugUnlockReq>() == 12);
+    assert!(size_of::<ProductionAuthDebugUnlockChallenge>() == 92);
+    assert!(size_of::<ProductionAuthDebugUnlockToken>() == 7504);
+    assert!(size_of::<CmImportReq>() == 76);
+    assert!(size_of::<CmImportResp>() == 136);
+    assert!(size_of::<CmDeleteReq>() == 132);
+    assert!(size_of::<CmStatusResp>() == 16);
+    assert!(size_of::<CmShaInitReq>() == 4108);
+    assert!(size_of::<CmShaUpdateReq>() == 4304);
+    assert!(size_of::<CmShaFinalReq>() == 4304);
+    assert!(size_of::<CmShaInitResp>() == 208);
+    assert!(size_of::<CmShaFinalResp>() == 76);
+    assert!(size_of::<CmRandomGenerateReq>() == 8);
+    assert!(size_of::<CmRandomGenerateResp>() == 4108);
+    assert!(size_of::<CmRandomStirReq>() == 4104);
+    assert!(size_of::<CmAesEncryptInitReq>() == 4236);
+    assert!(size_of::<CmAesEncryptInitRespHeader>() == 184);
+    assert!(size_of::<CmAesEncryptInitResp>() == 4280);
+    assert!(size_of::<CmAesRespHeader>() == 168);
+    assert!(size_of::<CmAesResp>() == 4264);
+    assert!(size_of::<CmAesGcmEncryptInitReq>() == 4236);
+    assert!(size_of::<CmAesGcmEncryptInitResp>() == 148);
+    assert!(size_of::<CmAesGcmEncryptUpdateRespHeader>() == 140);
+    assert!(size_of::<CmAesGcmEncryptUpdateResp>() == 4252);
+    assert!(size_of::<CmAesGcmEncryptFinalRespHeader>() == 28);
+    assert!(size_of::<CmAesGcmEncryptFinalResp>() == 4140);
+    assert!(size_of::<CmAesGcmDecryptFinalReq>() == 4252);
+    assert!(size_of::<CmAesGcmDecryptFinalRespHeader>() == 16);
+    assert!(size_of::<CmAesGcmDecryptFinalResp>() == 4128);
+    assert!(size_of::<CmEcdhGenerateReq>() == 4);
+    assert!(size_of::<CmEcdhGenerateResp>() == 180);
+    assert!(size_of::<CmEcdhFinishReq>() == 180);
+    assert!(size_of::<CmEcdhFinishResp>() == 136);
+    assert!(size_of::<CmHmacReq>() == 4236);
+    assert!(size_of::<CmHmacResp>() == 76);
+    assert!(size_of::<CmHmacKdfCounterReq>() == 4244);
+    assert!(size_of::<CmHmacKdfCounterResp>() == 136);
+    assert!(size_of::<CmHkdfExtractReq>() == 264);
+    assert!(size_of::<CmHkdfExtractResp>() == 136);
+    assert!(size_of::<CmHkdfExpandReq>() == 4244);
+    assert!(size_of::<CmHkdfExpandResp>() == 136);
+    assert!(size_of::<CmMldsaPublicKeyReq>() == 132);
+    assert!(size_of::<CmMldsaPublicKeyResp>() == 2600);
+    assert!(size_of::<CmMldsaSignReq>() == 4232);
+    assert!(size_of::<CmMldsaSignResp>() == 4636);
+    assert!(size_of::<CmMldsaVerifyReq>() == 8860);
+    assert!(size_of::<CmEcdsaPublicKeyReq>() == 132);
+    assert!(size_of::<CmEcdsaPublicKeyResp>() == 104);
+    assert!(size_of::<CmEcdsaSignReq>() == 4232);
+    assert!(size_of::<CmEcdsaSignResp>() == 104);
+    assert!(size_of::<CmEcdsaVerifyReq>() == 4328);
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_set_cert_chain_wire_layout() {
+        assert_eq!(CommandId::MC_AUTH_SET_CERT_CHAIN.0, 0x4D41_5343); // "MASC"
+        assert_eq!(core::mem::size_of::<AuthSetCertChainPayload>(), 60);
+        assert_eq!(core::mem::size_of::<AuthSetCertChainReq>(), 64);
+        assert_eq!(core::mem::size_of::<AuthSetCertChainResp>(), 8);
+    }
+
+    fn checksum_matches_caliptra_api_vector() {
+        assert_eq!(calc_checksum(0xe8dc3994, &[0x83, 0xe7, 0x25]), 0xfffffbe0);
+        assert!(verify_checksum(0xfffffbe0, 0xe8dc3994, &[0x83, 0xe7, 0x25]));
+    }
 
     #[test]
     fn get_attestation_wire_layout() {
