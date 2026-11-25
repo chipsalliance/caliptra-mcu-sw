@@ -26,8 +26,8 @@ use zerocopy::FromBytes;
 use crate::build::{alloc_padded, build_error_response, encode_error_response};
 use crate::error::{
     SpdmError, SpdmResult, CALIPTRA_EXTENDED_ERROR_SIZE, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST,
-    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
-    SPDM_VERSION_MISMATCH,
+    SPDM_REQUEST_RESYNCH, SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionManager, SessionState};
@@ -141,6 +141,16 @@ pub struct ConnectionState<S, L> {
     pub negotiated_base_hash_sel: HashAlgos,
     /// Negotiated PqcAsymSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_pqc_asym_sel: PqcAsymAlgos,
+    /// Transport that owns this connection: the interface tag of the
+    /// transport that last issued a `GET_VERSION`.
+    ///
+    /// `None` before any `GET_VERSION`, and also whenever the transport
+    /// reports no identity (MCTP, DOE), in which case the ownership gate is
+    /// inactive. See [`check_transport_owner`].
+    ///
+    /// Deliberately **not** cleared by [`Self::reset_negotiation`] — see the
+    /// note there.
+    pub active_transport_id: Option<u8>,
     /// Negotiated key-exchange mechanism from NEGOTIATE_ALGORITHMS.
     pub negotiated_key_ex_sel: KeyExSel,
     /// Transcript state (running VCA/M1/L1 hashes per SPDM).
@@ -206,6 +216,7 @@ impl<S, L> ConnectionState<S, L> {
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
             negotiated_pqc_asym_sel: PqcAsymAlgos::EMPTY,
+            active_transport_id: None,
             negotiated_key_ex_sel: KeyExSel::None,
             transcript: crate::transcript::Transcript::new(),
             large_msg_ctx: chunk::LargeMessageCtx::new(),
@@ -257,6 +268,12 @@ impl<S, L> ConnectionState<S, L> {
 
 impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
     /// Resets the connection-level large message context, securely wiping any buffered bytes.
+    ///
+    /// Note: `active_transport_id` is intentionally left untouched. Ownership
+    /// is only ever (re)claimed at the `GET_VERSION` site in [`dispatch`],
+    /// which calls this immediately before setting it; other resync paths
+    /// reach this function too, and dropping ownership there would let an
+    /// unrelated transport walk into the connection.
     pub(crate) fn reset_negotiation(&mut self) {
         self.phase = Phase::Start;
         self.version = SpdmVersion::V12;
@@ -284,6 +301,75 @@ impl<S, L> Default for ConnectionState<S, L> {
         Self::caliptra()
     }
 }
+
+/// Enforces that only the transport that negotiated the current connection may
+/// issue requests on it.
+///
+/// A single [`SpdmStack`] holds exactly one [`ConnectionState`] — one phase,
+/// one negotiated version, one running transcript. When a transport
+/// multiplexes several physical interfaces onto that one stack, without this
+/// check a second interface could issue post-VCA requests (`GET_DIGESTS`,
+/// `CHALLENGE`, `KEY_EXCHANGE`) and be served using the first interface's
+/// negotiated parameters and transcript — the per-command phase gates only
+/// check *the connection's* phase, not who negotiated it.
+///
+/// `GET_VERSION` is exempt and handled at its claim site in [`dispatch`]: it is
+/// how a transport starts VCA and takes ownership.
+///
+/// Transports that report no identity are exempt entirely — MCTP and DOE each
+/// own a dedicated stack instance, so there is no second interface to confuse.
+///
+/// # Returns
+///
+/// * `Ok(())` — the request may proceed: either the transport reports no
+///   identity, or it is the owner.
+///
+/// # Errors
+///
+/// * [`SPDM_REQUEST_RESYNCH`] — the request came from a transport that does not
+///   own the connection. Tells that requester to restart from `GET_VERSION`,
+///   which is exactly what it must do to take ownership. For a secured message,
+///   `handle_secured_request` drops the request silently instead.
+pub(crate) fn check_transport_owner<S, L>(
+    state: &ConnectionState<S, L>,
+    tid: Option<u8>,
+) -> SpdmResult<()> {
+    match tid {
+        // Transport does not multiplex — identity check does not apply.
+        None => Ok(()),
+        Some(tid) if state.active_transport_id == Some(tid) => Ok(()),
+        Some(_) => Err(SPDM_REQUEST_RESYNCH),
+    }
+}
+
+/// Gate-refusal print, `debug-trace` builds only: owner id, requester id and, for a
+/// plain request, its code (a secured message has none: it is not decrypted).
+#[cfg(feature = "debug-trace")]
+fn trace_gate_refusal(owner: Option<u8>, requester: Option<u8>, code: Option<ReqRespCode>) {
+    use core::fmt::Write;
+    fn write_tid<W: Write>(w: &mut W, tid: Option<u8>) {
+        let _ = match tid {
+            Some(tid) => write!(w, "0x{:02x}", tid),
+            None => write!(w, "none"),
+        };
+    }
+    let mut console = caliptra_mcu_libtock_console::Console::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::writer();
+    let _ = write!(&mut console, "[spdm] gate refused: owner=");
+    write_tid(&mut console, owner);
+    let _ = write!(&mut console, " requester=");
+    write_tid(&mut console, requester);
+    let _ = match code {
+        Some(code) => writeln!(&mut console, " code=0x{:02x}", code.0),
+        None => writeln!(&mut console, " secured"),
+    };
+}
+
+/// Without `debug-trace` a gate refusal prints nothing.
+#[cfg(not(feature = "debug-trace"))]
+#[inline(always)]
+fn trace_gate_refusal(_owner: Option<u8>, _requester: Option<u8>, _code: Option<ReqRespCode>) {}
 
 pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmResult<bool> {
     let selected = state
@@ -611,8 +697,18 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
         state.reset_negotiation();
         sessions.remove_all_and_destroy();
+        // `GET_VERSION` restarts the connection for whichever transport sent
+        // it, taking ownership (and destroying any session the previous owner
+        // held — pre-existing `GET_VERSION` behaviour, now attributed).
+        state.active_transport_id = io.transport_id();
         return version::handle_get_version(state, pal, io).await;
     }
+
+    // Every other plaintext request must come from the transport that ran VCA.
+    check_transport_owner(state, io.transport_id()).inspect_err(|_| {
+        trace_gate_refusal(state.active_transport_id, io.transport_id(), Some(code))
+    })?;
+
     abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
@@ -706,6 +802,18 @@ async fn handle_secured_request<
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
 ) -> SpdmResult<Option<PalBytes<'a, Pal>>> {
+    // A secured message only exists because some transport ran VCA and then
+    // KEY_EXCHANGE/FINISH. No exemption here: there is no plaintext
+    // `GET_VERSION` inside a secured message, so a secured message from a
+    // non-owning transport is always invalid. It is dropped silently, like a
+    // message for an unknown session ID: the requester has no session keys for
+    // this connection, so it could not read an encrypted ERROR, and a plaintext
+    // one would be out of place in a secured exchange.
+    if check_transport_owner(state, io.transport_id()).is_err() {
+        trace_gate_refusal(state.active_transport_id, io.transport_id(), None);
+        return Ok(None);
+    }
+
     let req = io.request();
 
     // Parse session_id from the secured message header.
@@ -1082,3 +1190,7 @@ mod certificate_tests;
 #[cfg(test)]
 #[path = "tests/vendor_defined.rs"]
 mod vendor_defined_tests;
+
+#[cfg(test)]
+#[path = "tests/transport_gate.rs"]
+mod transport_gate_tests;
