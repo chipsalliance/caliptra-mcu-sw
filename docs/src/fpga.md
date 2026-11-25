@@ -27,7 +27,7 @@ The FPGA should have the following installed (If you are not using a Caliptra im
 - [cargo-nextest](https://github.com/nextest-rs/nextest)
   - `cargo-nextest` should be useable by the root user. Consider installing it to the system path `/usr/bin`.
 
-**Suggestion**: Download the latest FPGA Image from the Caliptra-SW FPGA Image build [job](https://github.com/chipsalliance/caliptra-sw/actions/workflows/fpga-image.yml). This ensures you are testing with the same system used in the FPGA CI. Developer images have a "-dev" suffix.
+**Suggestion**: Download the latest FPGA Image from the Caliptra-Infra FPGA Image build [job](https://github.com/chipsalliance/caliptra-infra/actions/workflows/fpga-image.yml). This ensures you are testing with the same system used in the FPGA CI. Developer images have a "-dev" suffix.
 
 ## Suggested Development Flow
 
@@ -83,7 +83,7 @@ can still limit physical-board concurrency.
 
 ### Ubuntu Image
 
-Follow the [2.1 FPGA instructions](../../hw/rev-2_1/fpga/README.md) or [latest FPGA instructions](../../hw/latest/fpga/README.md) on building and loading a bitstream. The [2.1 workflow](../../.github/workflows/bitstream-build_2.1.yml) and [2.2 workflow](../../.github/workflows/bitstream-build_2.2.yml) call the [shared bitstream build](../../.github/workflows/bitstream-build.yml) with the hardware version, repository, ref/SHA, FPGA and RTL paths, and target branch. Both callers support manual runs.
+Bitstream synthesis and NixOS FPGA SD card image builds are hosted in [`chipsalliance/caliptra-infra`](https://github.com/chipsalliance/caliptra-infra). See the [2.1 FPGA README](../../hw/rev-2_1/fpga/README.md) or [latest FPGA README](../../hw/latest/fpga/README.md) for details.
 
 ## FPGA bootstrap
 
