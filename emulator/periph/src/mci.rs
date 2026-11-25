@@ -286,6 +286,12 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow().generic_input_wires[index]
     }
 
+    fn write_mci_reg_mcu_nmi_vector(&mut self, val: RvData) {
+        self.generated.write_mci_reg_mcu_nmi_vector(val);
+        self.timer
+            .schedule_action_in(0, TimerAction::SetNmiVec { addr: val });
+    }
+
     // Bridge prod_debug_unlock_pk_hash_reg reads/writes to the Caliptra-side MCI
     // so that ROM writes are visible to Caliptra RT's DMA reads.
     fn read_mci_reg_prod_debug_unlock_pk_hash_reg(
@@ -1670,6 +1676,31 @@ mod tests {
             1 => actions.drain().next(),
             _ => panic!("More than one action scheduled; unexpected"),
         }
+    }
+
+    #[test]
+    fn test_nmi_vector_updates_cpu_target() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+            false,
+            Rc::new(Cell::new(true)),
+        );
+        mci.write_mci_reg_mcu_nmi_vector(0x8000_0000);
+        assert_eq!(mci.read_mci_reg_mcu_nmi_vector(), 0x8000_0000);
+        assert_eq!(
+            next_action(&clock),
+            Some(TimerAction::SetNmiVec { addr: 0x8000_0000 })
+        );
     }
 
     #[test]
