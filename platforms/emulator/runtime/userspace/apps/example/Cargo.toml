@@ -14,7 +14,6 @@ caliptra-auth-man-types.workspace = true
 caliptra-mcu-attestation-evidence.workspace = true
 caliptra-mcu-measurement-api.workspace = true
 critical-section.workspace = true
-dpe.workspace = true
 embassy-executor.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtock_alarm.workspace = true

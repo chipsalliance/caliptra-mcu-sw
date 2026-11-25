@@ -2,11 +2,13 @@
 
 use crate::test::{get_rom_with_feature, start_runtime_hw_model, TestParams, TEST_LOCK};
 use caliptra_api::mailbox::{CommandId, InvokeDpeReq, InvokeDpeResp};
+use caliptra_dpe::commands::{
+    CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd, Command, CommandHdr,
+};
+use caliptra_dpe::context::ContextHandle;
+use caliptra_dpe::response::{CertifyKeyP384Resp, CertifyKeyP384RespHdr, ResponseHdr};
+use caliptra_dpe::DpeProfile;
 use caliptra_mcu_hw_model::McuHwModel;
-use dpe::commands::{CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd, Command, CommandHdr};
-use dpe::context::ContextHandle;
-use dpe::response::{CertifyKeyP384Resp, ResponseHdr};
-use dpe::DpeProfile;
 use sha2::{Digest, Sha384};
 use std::mem::{offset_of, size_of};
 use std::sync::atomic::Ordering;
@@ -76,7 +78,7 @@ fn test_rom_digest_stash_is_optional_and_tagged_without_fe_status() {
         let data = &response[offset_of!(InvokeDpeResp, data)..];
         let (response_header, _) = ResponseHdr::try_ref_from_prefix(data).unwrap();
         assert_eq!(response_header.status, 0);
-        let size_offset = offset_of!(CertifyKeyP384Resp, cert_size);
+        let size_offset = offset_of!(CertifyKeyP384RespHdr, cert_size);
         let cert_size =
             u32::from_le_bytes(data[size_offset..size_offset + 4].try_into().unwrap()) as usize;
         let cert_offset = offset_of!(CertifyKeyP384Resp, cert);
