@@ -5,9 +5,16 @@ name: FPGA Tests
 on:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      artifact-suffix:
+        description: Suffix to distinguish artifacts within a shared workflow run
+        required: false
+        type: string
+        default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  group: ${{ github.workflow }}-fpga-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
