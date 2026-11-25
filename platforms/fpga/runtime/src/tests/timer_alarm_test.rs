@@ -19,7 +19,7 @@ use kernel::hil::time::{Alarm, Ticks, Time};
 ///
 /// Strategy:
 ///   1. Set an alarm with a known reference and dt
-///   2. Wait for the timer to expire (mitcnt0 halts at mitb0)
+///   2. Wait until now() passes the fire time
 ///   3. Call get_alarm() and verify it returns reference + dt (the past fire
 ///      time), NOT now + bound (a bogus future value)
 ///
@@ -67,22 +67,10 @@ pub(crate) fn run_test_get_alarm_expired() -> Option<u32> {
         return Some(1);
     }
 
-    // Step 2: Wait for the hardware timer to expire
+    // Step 2: Wait for the alarm time to pass
     println!("[test-get-alarm] Step 2: Waiting for timer to expire...");
-    let mut mitcnt0: u32;
-    let mitb0: u32;
-    unsafe {
-        core::arch::asm!("csrr {}, 0x7D3", out(reg) mitb0);
-    }
-
     let mut spin_count = 0u32;
-    loop {
-        unsafe {
-            core::arch::asm!("csrr {}, 0x7D2", out(reg) mitcnt0);
-        }
-        if mitcnt0 >= mitb0 {
-            break;
-        }
+    while timers.now().into_u64() < expected_fire_at.into_u64() {
         spin_count += 1;
         if spin_count > 100_000_000 {
             println!("[test-get-alarm] FAIL: timer never expired");
@@ -90,9 +78,16 @@ pub(crate) fn run_test_get_alarm_expired() -> Option<u32> {
         }
     }
     println!(
-        "[test-get-alarm] Timer expired: mitcnt0={} >= mitb0={} (after {} spins)",
-        mitcnt0, mitb0, spin_count
+        "[test-get-alarm] Timer expired: now={} >= fire_at={} (after {} spins)",
+        timers.now().into_u64(),
+        expected_fire_at.into_u64(),
+        spin_count
     );
+    // The machine-timer interrupt is a level: it must still be pending.
+    if timers.uses_mtimer() && !timers.mtimer_pending() {
+        println!("[test-get-alarm] FAIL: machine-timer interrupt not pending after expiry");
+        return Some(1);
+    }
 
     // Step 3: Check get_alarm() AFTER expiry
     let now_after = timers.now();
@@ -111,10 +106,6 @@ pub(crate) fn run_test_get_alarm_expired() -> Option<u32> {
             "[test-get-alarm] FAIL: get_alarm() after expiry returned wrong value! got={}, expected={}",
             alarm_after.into_u64(),
             expected_fire_at.into_u64()
-        );
-        println!(
-            "[test-get-alarm] The old buggy get_alarm() would return now+bound = {}",
-            now_after.into_u64() + mitb0 as u64
         );
         return Some(1);
     }
