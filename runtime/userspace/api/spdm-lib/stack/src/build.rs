@@ -13,7 +13,7 @@
 //! reserve the transport-framing header.
 
 use caliptra_mcu_spdm_codec::{
-    ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter, SHA384_HASH_SIZE,
+    ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireError, WireWriter, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SigningInput, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIoTransport,
@@ -81,7 +81,7 @@ pub(crate) fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<
 ///   [`SpdmPalAlloc::alloc_bytes`] so the PAL can scope the
 ///   allocation to this exchange.
 /// * `version` — SPDM version to put in the common-header `version`
-///   byte (DSP0274 §10.1).
+///   byte.
 /// * `body` — The response body that will be encoded after the common
 ///   header. Anything implementing [`ResponseBody`] works.
 ///
@@ -98,39 +98,39 @@ pub(crate) fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<
 ///   Allocates and encodes an SPDM response.
 ///
 /// Marked `#[inline(never)]` to keep handler-level code out of the
-/// dispatcher's async state machine. Each `B` still produces its own
-/// monomorphisation, but they're emitted as separate functions rather
-/// than inlined four times into one giant `poll`.
+/// dispatcher's async state machine. Dynamic body dispatch keeps the
+/// allocation and common-header path in one shared implementation.
 #[inline(never)]
-pub(crate) fn build_response<'a, Pal, B>(
+pub(crate) fn build_response<'a, Pal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
     version: SpdmVersion,
-    body: &B,
+    body: &dyn ResponseBody,
 ) -> SpdmResult<PalBytes<'a, Pal>>
 where
     Pal: SpdmPal,
-    B: ResponseBody,
 {
     let head = pal.header_size();
-    let raw_len = head + body.encoded_size();
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + body.body_size();
     let mut buf = alloc_padded(pal, io, raw_len)?;
-    body.encode_with_header(version, &mut WireWriter::new(&mut buf[head..]))?;
+    let mut writer = WireWriter::new(&mut buf[head..]);
+    writer.write(&SpdmMsgHdrPdu::new(version, body.response_code()))?;
+    body.encode_body(&mut writer)?;
     Ok(buf)
 }
 
-/// Encodes an SPDM ERROR PDU into an existing buffer.
+/// Encodes an SPDM ERROR PDU and returns the populated buffer prefix.
 pub(crate) fn encode_error_response(
     out: &mut [u8],
     version: SpdmVersion,
     error: SpdmError,
-) -> SpdmResult<usize> {
+) -> Result<&[u8], WireError> {
     let extended_data = error.extended_data();
     let mut w = WireWriter::new(out);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
     w.write(&[error.spec_byte(), error.error_data()])?;
     w.write(extended_data)?;
-    Ok(SpdmMsgHdrPdu::SIZE + 2 + extended_data.len())
+    Ok(w.into_bytes())
 }
 
 /// Non-generic helper for the error path. Builds an ERROR PDU without going
@@ -241,7 +241,7 @@ pub(crate) async fn sign_transcript<Pal: SpdmPal>(
         },
     };
     let sig_len = pal
-        .sign(io, slot_id, asym_algo, signing_input, sig_slot)
+        .sign(io, slot_id, signing_input, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != expected_sig_len {

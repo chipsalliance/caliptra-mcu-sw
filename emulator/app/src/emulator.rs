@@ -24,6 +24,7 @@ use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_hw_model_types::DEFAULT_CPTRA_OBF_KEY;
 use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_mcu_config_emulator::DEFAULT_MCU_MBOX_AXI_PAUSER;
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
 use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
@@ -122,6 +123,10 @@ pub struct EmulatorArgs {
     #[arg(short, long)]
     pub log_dir: Option<PathBuf>,
 
+    /// Directory for persistent primary and secondary flash backing files.
+    #[arg(long)]
+    pub flash_storage_dir: Option<PathBuf>,
+
     /// Trace instructions.
     #[arg(short, long, default_value_t = false)]
     pub trace_instr: bool,
@@ -190,8 +195,8 @@ pub struct EmulatorArgs {
     #[arg(long, default_value_t = cfg!(feature = "ocp-lock"))]
     pub ocp_lock: bool,
 
-    /// HW revision in semver format (e.g., "2.0.0")
-    #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+    /// Runtime HW contract; must match the compiled register snapshot (currently 2.1.0).
+    #[arg(long, value_parser = semver::Version::parse, default_value = "2.1.0")]
     pub hw_revision: semver::Version,
 
     /// Override ROM offset
@@ -360,6 +365,13 @@ impl Emulator {
         external_read_callback: Option<ExternalReadCallback>,
         external_write_callback: Option<ExternalWriteCallback>,
     ) -> std::io::Result<Self> {
+        let revision = caliptra_mcu_hw_revision::HardwareRevision::parse(
+            caliptra_mcu_emulator_registers_generated::HARDWARE_REVISION,
+        )
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        revision
+            .validate_emulator_version(&cli.hw_revision.to_string())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
         // Install per-instance state on the calling thread BEFORE any worker
         // thread is spawned below (start_i3c_socket, doe_mbox_fsm.start, etc.
         // all spawn via spawn_with_emulator_state and inherit state from this
@@ -456,7 +468,7 @@ impl Emulator {
 
         let use_mcu_recovery_interface = is_flash_based_boot;
 
-        let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(&StartCaliptraArgs {
+        let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
             device_lifecycle: device_lifecycle_str,
             req_idevid_csr,
@@ -466,6 +478,7 @@ impl Emulator {
             debug_intent: true, // Emulator app defaults to debug intent enabled
             prod_dbg_unlock_keypairs: vec![],
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
+            tb_services_cb: None,
         })
         .expect("Failed to start Caliptra CPU");
 
@@ -796,7 +809,12 @@ impl Emulator {
                             .to_path_buf(),
                     )
                 } else {
-                    Some(PathBuf::from(default_path))
+                    Some(
+                        cli.flash_storage_dir
+                            .as_deref()
+                            .unwrap_or_else(|| std::path::Path::new("."))
+                            .join(default_path),
+                    )
                 };
 
                 DummyFlashCtrl::new(
@@ -923,7 +941,8 @@ impl Emulator {
         let mut lc = lc;
         lc.set_otp_partitions(otp.partitions_ref());
 
-        let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        let ext_mcu_mailbox0 =
+            mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(DEFAULT_MCU_MBOX_AXI_PAUSER));
         let soc_ifc = unsafe {
             caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
                 cli.soc_offset.unwrap_or(0x3003_0000) as *mut u32,
@@ -958,6 +977,10 @@ impl Emulator {
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(usb_periph)),
+            #[cfg(hw_capability = "usb-support")]
+            None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
@@ -965,6 +988,10 @@ impl Emulator {
             None,
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
+            #[cfg(hw_capability = "usb-support")]
+            None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
@@ -1343,6 +1370,8 @@ impl Emulator {
                 SpdmResponderTransport::Doe,
                 milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
             );
+            self.state
+                .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {

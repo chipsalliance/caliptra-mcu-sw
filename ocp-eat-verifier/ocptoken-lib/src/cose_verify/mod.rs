@@ -93,9 +93,11 @@ pub trait CryptoBackend {
 /// Supported COSE signing algorithms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SigningAlgorithm {
-    /// ECDSA w/ SHA-384 on P-384
+    /// ECDSA w/ SHA-384 (RFC 8152 / RFC 9053, algorithm ID -35)
     ES384,
-    /// ML-DSA-87 (post-quantum, FIPS 204)
+    /// ECDSA w/ SHA-384 on P-384 (RFC 9053, algorithm ID -51)
+    ESP384,
+    /// ML-DSA-87 (post-quantum, FIPS 204, algorithm ID -50)
     MLDSA87,
 }
 
@@ -105,11 +107,11 @@ impl SigningAlgorithm {
         alg: &coset::RegisteredLabelWithPrivate<coset::iana::Algorithm>,
     ) -> CoseSign1Result<Self> {
         use coset::iana::Algorithm;
-        use coset::RegisteredLabelWithPrivate::{Assigned, PrivateUse};
+        use coset::RegisteredLabelWithPrivate::Assigned;
         match alg {
-            Assigned(Algorithm::ES384) | Assigned(Algorithm::ESP384) => Ok(SigningAlgorithm::ES384),
-            // ML-DSA-87: draft-ietf-cose-dilithium proposes -48
-            PrivateUse(n) if *n == -48 => Ok(SigningAlgorithm::MLDSA87),
+            Assigned(Algorithm::ES384) => Ok(SigningAlgorithm::ES384),
+            Assigned(Algorithm::ESP384) => Ok(SigningAlgorithm::ESP384),
+            Assigned(Algorithm::ML_DSA_87) => Ok(SigningAlgorithm::MLDSA87),
             other => Err(CoseSign1Error::UnsupportedAlgorithm(format!("{:?}", other))),
         }
     }

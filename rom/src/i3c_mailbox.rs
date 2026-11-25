@@ -667,21 +667,22 @@ impl<'a> I3cMailboxHandler<'a> {
         // read) and would miss batched descriptors.
         let rx_desc = regs.tti_rx_desc_queue_port.get();
         let data_len = (rx_desc & 0xFFFF) as usize;
-        if data_len < PACKET_HEADER_SIZE {
-            if data_len != 0 {
-                self.zeroize_reassembly();
-            }
+        if data_len == 0 {
             return None;
         }
 
-        // Read all words from the RX FIFO
-        let total_words = data_len.div_ceil(4);
-        let read_words = total_words.min(MAX_RX_WORDS);
+        // Descriptors and data are independent FIFOs. Drain even packets we
+        // reject, without copying beyond the fixed-size scratch buffer.
         let mut buf = Zeroizing::new([0u32; MAX_RX_WORDS]);
-        let mut i = 0;
-        while i < read_words {
-            buf[i] = regs.tti_rx_data_port.get();
-            i += 1;
+        for i in 0..data_len.div_ceil(4) {
+            let word = regs.tti_rx_data_port.get();
+            if let Some(slot) = buf.get_mut(i) {
+                *slot = word;
+            }
+        }
+        if !(PACKET_HEADER_SIZE..=MAX_RX_WORDS * 4).contains(&data_len) {
+            self.zeroize_reassembly();
+            return None;
         }
 
         // Parse the 4-byte packet header

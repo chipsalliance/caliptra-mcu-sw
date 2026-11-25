@@ -85,33 +85,33 @@ impl PldmCodec for UpdateComponentRequest {
             return Err(PldmCodecError::BufferTooShort);
         }
 
-        let mut offset = 0;
-        let bytes = core::mem::size_of::<UpdateComponentRequestFixed>();
-        self.fixed
-            .write_to(&mut buffer[offset..offset + bytes])
-            .unwrap();
-        offset += bytes;
-
+        let offset = self.fixed.encode(buffer)?;
         let str_len = self.fixed.comp_ver_str_len as usize;
-        buffer[offset..offset + str_len].copy_from_slice(&self.comp_ver_str[..str_len]);
+        let version = self
+            .comp_ver_str
+            .get(..str_len)
+            .ok_or(PldmCodecError::BufferTooShort)?;
+        buffer
+            .get_mut(offset..offset + str_len)
+            .ok_or(PldmCodecError::BufferTooShort)?
+            .copy_from_slice(version);
         Ok(offset + str_len)
     }
 
     fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let mut offset = 0;
-        let bytes = core::mem::size_of::<UpdateComponentRequestFixed>();
-        let fixed = UpdateComponentRequestFixed::read_from_bytes(
-            buffer
-                .get(offset..offset + bytes)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        )
-        .unwrap();
-        offset += bytes;
+        let fixed = UpdateComponentRequestFixed::decode(buffer)?;
+        let offset = core::mem::size_of::<UpdateComponentRequestFixed>();
 
         let comp_ver_str = {
             let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
             let str_len = fixed.comp_ver_str_len as usize;
-            arr[..str_len].copy_from_slice(&buffer[offset..offset + str_len]);
+            arr.get_mut(..str_len)
+                .ok_or(PldmCodecError::BufferTooShort)?
+                .copy_from_slice(
+                    buffer
+                        .get(offset..offset + str_len)
+                        .ok_or(PldmCodecError::BufferTooShort)?,
+                );
             arr
         };
         Ok(UpdateComponentRequest {
@@ -180,37 +180,37 @@ impl PldmCodec for UpdateComponentResponse {
         let mut offset = 0;
         self.hdr
             .write_to(&mut buffer[offset..offset + PLDM_MSG_HEADER_LEN])
-            .unwrap();
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += PLDM_MSG_HEADER_LEN;
 
         self.completion_code
             .write_to(&mut buffer[offset..offset + core::mem::size_of::<u8>()])
-            .unwrap();
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += core::mem::size_of::<u8>();
 
         self.comp_compatibility_resp
             .write_to(&mut buffer[offset..offset + core::mem::size_of::<u8>()])
-            .unwrap();
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += core::mem::size_of::<u8>();
 
         self.comp_compatibility_resp_code
             .write_to(&mut buffer[offset..offset + core::mem::size_of::<u8>()])
-            .unwrap();
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += core::mem::size_of::<u8>();
 
         self.update_option_flags_enabled
             .write_to(&mut buffer[offset..offset + core::mem::size_of::<u32>()])
-            .unwrap();
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += core::mem::size_of::<u32>();
 
         self.time_before_req_fw_data
             .write_to(&mut buffer[offset..offset + core::mem::size_of::<u16>()])
-            .unwrap();
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += core::mem::size_of::<u16>();
 
         if let Some(size) = self.get_comp_opaque_data_max_transfer_size {
             size.write_to(&mut buffer[offset..offset + core::mem::size_of::<u32>()])
-                .unwrap();
+                .map_err(|_| PldmCodecError::BufferTooShort)?;
             offset += core::mem::size_of::<u32>();
         }
 
@@ -314,7 +314,7 @@ mod test {
 
     #[test]
     fn test_update_component_request() {
-        let request = UpdateComponentRequest::new(
+        let mut request = UpdateComponentRequest::new(
             0,
             PldmMsgType::Request,
             ComponentClassification::Firmware,
@@ -330,6 +330,24 @@ mod test {
         assert_eq!(bytes, request.codec_size_in_bytes());
         let decoded_request = UpdateComponentRequest::decode(&buffer[..bytes]).unwrap();
         assert_eq!(request, decoded_request);
+
+        for len in 0..bytes {
+            assert_eq!(
+                UpdateComponentRequest::decode(&buffer[..len]),
+                Err(PldmCodecError::BufferTooShort)
+            );
+        }
+
+        request.fixed.comp_ver_str_len = (PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN + 1) as u8;
+        assert_eq!(
+            request.encode(&mut buffer),
+            Err(PldmCodecError::BufferTooShort)
+        );
+        request.fixed.encode(&mut buffer).unwrap();
+        assert_eq!(
+            UpdateComponentRequest::decode(&buffer),
+            Err(PldmCodecError::BufferTooShort)
+        );
     }
 
     #[test]
@@ -348,5 +366,12 @@ mod test {
         assert_eq!(bytes, response.codec_size_in_bytes());
         let decoded_response = UpdateComponentResponse::decode(&buffer[..bytes]).unwrap();
         assert_eq!(response, decoded_response);
+
+        for len in 0..bytes {
+            assert_eq!(
+                response.encode(&mut buffer[..len]),
+                Err(PldmCodecError::BufferTooShort)
+            );
+        }
     }
 }

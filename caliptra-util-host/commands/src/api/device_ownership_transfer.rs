@@ -4,10 +4,10 @@
 
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
-    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotOverrideChallengeRequest,
-    DotOverrideRequest, DotRecoveryRequest, DotRotateRequest, DotStatusRequest, DotStatusResponse,
-    DotTransitionResponse, DotUnlockChallengeRequest, DotUnlockRequest, GetDotBackupBlobRequest,
-    GetDotBackupBlobResponse,
+    DotChallengeResponse, DotDisableRequest, DotEnableRequest, DotLockRequest,
+    DotOverrideChallengeRequest, DotOverrideRequest, DotRecoveryRequest, DotRotateRequest,
+    DotStatusRequest, DotStatusResponse, DotTransitionResponse, DotUnlockChallengeRequest,
+    DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::{CaliptraSession, SessionError};
@@ -17,6 +17,15 @@ fn map_session_error(error: SessionError, context: &'static str) -> CaliptraApiE
         SessionError::DeviceError(code) => CaliptraApiError::DeviceError(code),
         _ => CaliptraApiError::SessionError(context),
     }
+}
+
+pub fn caliptra_cmd_dot_enable(
+    session: &mut CaliptraSession,
+    request: &DotEnableRequest,
+) -> CaliptraResult<DotTransitionResponse> {
+    session
+        .execute_command_with_id(CaliptraCommandId::DotEnable, request)
+        .map_err(|error| map_session_error(error, "DOT_ENABLE command execution failed"))
 }
 
 pub fn caliptra_cmd_dot_lock(

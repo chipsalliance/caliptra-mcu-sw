@@ -14,7 +14,7 @@ Each firmware component tracks two SVN values:
 the device runs version 10. The deployer chooses when to permanently commit a
 new minimum.
 
-This document covers four categories of components:
+This document covers five categories of components:
 
 1. **Caliptra Core firmware** — enforced by Caliptra Core ROM.
 2. **MCU Runtime firmware** — its `current_svn` is the **SoC manifest SVN**
@@ -28,6 +28,10 @@ This document covers four categories of components:
    `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
 4. **SoC component images** — manifest-level SVN enforced by Caliptra Core;
    optional per-component enforcement by MCU against `SOC_IMAGE_MIN_SVN[i]`.
+5. **Owner SoC Manifest** — enforced by Caliptra Core against the
+   decoded floor forwarded by MCU ROM in numeric `FUSE_SOC_MANIFEST_SVN[2]`
+   on 2.2 (`CALIPTRA_HW_REV=latest`). The 2.1 handoff remains
+   `SS_STRAP_GENERIC[3][15:8]`.
 
 ### MCU Runtime SVN reuses the SoC manifest SVN
 
@@ -65,16 +69,53 @@ during cold boot; Caliptra Core enforces anti-rollback internally.
 
 | Fuse | Size | Purpose |
 |---|---|---|
-| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | 4 B | FMC key manifest (currently unused — see note below) |
+| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | 4 B | 2.1 only; reserved FMC key-manifest field (see note below) |
+| `MCU_RUNTIME_SVN` | 16 B | Latest only; allocated MCU runtime bitmap, not independently enforced by this MCU ROM |
 | `CPTRA_CORE_RUNTIME_SVN` | 16 B | Caliptra Runtime firmware |
 | `CPTRA_CORE_SOC_MANIFEST_SVN` | 16 B | SoC manifest |
 | `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | 4 B | Maximum allowed SoC manifest SVN |
 
-> **Note:** `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is reserved in the OTP map. MCU
-> ROM forwards it to Caliptra's `FUSE_FMC_KEY_MANIFEST_SVN` register (alongside
-> the other SVN fuses), but neither MCU nor Caliptra Core currently consumes
-> the value for any check. It is documented here for completeness;
-> integrators do not need to provision it for current behavior.
+> **Note:** The 2.1 ROM retains its forwarding of the reserved
+> `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` field. The latest hardware map replaces
+> that field with `MCU_RUNTIME_SVN`; latest MCU ROM no longer reads or forwards
+> an FMC key-manifest floor. The pinned latest Core checks firmware SVN using
+> `CPTRA_CORE_RUNTIME_SVN`, not this removed FMC field. Do not reinterpret the
+> new MCU bitmap as an FMC floor. Existing firmware and SoC SVN checks remain
+> unchanged.
+
+#### Core register handoff on 2.2
+
+The OTP representation is unchanged: `CPTRA_CORE_SOC_MANIFEST_SVN` remains a
+128-bit monotonic bitmap. MCU ROM converts it to a numeric minimum using the
+position of the highest programmed bit (zero for an empty bitmap), preserving
+the legacy Core bitmap interpretation. It does not store a binary integer
+directly in OTP.
+
+With `CALIPTRA_HW_REV=latest`, MCU ROM populates four independent numeric
+`FUSE_SOC_MANIFEST_SVN` words before `CPTRA_FUSE_WR_DONE`:
+
+| Word | Meaning | Reference MCU ROM value |
+|---|---|---|
+| 0 | SoC manifest minimum SVN | Decoded `CPTRA_CORE_SOC_MANIFEST_SVN` (0-128) |
+| 1 | Independent MCU Runtime minimum SVN | 0; independent storage and enforcement are not enabled |
+| 2 | Owner manifest minimum SVN | Decoded `OWNER_SOC_MANIFEST_MIN_SVN` (0-64) |
+| 3 | Reserved / late-binding use | 0 |
+
+Caliptra Runtime firmware SVN remains a separate bitmap in
+`FUSE_RUNTIME_SVN[0..3]`. The SoC manifest maximum is still forwarded separately
+to `FUSE_SOC_MANIFEST_MAX_SVN`. Caliptra Core's one-byte SoC SVN measurement
+format is unchanged; the reference OTP range fits that format.
+
+This handoff does not introduce an independent MCU Runtime SVN or change its
+existing SoC-manifest-based enforcement. Word 1 and reserved-word policy require
+platform coordination before use. `CALIPTRA_HW_REV=2.1` retains the raw SoC
+bitmap and owner strap handoff.
+
+The same 2.2 contract replaces generic configuration straps with named
+registers: MCU ROM writes the OTP status/DAI-idle layout to
+`SS_OTP_FC_STATUS_CFG`, the direct-access command offset to
+`SS_OTP_FC_CMD_CFG`, and stable-owner/vendor-debug controls to
+`SS_FW_FEATURE_CFG`. The 2.1 build retains `SS_STRAP_GENERIC[0..3]`.
 
 The pre-existing `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` fuse (in
 `sw_manuf_partition`) controls enforcement for both Caliptra Core and MCU. When
@@ -82,6 +123,34 @@ set, neither side rejects lower-SVN images and no SVN fuses are burned. MCU
 reuses this fuse rather than introducing a separate MCU-only switch. The fuse
 defaults to 0 (enforcement on) and should be set only on development or
 manufacturing devices.
+
+### Owner SoC Manifest SVN
+
+The SDK stores `OWNER_SOC_MANIFEST_MIN_SVN` in 8 bytes of non-ECC
+`VENDOR_TEST_PARTITION` at `[0x410, 0x418)`. Its `OneHot { bits: 64 }`
+layout counts programmed bits: one bit per SVN increment, no redundant copies,
+and a range of **0-64**.
+
+Integrators may adapt this storage, encoding, and capacity with matching
+ROM/runtime changes. The stored minimum SVN must never decrease.
+
+Advance the floor with the authorized
+[Fuse Increase Min SVN](caliptra_common_commands.md#fuse-increase-min-svn)
+command, target `OwnerSocManifest`. `SET_OWNER_AUTH_MANIFEST` does not program
+OTP. The runtime handler preserves programmed bits and verifies writes by
+readback; repeating the current floor requires no write. An interrupted write
+may leave a partial increase. Each retry starts by reading the stored value.
+
+Activation requires a **full subsystem cold boot**: MCU ROM writes the numeric
+minimum SVN to `FUSE_SOC_MANIFEST_SVN[2]` before `CPTRA_FUSE_WR_DONE` on 2.2
+(`CALIPTRA_HW_REV=latest`), leaving `SS_STRAP_GENERIC[3]` unchanged. The 2.1
+handoff still uses `SS_STRAP_GENERIC[3][15:8]`, preserving other strap bits.
+The forwarded floor is locked for that boot; MCU-only hitless updates do not
+activate a new floor.
+
+Keep the partition digest unsealed while updates are needed. The reference
+lifecycle policy blocks programming in `ProdEnd` and `RMA`. OTP read failures
+during ROM fuse population are fatal.
 
 ### New MCU SVN Fuses
 
@@ -277,7 +346,7 @@ sequenceDiagram
 ### Cold Boot — Caliptra Core SVNs
 
 MCU ROM reads the Caliptra Core SVN fuses from OTP and writes them to
-Caliptra's fuse registers (`CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is forwarded but
+Caliptra's fuse registers (`CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is forwarded on 2.1 but
 unused; see the note above). Caliptra Core ROM authenticates its firmware
 and compares image SVN against fuse SVN, rejecting on mismatch.
 
@@ -356,20 +425,25 @@ attempt never makes it to the hitless reset.
 
 For each component in the bundle:
 
-1. **MCU Runtime image** — obtain the bundle's SoC manifest SVN
-   (`soc_manifest_svn`) from the new SoC manifest. Reject if
-   `soc_manifest_svn < fuse_min_svn (CPTRA_CORE_SOC_MANIFEST_SVN)`. The
-   floor itself is owned by Caliptra Core; MCU Runtime only consults it
-   here as a fast-fail before the bundle is handed to Caliptra Core for
-   authentication.
-2. **MCU Component SVN Manifest** — if the new MCU runtime image contains
+1. **Caliptra Core firmware** — obtain the bundle's signed-header `fw_svn`.
+   When anti-rollback is enabled, reject if
+   `fw_svn < fuse_min_svn (CPTRA_CORE_RUNTIME_SVN)`. This is a fast-fail
+   against the physical OTP floor; the bundle must still pass `FIRMWARE_VERIFY`
+   for cryptographic authentication.
+2. **MCU Runtime image** — obtain the bundle's SoC manifest SVN
+   (`soc_manifest_svn`) from the new SoC manifest. When anti-rollback is
+   enabled, reject if
+   `soc_manifest_svn < fuse_min_svn (CPTRA_CORE_SOC_MANIFEST_SVN)`. The floor
+   itself is owned by Caliptra Core; MCU Runtime only consults it here as a
+   fast-fail before the bundle is handed to Caliptra Core for authentication.
+3. **MCU Component SVN Manifest** — if the new MCU runtime image contains
    the manifest header (identified by magic), validate Magic / Format
    Version and the header constraints (see [Format](#format)). Reject if
    `manifest.current_svn < fuse_min_svn
    (MCU_COMPONENT_SVN_MANIFEST_MIN_SVN)` or if any per-entry constraint
    is violated. If no manifest header is present, skip per-component SVN
    verification for this bundle.
-3. **SoC component images** — for each component whose `component_id` is in
+4. **SoC component images** — for each component whose `component_id` is in
    both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
    - Use the platform's `SocComponentSvn` trait (below) to extract the SVN
      directly from the component bytes.
@@ -384,6 +458,29 @@ manifest-vs-image cross-check (a logged warning) but still get the
 `current_svn < fuse_min_svn` check using the manifest's value. This allows
 opaque or pre-existing component formats to participate in fuse-level
 rollback protection without forcing the integrator to parse them.
+
+Before loading Caliptra firmware, activation rechecks the SoC manifest floor
+so a stale manifest cannot leave the bundle partially activated. The Caliptra
+firmware and SoC manifest checks are also repeated immediately before
+`FIRMWARE_LOAD` and `SET_AUTH_MANIFEST`, respectively.
+
+The updater holds a shared asynchronous SVN transaction guard from the
+preflight check through MCU activation, including staging reads and mailbox
+waits. Both the minimum-SVN command and raw fuse-write command acquire that
+same guard before accessing the mailbox or programming OTP. This prevents a
+physical floor increase between the final check and activation. The alternate
+manifest/MCU activation entrypoint uses the same guard. Lock ordering is SVN
+guard before mailbox lock.
+
+The pre-Caliptra activation hook runs before acquiring the guard. Later
+activation hooks retain their existing ordering but run inside the guarded
+transaction and must not re-enter fuse-writing or activation APIs that acquire
+the same non-reentrant guard.
+
+These checks use only bit 0 of `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`, matching
+Caliptra's hardware disable field. Other bits do not bypass enforcement.
+Failure to read the disable fuse or either physical SVN floor rejects the
+update.
 
 After PLDM verification succeeds, the bundle is applied and activated. The
 hitless update reset then triggers MCU ROM, which performs the actual

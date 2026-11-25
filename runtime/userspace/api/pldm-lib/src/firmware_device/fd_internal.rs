@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::control_context::Tid;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyOutcome;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::GetStatusReasonCode;
 use caliptra_mcu_pldm_common::protocol::firmware_update::{
     FirmwareDeviceState, PldmFdTime, UpdateOptionFlags, PLDM_FWUP_MAX_PADDING_SIZE,
@@ -323,6 +324,22 @@ impl FdInternal {
         }
     }
 
+    pub fn set_fd_apply_outcome(&self, outcome: ApplyOutcome) {
+        let mut inner = self.inner.borrow_mut();
+        if let InitiatorModeState::Apply(apply) = &mut inner.initiator_mode_state {
+            apply.outcome = Some(outcome);
+        }
+    }
+
+    pub fn get_fd_apply_outcome(&self) -> Option<ApplyOutcome> {
+        let inner = self.inner.borrow();
+        if let InitiatorModeState::Apply(apply) = &inner.initiator_mode_state {
+            apply.outcome
+        } else {
+            None
+        }
+    }
+
     pub fn get_fd_verify_progress(&self) -> Option<u8> {
         let inner = self.inner.borrow();
         if let InitiatorModeState::Verify(verify) = &inner.initiator_mode_state {
@@ -594,4 +611,5 @@ pub struct VerifyState {
 #[derive(Debug, Default)]
 pub struct ApplyState {
     pub progress_percent: u8,
+    pub outcome: Option<ApplyOutcome>,
 }

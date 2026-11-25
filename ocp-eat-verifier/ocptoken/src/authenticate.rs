@@ -129,14 +129,16 @@ fn authenticate_refval_corims(
     ta_store: &dyn TrustAnchorStore,
     verifier: &CoseSign1Verifier<impl CryptoBackend>,
 ) -> Option<RefValCorims> {
-    let corims_path = env::var(SIGNED_REFVAL_CORIM_PATH).ok().filter(|p| !p.is_empty());
+    let corims_path = env::var(SIGNED_REFVAL_CORIM_PATH)
+        .ok()
+        .filter(|p| !p.is_empty());
     let corims_dir = corims_path.map(PathBuf::from);
 
     let has_files = corims_dir.as_ref().map_or(false, |dir| {
         dir.is_dir()
-            && fs::read_dir(dir)
-                .ok()
-                .map_or(false, |mut e| e.any(|e| e.ok().map_or(false, |e| e.path().is_file())))
+            && fs::read_dir(dir).ok().map_or(false, |mut e| {
+                e.any(|e| e.ok().map_or(false, |e| e.path().is_file()))
+            })
     });
 
     if !has_files {
@@ -167,6 +169,7 @@ fn authenticate_refval_corims(
 /// Result of a full authentication pipeline.
 pub(crate) struct AuthenticateResult<'a> {
     pub evidence: Evidence<'a>,
+    #[allow(dead_code)]
     pub cert_chain_blob: Vec<u8>,
     pub refval_corims: Option<RefValCorims>,
 }

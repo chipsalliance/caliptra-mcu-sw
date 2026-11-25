@@ -19,6 +19,7 @@ caliptra-mcu-core-util-host-osal.workspace = true
 [build-dependencies]
 cbindgen.workspace = true
 cc.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
 
 [features]
 default = ["std"]

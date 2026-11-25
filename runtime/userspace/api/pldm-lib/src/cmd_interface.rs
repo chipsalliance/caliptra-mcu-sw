@@ -73,10 +73,17 @@ impl<'a> CmdInterface<'a> {
         let (resp_len, action, bind_ua_eid) = self.process_request(msg_buf).await?;
 
         // Send the response
-        transport
-            .send_response(&msg_buf[..resp_len])
-            .await
-            .map_err(|_| errors::TRANSPORT_ERROR)?;
+        let result = async {
+            transport
+                .send_response(msg_buf.get(..resp_len).ok_or(errors::BUFFER_TOO_SMALL)?)
+                .await
+                .map_err(|_| errors::TRANSPORT_ERROR)
+        }
+        .await;
+        if action == ResponderAction::Complete && self.fd_ctx.is_cancelled() {
+            self.fd_ctx.ops().cancel_update_reported(result);
+        }
+        result?;
 
         if bind_ua_eid {
             transport.bind_ua_eid(requester_eid);
@@ -101,6 +108,9 @@ impl<'a> CmdInterface<'a> {
         if req_len == 0 {
             return Ok(());
         }
+        let command = PldmMsgHeader::<[u8; 3]>::decode(payload)
+            .map_err(|_| errors::CODEC_ERROR)?
+            .cmd_code();
 
         // Mark that a response is pending. The responder task will wait
         // on the signal in wait_for_initiator() before processing commands
@@ -109,8 +119,14 @@ impl<'a> CmdInterface<'a> {
 
         let result = async {
             // Send the request
+            let msg_len = req_len
+                .checked_add(reserved_len)
+                .ok_or(errors::BUFFER_TOO_SMALL)?;
             transport
-                .send_request(ua_eid, &msg_buf[..req_len + reserved_len])
+                .send_request(
+                    ua_eid,
+                    msg_buf.get(..msg_len).ok_or(errors::BUFFER_TOO_SMALL)?,
+                )
                 .await
                 .map_err(|_| errors::TRANSPORT_ERROR)?;
 
@@ -129,6 +145,12 @@ impl<'a> CmdInterface<'a> {
 
         // Always clear the flag — this also signals the responder.
         self.fd_ctx.set_pending_response(false);
+
+        if command == FwUpdateCmd::ApplyComplete as u8 {
+            self.fd_ctx.ops().apply_complete_reported(result);
+        } else if command == FwUpdateCmd::TransferComplete as u8 {
+            self.fd_ctx.transfer_complete_reported(result);
+        }
 
         result
     }
@@ -183,7 +205,10 @@ impl<'a> CmdInterface<'a> {
         self.busy.store(true, Ordering::SeqCst);
 
         // Get the pldm payload from msg_buf
-        let payload = &mut msg_buf[MCTP_PLDM_MSG_HDR_LEN..];
+        let Some(payload) = msg_buf.get_mut(MCTP_PLDM_MSG_HDR_LEN..) else {
+            self.busy.store(false, Ordering::SeqCst);
+            return Err(errors::BUFFER_TOO_SMALL);
+        };
         let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
 
         let (pldm_type, cmd_opcode) = match self.preprocess_request(payload) {

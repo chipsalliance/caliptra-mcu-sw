@@ -320,51 +320,43 @@ impl PldmCodec for Descriptor {
         if buffer.len() < self.codec_size_in_bytes() {
             return Err(PldmCodecError::BufferTooShort);
         }
-        let mut offset = 0;
+        let mut offset = self.descriptor_type.encode(buffer)?;
+        offset += self.descriptor_length.encode(
+            buffer
+                .get_mut(offset..)
+                .ok_or(PldmCodecError::BufferTooShort)?,
+        )?;
 
-        self.descriptor_type
-            .write_to(&mut buffer[offset..offset + core::mem::size_of::<u16>()])
-            .unwrap();
-        offset += core::mem::size_of::<u16>();
-
-        self.descriptor_length
-            .write_to(&mut buffer[offset..offset + core::mem::size_of::<u16>()])
-            .unwrap();
-        offset += core::mem::size_of::<u16>();
-
-        self.descriptor_data[..self.descriptor_length as usize]
-            .write_to(&mut buffer[offset..offset + self.descriptor_length as usize])
-            .unwrap();
+        self.descriptor_data
+            .get(..self.descriptor_length as usize)
+            .ok_or(PldmCodecError::BufferTooShort)?
+            .write_to(
+                buffer
+                    .get_mut(offset..offset + self.descriptor_length as usize)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            )
+            .map_err(|_| PldmCodecError::BufferTooShort)?;
         offset += self.descriptor_length as usize;
 
         Ok(offset)
     }
 
     fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let mut offset = 0;
-
-        let descriptor_type = u16::read_from_bytes(
-            buffer
-                .get(offset..offset + core::mem::size_of::<u16>())
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        )
-        .unwrap();
-        offset += core::mem::size_of::<u16>();
-
-        let descriptor_length = u16::read_from_bytes(
-            buffer
-                .get(offset..offset + core::mem::size_of::<u16>())
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        )
-        .unwrap();
+        let descriptor_type = u16::decode(buffer)?;
+        let mut offset = core::mem::size_of::<u16>();
+        let descriptor_length =
+            u16::decode(buffer.get(offset..).ok_or(PldmCodecError::BufferTooShort)?)?;
         offset += core::mem::size_of::<u16>();
 
         let mut descriptor_data = [0u8; DESCRIPTOR_DATA_MAX_LEN];
-        descriptor_data[..descriptor_length as usize].copy_from_slice(
-            buffer
-                .get(offset..offset + descriptor_length as usize)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        descriptor_data
+            .get_mut(..descriptor_length as usize)
+            .ok_or(PldmCodecError::BufferTooShort)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + descriptor_length as usize)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         Ok(Descriptor {
             descriptor_type,
@@ -652,27 +644,28 @@ impl PldmCodec for ComponentParameterEntry {
         if buffer.len() < self.codec_size_in_bytes() {
             return Err(PldmCodecError::BufferTooShort);
         }
-        let mut offset = 0;
-
-        self.comp_param_entry_fixed
-            .write_to(
-                &mut buffer[offset..offset + core::mem::size_of::<ComponentParameterEntryFixed>()],
-            )
-            .unwrap();
-
-        offset += core::mem::size_of::<ComponentParameterEntryFixed>();
+        let mut offset = self.comp_param_entry_fixed.encode(buffer)?;
 
         let len = self.comp_param_entry_fixed.active_comp_ver_str_len as usize;
-        self.active_comp_ver_str[..len]
-            .write_to(&mut buffer[offset..offset + len])
-            .unwrap();
+        let active = self
+            .active_comp_ver_str
+            .get(..len)
+            .ok_or(PldmCodecError::BufferTooShort)?;
+        buffer
+            .get_mut(offset..offset + len)
+            .ok_or(PldmCodecError::BufferTooShort)?
+            .copy_from_slice(active);
         offset += len;
 
         if let Some(pending_comp_ver_str) = &self.pending_comp_ver_str {
             let len = self.comp_param_entry_fixed.pending_comp_ver_str_len as usize;
-            pending_comp_ver_str[..len]
-                .write_to(&mut buffer[offset..offset + len])
-                .unwrap();
+            let pending = pending_comp_ver_str
+                .get(..len)
+                .ok_or(PldmCodecError::BufferTooShort)?;
+            buffer
+                .get_mut(offset..offset + len)
+                .ok_or(PldmCodecError::BufferTooShort)?
+                .copy_from_slice(pending);
             offset += len;
         }
 
@@ -850,6 +843,24 @@ mod test {
     }
 
     #[test]
+    fn descriptor_rejects_length_beyond_storage() {
+        let descriptor = Descriptor {
+            descriptor_length: (DESCRIPTOR_DATA_MAX_LEN + 1) as u16,
+            ..Descriptor::default()
+        };
+        let mut buffer = [0u8; 4 + DESCRIPTOR_DATA_MAX_LEN + 1];
+        assert_eq!(
+            descriptor.encode(&mut buffer),
+            Err(PldmCodecError::BufferTooShort)
+        );
+        buffer[2..4].copy_from_slice(&descriptor.descriptor_length.to_ne_bytes());
+        assert_eq!(
+            Descriptor::decode(&buffer),
+            Err(PldmCodecError::BufferTooShort)
+        );
+    }
+
+    #[test]
     fn test_component_parameter_entry() {
         let active_firmware_string = PldmFirmwareString::new("UTF-8", "mcu-runtime-1.0").unwrap();
         let active_firmware_version =
@@ -880,5 +891,24 @@ mod test {
         let active_fw_ver = component_parameter_entry.get_active_fw_ver();
         assert_eq!(active_firmware_string, active_fw_ver);
         assert!(active_firmware_string < pending_firmware_string);
+    }
+
+    #[test]
+    fn test_encode_component_parameter_oversized_versions() {
+        for pending in [false, true] {
+            let mut entry = ComponentParameterEntry::default();
+            if pending {
+                entry.comp_param_entry_fixed.pending_comp_ver_str_len =
+                    (PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN + 1) as u8;
+                entry.pending_comp_ver_str = Some([0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN]);
+            } else {
+                entry.comp_param_entry_fixed.active_comp_ver_str_len =
+                    (PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN + 1) as u8;
+            }
+            assert_eq!(
+                entry.encode(&mut [0u8; 1024]),
+                Err(PldmCodecError::BufferTooShort)
+            );
+        }
     }
 }

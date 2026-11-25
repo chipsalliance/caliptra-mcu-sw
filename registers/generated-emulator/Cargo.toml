@@ -11,3 +11,6 @@ caliptra-emu-bus.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 tock-registers.workspace = true
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

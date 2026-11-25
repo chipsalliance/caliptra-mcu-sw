@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Session crypto abstraction for the SPDM-Lite stack.
+//! Session crypto abstraction for the SPDM stack.
 //!
 //! Defines [`SpdmPalSessionCrypto`], the trait that platform-specific
 //! implementations must satisfy to support SPDM secure sessions
@@ -40,6 +40,15 @@ pub trait SpdmPalSessionCrypto {
         io: &impl SpdmPalIo,
         context: &[u8],
         peer_exchange_data: &[u8],
+    ) -> McuResult<Self::Key>;
+
+    /// Perform ML-KEM-1024 encapsulation,
+    /// producing ciphertext and a shared secret.
+    async fn mlkem_encapsulate(
+        &self,
+        io: &impl SpdmPalIo,
+        encaps_key: &[u8],
+        ciphertext: &mut [u8],
     ) -> McuResult<Self::Key>;
 
     /// HKDF-Extract with raw-byte salt.

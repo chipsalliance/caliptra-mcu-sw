@@ -65,7 +65,13 @@ fn cargo_test(
     let profile = nextest_profile.unwrap_or("emulator");
     let profile_arg = format!("--profile={}", profile);
     println!("Running: cargo nextest run (profile={})", profile);
-    let mut args = vec!["nextest", "run", "--test-threads=1", &profile_arg];
+    let mut args = vec![
+        "nextest",
+        "run",
+        "--test-threads=1",
+        "--no-fail-fast",
+        &profile_arg,
+    ];
 
     if let Some(archive_path) = archive {
         args.push("--archive-file");
@@ -136,6 +142,44 @@ fn cargo_test_archive(archive_file: &str) -> Result<()> {
     Ok(())
 }
 
+/// A `cargo nextest run` pass over `packages` with `features` enabled.
+struct FeatureVariantTest {
+    packages: &'static [&'static str],
+    features: &'static str,
+}
+
+/// Host unit tests gated behind non-default crate features. The main
+/// `--workspace` nextest run/archive passes no `--features`, so these tests
+/// would otherwise never be compiled in CI. Each entry runs as its own
+/// `cargo nextest run` pass.
+const FEATURE_VARIANT_TESTS: &[FeatureVariantTest] = &[FeatureVariantTest {
+    packages: &["caliptra-mcu-mbox-lib", "caliptra-mcu-spdm-vdm-handler"],
+    features: "caliptra-mcu-mbox-lib/attested-csr,caliptra-mcu-mbox-lib/unsafe-allow-mcu-signing-oracle,caliptra-mcu-spdm-vdm-handler/attested-csr",
+}];
+
+pub(crate) fn feature_variant_tests() -> Result<()> {
+    for FeatureVariantTest { packages, features } in FEATURE_VARIANT_TESTS {
+        println!("Running: cargo nextest run --features {features}");
+        let mut args = vec!["nextest", "run", "--no-fail-fast"];
+        for package in *packages {
+            args.push("-p");
+            args.push(package);
+        }
+        args.push("--features");
+        args.push(features);
+
+        let status = Command::new("cargo")
+            .current_dir(&*PROJECT_ROOT)
+            .args(&args)
+            .status()?;
+
+        if !status.success() {
+            bail!("Feature-variant tests failed (features: {features})");
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn e2e_tests() -> Result<()> {
     println!("Running: e2e tests");
 
@@ -152,7 +196,10 @@ pub(crate) fn test_xtask_runtime() -> Result<()> {
         }])?;
 
     crate::runtime::runtime_run(Commands::Runtime {
-        hw_revision: semver::Version::new(2, 0, 0),
+        hw_revision: caliptra_mcu_hw_revision::HardwareRevision::from_env()
+            .map_err(anyhow::Error::msg)?
+            .emulator_version()
+            .parse()?,
         trace: false,
         i3c_port: None,
         features: vec!["test-xtask-runtime".to_string()],

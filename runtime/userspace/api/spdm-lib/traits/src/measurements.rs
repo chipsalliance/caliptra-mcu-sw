@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-//! Measurement provider trait for SPDM-Lite.
+//! Measurement provider trait for the SPDM stack.
 //!
 //! Platform integrators implement [`SpdmPalMeasurements`] to supply
 //! measurement data (firmware digests, configuration hashes, device mode, etc.)
 //! to the GET_MEASUREMENTS handler.
 
+use crate::SpdmPalAsymAlgo;
 use mcu_error::McuResult;
 
 /// SPDM nonce length in bytes.
@@ -47,6 +48,7 @@ pub trait SpdmPalMeasurements: crate::SpdmPalIoTransport {
     ///
     /// `nonce` is the SPDM requester nonce when signature was requested,
     /// or `None` for unsigned GET_MEASUREMENTS.
+    /// `asym_algo` is the negotiated asymmetric algorithm for the session.
     ///
     /// Returns the number of bytes written.
     /// If `index` is not found, returns an error.
@@ -55,6 +57,7 @@ pub trait SpdmPalMeasurements: crate::SpdmPalIoTransport {
         io: &Self::Io<'_>,
         index: u8,
         nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
     ) -> McuResult<usize>;
 }

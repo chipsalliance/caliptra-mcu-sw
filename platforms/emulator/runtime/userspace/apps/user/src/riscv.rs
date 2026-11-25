@@ -9,10 +9,12 @@ use caliptra_mcu_libtock::runtime::set_main;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
-/// Boot initialization allocates at most one temporary scratch pool at a time:
-/// 4 KiB for measurements, then 9 KiB for certificate-store setup. The
-/// remaining 1 KiB covers heap metadata and alignment.
-const HEAP_SIZE: usize = 10 * 1024;
+/// Use the global heap only for dynamic allocations that cannot use a
+/// task-owned scratch pool, such as boxed futures. Bounded task-local work
+/// buffers must use the owning task's scratch pool.
+///
+/// Size is the measured 4,872-byte peak rounded to 5 KiB, plus 1 KiB headroom.
+const HEAP_SIZE: usize = 6 * 1024;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 

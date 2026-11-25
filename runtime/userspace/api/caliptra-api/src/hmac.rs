@@ -17,7 +17,7 @@ use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_HKDF_EXPAND, CMD_CM_HKDF_EXTRACT, CMD_CM_HMAC,
     CM_HASH_ALGO_SHA384, CM_HASH_ALGO_SHA512, MAX_CMB_DATA_SIZE, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -113,7 +113,7 @@ pub enum HkdfSalt<'a> {
 ///
 /// Returns up to 48 bytes of MAC in the prefix of `out`.
 #[inline(never)]
-pub async fn cm_hmac<A: ApiAlloc>(
+pub async fn cm_hmac<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     data: &[u8],
@@ -124,7 +124,7 @@ pub async fn cm_hmac<A: ApiAlloc>(
 
 /// Compute HMAC-SHA512 over `data` using `cmk` as the key.
 #[inline(never)]
-pub async fn cm_hmac_sha512<A: ApiAlloc>(
+pub async fn cm_hmac_sha512<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     data: &[u8],
@@ -137,7 +137,7 @@ pub async fn cm_hmac_sha512<A: ApiAlloc>(
     Ok(())
 }
 
-async fn cm_hmac_with_algorithm<A: ApiAlloc>(
+async fn cm_hmac_with_algorithm<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     hash_algorithm: u32,
@@ -152,11 +152,14 @@ async fn cm_hmac_with_algorithm<A: ApiAlloc>(
 
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
-    let pfx = HmacReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
+    let pfx = HmacReqPrefix::mut_from_bytes(req.get_mut(..prefix_len).ok_or(INVARIANT)?)
+        .map_err(|_| INVARIANT)?;
     pfx.cmk = cmk.0;
     pfx.hash_algorithm = U32::new(hash_algorithm);
     pfx.data_size = U32::new(data.len() as u32);
-    req[prefix_len..prefix_len + data.len()].copy_from_slice(data);
+    req.get_mut(prefix_len..prefix_len + data.len())
+        .ok_or(INVARIANT)?
+        .copy_from_slice(data);
     populate_checksum(CMD_CM_HMAC, &mut req)?;
 
     let mut rsp = alloc.alloc(HMAC_RSP_SIZE)?;
@@ -167,7 +170,11 @@ async fn cm_hmac_with_algorithm<A: ApiAlloc>(
     }
 
     // data_len is at offset 8 (after chksum + fips)
-    let data_len = u32::from_le_bytes([rsp[8], rsp[9], rsp[10], rsp[11]]) as usize;
+    let data_len = u32::from_le_bytes(
+        *rsp.get(MBOX_RESP_HEADER_SIZE..)
+            .and_then(|bytes| bytes.first_chunk::<4>())
+            .ok_or(INTERNAL_BUG)?,
+    ) as usize;
     if data_len > CMB_HMAC_MAX_SIZE || data_len > out.len() {
         return Err(INVARIANT);
     }
@@ -176,7 +183,9 @@ async fn cm_hmac_with_algorithm<A: ApiAlloc>(
     if mac_end > rsp_len {
         return Err(INTERNAL_BUG);
     }
-    out[..data_len].copy_from_slice(&rsp[mac_start..mac_end]);
+    out.get_mut(..data_len)
+        .ok_or(INVARIANT)?
+        .copy_from_slice(rsp.get(mac_start..mac_end).ok_or(INTERNAL_BUG)?);
     Ok(data_len)
 }
 
@@ -185,7 +194,11 @@ async fn cm_hmac_with_algorithm<A: ApiAlloc>(
 /// If `salt` is [`HkdfSalt::Data`], it is first imported into an
 /// encrypted CMK blob via `cm_import`.
 #[inline(never)]
-pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk) -> McuResult<Cmk> {
+pub async fn hkdf_extract<A: ScratchAlloc>(
+    alloc: &A,
+    salt: HkdfSalt<'_>,
+    ikm: &Cmk,
+) -> McuResult<Cmk> {
     let salt_cmk: Cmk = match salt {
         HkdfSalt::Cmk(c) => *c,
         HkdfSalt::Data(data) => cm_import(alloc, CmKeyUsage::Hmac, data).await?,
@@ -194,7 +207,8 @@ pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk)
     let req_size = size_of::<HkdfExtractReq>();
     let mut req = alloc.alloc(req_size)?;
     req.fill(0);
-    let r = HkdfExtractReq::mut_from_bytes(&mut req[..req_size]).map_err(|_| INVARIANT)?;
+    let r = HkdfExtractReq::mut_from_bytes(req.get_mut(..req_size).ok_or(INVARIANT)?)
+        .map_err(|_| INVARIANT)?;
     r.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
     r.salt = salt_cmk.0;
     r.ikm = ikm.0;
@@ -216,7 +230,7 @@ pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk)
 
 /// HKDF-Expand(prk, info) → OKM as a CMK handle.
 #[inline(never)]
-pub async fn hkdf_expand<A: ApiAlloc>(
+pub async fn hkdf_expand<A: ScratchAlloc>(
     alloc: &A,
     prk: &Cmk,
     key_usage: CmKeyUsage,
@@ -231,13 +245,16 @@ pub async fn hkdf_expand<A: ApiAlloc>(
 
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
-    let pfx = HkdfExpandReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
+    let pfx = HkdfExpandReqPrefix::mut_from_bytes(req.get_mut(..prefix_len).ok_or(INVARIANT)?)
+        .map_err(|_| INVARIANT)?;
     pfx.prk = prk.0;
     pfx.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
     pfx.key_usage = U32::new(key_usage as u32);
     pfx.key_size = U32::new(key_size);
     pfx.info_size = U32::new(info.len() as u32);
-    req[prefix_len..prefix_len + info.len()].copy_from_slice(info);
+    req.get_mut(prefix_len..prefix_len + info.len())
+        .ok_or(INVARIANT)?
+        .copy_from_slice(info);
     populate_checksum(CMD_CM_HKDF_EXPAND, &mut req)?;
 
     let mut rsp = alloc.alloc(HKDF_EXPAND_RSP_SIZE)?;
@@ -251,4 +268,47 @@ pub async fn hkdf_expand<A: ApiAlloc>(
         .and_then(|s| s.first_chunk::<CMK_SIZE>())
         .ok_or(INTERNAL_BUG)?);
     Ok(okm)
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+    use std::vec::Vec;
+
+    struct ShortAlloc {
+        shortfall: usize,
+    }
+
+    impl ScratchAlloc for ShortAlloc {
+        type Buf<'a> = Vec<u8>;
+
+        fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len.saturating_sub(self.shortfall)])
+        }
+    }
+
+    fn assert_invariant<T>(future: impl Future<Output = McuResult<T>>) {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        let Poll::Ready(Err(error)) = future.as_mut().poll(&mut context) else {
+            panic!("short request buffer must fail before mailbox I/O");
+        };
+        assert_eq!(error, INVARIANT);
+    }
+
+    #[test]
+    fn hmac_and_hkdf_reject_short_request_buffers() {
+        let cmk = Cmk([0; CMK_SIZE]);
+        for shortfall in [1, usize::MAX] {
+            let alloc = ShortAlloc { shortfall };
+            let mut out = [0; CMB_HMAC_MAX_SIZE];
+            assert_invariant(cm_hmac(&alloc, &cmk, &[0x5a; 4], &mut out));
+            assert_invariant(hkdf_extract(&alloc, HkdfSalt::Cmk(&cmk), &cmk));
+            assert_invariant(hkdf_expand(&alloc, &cmk, CmKeyUsage::Hmac, 48, &[0xa5; 4]));
+        }
+    }
 }

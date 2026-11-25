@@ -120,6 +120,10 @@ pub struct LdArgs {
 /// Arguments required for commands which execute the build step of the bundle process.
 #[derive(Args, Default, Debug, Clone)]
 pub struct BuildArgs {
+    /// Explicit binary output path for a single-target build.
+    #[arg(skip)]
+    pub binary_output: Option<PathBuf>,
+
     /// If specified the objcopy binary to use.  If not specified the bundler will attempt to use
     /// `llvm-objcopy` from the rustc compiler.
     #[arg(long, env = "OBJCOPY")]
@@ -138,6 +142,10 @@ pub struct BuildArgs {
     /// If set, pass `--no-default-features` to cargo when building runtime binaries.
     #[arg(long)]
     pub no_default_features: bool,
+
+    /// If set, don't build the ROM, even if the manifest specifies one.
+    #[arg(long)]
+    pub skip_rom: bool,
 
     /// Content fingerprint for generated user-app configuration.
     #[arg(skip)]

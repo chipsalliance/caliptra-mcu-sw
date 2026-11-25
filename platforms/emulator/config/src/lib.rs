@@ -76,6 +76,12 @@ pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
     ..McuStraps::default()
 };
 
+/// Default privileged (PL0) AXI user for MCI mailbox 0 in the emulator.
+pub const DEFAULT_MCU_MBOX_AXI_PAUSER: u32 = 0xcccc_cccc;
+
+/// Privileged (PL0) AXI users for MCI mailbox 0.
+pub const EMULATOR_MCU_MBOX0_PL0_AXI_USERS: &[u32] = &[DEFAULT_MCU_MBOX_AXI_PAUSER, 0xdddd_dddd];
+
 /// The MRAC value which should be populated for this memory map.  This corresponds to a value
 /// utilized within the global start assembly and thus must be unmangled.
 #[no_mangle]

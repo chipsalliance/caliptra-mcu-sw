@@ -9,5 +9,6 @@ edition = "2021"
 caliptra-mcu-registers-generated = { workspace = true }
 
 [build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
 caliptra-mcu-fusegen.workspace = true
 anyhow.workspace = true

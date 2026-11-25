@@ -3,19 +3,32 @@
 name: FPGA Bitstream build
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/bitstream-build.yml"
-      - "hw/fpga/**/*.tcl"
-      - "hw/fpga/src/**"
-      - "hw/caliptra-ss/**"
-      - "hw/*.rdl"
-
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
+    inputs:
+      hw-version:
+        description: Hardware version recorded in the bitstream manifest
+        required: true
+        type: string
+      repository:
+        description: Repository to check out and record in the manifest
+        required: true
+        type: string
+      ref:
+        description: Commit SHA, branch or tag to build
+        required: true
+        type: string
+      fpga-path:
+        description: FPGA build directory relative to the checkout
+        required: true
+        type: string
+      rtl-path:
+        description: Caliptra subsystem submodule path relative to the checkout
+        required: true
+        type: string
+      target-branch:
+        description: Target branch recorded in the manifest
+        required: true
+        type: string
 
 jobs:
   build-bitstream:
@@ -28,64 +41,92 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
           submodules: 'recursive'
 
       - name: Create Subsystem bitstream
+        env:
+          STAGING_DIR: ${{ runner.temp }}/bitstream
+          FPGA_PATH: ${{ inputs.fpga-path }}
         run: |
           source /vck190-tools/Vivado/2024.2/settings64.sh
-          cd hw/fpga/
+          mkdir -p "$STAGING_DIR"
+          cd "$FPGA_PATH"
           /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }}
-          cp caliptra_build/*.xsa /workspace/ || true
-          cp caliptra_build/*.pdi /workspace/ || true
+          cp caliptra_build/*.xsa "$STAGING_DIR/"
+          shopt -s nullglob
+          PDI_FILES=(caliptra_build/*.pdi)
+          if [ "${#PDI_FILES[@]}" -gt 0 ]; then
+            cp "${PDI_FILES[@]}" "$STAGING_DIR/"
+          fi
 
       - name: 'Upload bitstream'
         uses: actions/upload-artifact@v7
         with:
-          name: caliptra-bitstream-${{ matrix.segmented }}
+          name: caliptra-bitstream-${{ inputs.hw-version }}-${{ matrix.segmented }}
           path: |
-            /workspace/*.xsa
-            /workspace/*.pdi
+            ${{ runner.temp }}/bitstream/*.xsa
+            ${{ runner.temp }}/bitstream/*.pdi
           retention-days: 7
 
       - name: Bundle bitstream
+        env:
+          STAGING_DIR: ${{ runner.temp }}/bitstream
+          RTL_PATH: ${{ inputs.rtl-path }}
+          REPOSITORY: ${{ inputs.repository }}
+          HW_VERSION: ${{ inputs.hw-version }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          SS_COMMIT=$(git submodule status hw/caliptra-ss | awk '{print $1}' | tr -d '+-')
-          SEGMENTED_ARG=""
+          COMMIT=$(git rev-parse HEAD)
+          SS_COMMIT=$(git -C "$RTL_PATH" rev-parse HEAD)
+          EXTRA_ARGS=()
           if [ "${{ matrix.segmented }}" = "true" ]; then
-            SEGMENTED_ARG="--segmented"
+            EXTRA_ARGS+=(--segmented)
+          fi
+          if [ -n "$PR_NUMBER" ]; then
+            EXTRA_ARGS+=(--github-pr "$PR_NUMBER")
           fi
 
-          # Find the xsa and pdi files in /workspace
-          XSA_FILE=$(ls /workspace/*.xsa 2>/dev/null | head -n 1)
-          PDI_FILE=$(ls /workspace/*.pdi 2>/dev/null | head -n 1)
+          shopt -s nullglob
+          XSA_FILES=("$STAGING_DIR"/*.xsa)
+          PDI_FILES=("$STAGING_DIR"/*.pdi)
 
-          PDI_ARG=""
-          if [ -n "$PDI_FILE" ]; then
-            PDI_ARG="--pdi-file $PDI_FILE"
+          if [ "${#XSA_FILES[@]}" -eq 0 ]; then
+            echo "Error: no .xsa file produced by the bitstream build"
+            exit 1
           fi
 
-          # Leave a copy for the uploader
+          if [ "${#PDI_FILES[@]}" -gt 0 ]; then
+            EXTRA_ARGS+=(--pdi-file "${PDI_FILES[0]}")
+          fi
+
+          # The bundle is left in the checkout (inside the runner's _work volume)
+          # so the host-side post-job hook can find it and upload it to GCS.
           mkdir manifest-bundle
 
           caliptra-bitstream-downloader bundle-manifest \
-            --repository "${{ github.repository }}" \
-            --hw-major-version "2.1" \
-            --target-branch "${{ github.base_ref || github.ref_name }}" \
+            --repository "$REPOSITORY" \
+            --hw-major-version "$HW_VERSION" \
+            --target-branch "$TARGET_BRANCH" \
             --caliptra-variant "subsystem" \
-            --commit-hash "${{ github.sha }}" \
+            --commit-hash "$COMMIT" \
             --caliptra-ss-commit "$SS_COMMIT" \
             --job-id "${{ github.run_id }}-${{ github.job }}" \
-            $SEGMENTED_ARG \
-            ${{ github.event.pull_request.number && format('--github-pr {0}', github.event.pull_request.number) || '' }} \
-            --xsa-file "$XSA_FILE" \
-            $PDI_ARG \
+            "${EXTRA_ARGS[@]}" \
+            --xsa-file "${XSA_FILES[0]}" \
             --output-dir manifest-bundle
-
-          cp manifest-bundle/caliptra-bitstream.tar.gz /workspace
 
       - name: 'Upload bitstream bundle'
         uses: actions/upload-artifact@v7
         with:
-          name: caliptra-bitstream-bundle-${{ matrix.segmented && 'segmented' || 'standard' }}
-          path: /workspace/caliptra-bitstream.tar.gz
+          name: caliptra-bitstream-bundle-${{ inputs.hw-version }}-${{ matrix.segmented && 'segmented' || 'standard' }}
+          path: manifest-bundle/caliptra-bitstream.tar.gz
           retention-days: 7
+
+      # Both matrix jobs would otherwise upload a manifest to the same GCS path
+      # (v1/<sha>/manifest.toml); only the segmented build is used by the FPGA CI.
+      - name: Clean up bundle for non-segmented build
+        if: matrix.segmented == false
+        run: rm -rf manifest-bundle

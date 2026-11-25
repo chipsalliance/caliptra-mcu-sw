@@ -2,7 +2,7 @@
 
 //! Running SHA hashes via Caliptra `CM_SHA_*` mailbox commands.
 //!
-//! All request/response buffers come from the caller's [`ApiAlloc`]
+//! All request/response buffers come from the caller's [`ScratchAlloc`]
 //! — never the stack — so calling these from inside an async loop
 //! never inflates the task future with multi-kilobyte mailbox-request
 //! structs.
@@ -23,7 +23,7 @@ use crate::wire::{
     pad4, populate_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT,
     CMD_CM_SHA_UPDATE, CM_HASH_ALGO_SHA384, CM_HASH_ALGO_SHA512, MAX_CMB_DATA_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -165,7 +165,7 @@ const FINAL_RSP_MAX_LEN: usize = size_of::<ShaFinalRespPrefix>() + 64;
 /// chunked [`sha_update`] calls after the initial `CM_SHA_INIT`, mirroring
 /// how `sha_update` chunks internally.
 #[inline(never)]
-pub async fn sha_init<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+pub async fn sha_init<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     mut buf: B,
     algo: HashAlgo,
@@ -195,7 +195,7 @@ pub async fn sha_init<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
 /// Append `data` to a running hash. `data` may be any length; this
 /// function chunks internally as needed.
 #[inline(never)]
-pub async fn sha_update<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+pub async fn sha_update<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     state: &mut HashState<B>,
     data: &[u8],
@@ -213,7 +213,7 @@ pub async fn sha_update<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
 /// `out`. After this call, `state` is no longer a valid running
 /// hash.
 #[inline(never)]
-pub async fn sha_finish<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+pub async fn sha_finish<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     state: &mut HashState<B>,
     out: &mut [u8],
@@ -225,7 +225,7 @@ pub async fn sha_finish<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
 ///
 /// `out` must match the selected algorithm's digest size exactly.
 #[inline(never)]
-pub async fn hash_all<A: ApiAlloc>(
+pub async fn hash_all<A: ScratchAlloc>(
     alloc: &A,
     algo: HashAlgo,
     data: &[u8],
@@ -243,7 +243,7 @@ pub async fn hash_all<A: ApiAlloc>(
 // Shared private workhorse — one async state machine for all 3 ops.
 // ---------------------------------------------------------------------------
 
-async fn sha_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+async fn sha_call<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     cmd: u32,
     algo: Option<u32>,

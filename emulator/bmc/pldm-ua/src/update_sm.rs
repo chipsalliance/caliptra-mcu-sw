@@ -98,11 +98,14 @@ fn send_message_helper<P: PldmCodec>(
     let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
     ctx.response_timer.cancel();
     let sz = message.encode(&mut buffer).map_err(|_| ())?;
+    let header = PldmMsgHeader::decode(&buffer[..sz]).map_err(|_| ())?;
     ctx.socket.send(&buffer[..sz]).map_err(|_| ())?;
     debug!("Sent message: {:?}", std::any::type_name::<P>());
-    let packet_buf = buffer[..sz].to_vec();
     *ctx.retry_count.lock().unwrap() = 0;
-    if ctx.is_initiator {
+    // Only requests expect a response. Retrying a firmware-data response can
+    // leave stale bytes queued for the FD's next chunk after authentication.
+    if header.is_request() {
+        let packet_buf = buffer[..sz].to_vec();
         ctx.response_timer.schedule_periodic(
             RESPONSE_TIMEOUT,
             (
@@ -753,7 +756,6 @@ pub trait StateMachineActions {
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
         );
-        ctx.is_initiator = false;
         send_message_helper(ctx, &response)?;
 
         if request.tranfer_result == TransferResult::TransferSuccess as u8 {
@@ -964,7 +966,6 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         info!("Apply success");
-        ctx.is_initiator = true;
         self.on_next_component(ctx)
     }
 
@@ -1257,7 +1258,6 @@ pub struct InnerContext<S: PldmSocket> {
     transfer_start_time: Option<Instant>,
     response_timer: Timer,
     retry_count: Arc<Mutex<u8>>,
-    is_initiator: bool,
     rerun_count: u32,
 }
 
@@ -1291,7 +1291,6 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 transfer_start_time: None,
                 response_timer: Timer::new(),
                 retry_count: Arc::new(Mutex::new(0)),
-                is_initiator: true,
                 rerun_count,
             },
         }

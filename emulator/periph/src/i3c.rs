@@ -6,7 +6,7 @@ Abstract:
     File contains I3C peripheral implementation.
 --*/
 
-use crate::i3c_protocol::I3cController;
+use crate::i3c_protocol::{I3cController, I3cIbiOutcome, I3cIbiStatus};
 use crate::{I3cIncomingCommandClient, I3cTarget};
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_bus::{Device, Event, EventData};
@@ -14,9 +14,9 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::i3c::{I3cGenerated, I3cPeripheral};
 use caliptra_mcu_registers_generated::i3c::bits::{
-    DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
-    InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities, StbyCrDeviceAddr,
-    TtiQueueSize,
+    DeviceReset, DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0,
+    InterruptEnable, InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities,
+    StbyCrDeviceAddr, TtiQueueSize,
 };
 use caliptra_mcu_testing_common::i3c::{
     DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
@@ -31,6 +31,9 @@ use zerocopy::FromBytes;
 
 const I3C_REC_INT_BYPASS_I3C_CORE: u32 = 0x0;
 const I3C_REC_INT_BYPASS_AXI_DIRECT: u32 = 0x1;
+/// Depth of the recovery indirect FIFO in dwords (i3c-core `IndirectFifoDepth`).
+/// The FIFO write and read indices wrap at this value, as on hardware.
+const INDIRECT_FIFO_DEPTH: u32 = 64;
 struct PollScheduler {
     pending: Arc<AtomicBool>,
     // Held while scheduling to prevent the clock from advancing mid-operation.
@@ -42,6 +45,13 @@ impl I3cIncomingCommandClient for PollScheduler {
         let _guard = self.step_lock.lock().unwrap();
         self.pending.store(true, Ordering::Relaxed);
     }
+}
+
+struct PendingIbi {
+    mdb: u8,
+    data: Vec<u8>,
+    status: I3cIbiStatus,
+    polls_remaining: Option<u32>,
 }
 
 pub struct I3c {
@@ -59,8 +69,11 @@ pub struct I3c {
     tti_tx_desc_queue_raw: VecDeque<u32>,
     /// TX DATA in u8
     tti_tx_data_raw: VecDeque<Vec<u8>>,
+    /// Whether a TX descriptor is awaiting controller consumption.
+    tx_desc_in_flight: bool,
     /// IBI buffer
     tti_ibi_buffer: Vec<u8>,
+    pending_ibi: Option<PendingIbi>,
     /// interrupt
     irq: Irq,
     hw_revision: Version,
@@ -71,6 +84,7 @@ pub struct I3c {
         caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
     >,
     i3c_ec_sec_fw_recovery_if_recovery_status: ReadWriteRegister<u32>,
+    i3c_ec_sec_fw_recovery_if_device_reset: ReadWriteRegister<u32, DeviceReset::Register>,
     i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: ReadWriteRegister<
         u32,
         caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
@@ -80,8 +94,10 @@ pub struct I3c {
         u32,
         caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     >,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: ReadWriteRegister<u32>,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister<u32>,
+    /// Dwords written into / read out of the indirect FIFO for the current
+    /// image. INDIRECT_FIFO_STATUS_1/2 expose these modulo the FIFO depth.
+    indirect_fifo_words_written: u32,
+    indirect_fifo_words_read: u32,
     i3c_ec_sec_fw_recovery_if_recovery_ctrl:
         ReadWriteRegister<u32, caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register>,
     i3c_ec_soc_mgmt_if_rec_intf_cfg:
@@ -141,20 +157,23 @@ impl I3c {
             tti_rx_current: VecDeque::new(),
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
+            tx_desc_in_flight: false,
             tti_ibi_buffer: vec![],
+            pending_ibi: None,
             irq,
             hw_revision,
             i3c_ec_sec_fw_recovery_if_prot_cap_2: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_device_status_0: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_recovery_status: ReadWriteRegister::new(0),
+            i3c_ec_sec_fw_recovery_if_device_reset: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: ReadWriteRegister::new(0),
             // Initialize with Empty bit set (bit 0) to indicate FIFO can receive data
             i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: ReadWriteRegister::new(
                 1 << IndirectFifoStatus0::Empty.shift,
             ),
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: ReadWriteRegister::new(0),
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister::new(0),
+            indirect_fifo_words_written: 0,
+            indirect_fifo_words_read: 0,
             i3c_ec_sec_fw_recovery_if_recovery_ctrl: ReadWriteRegister::new(0),
             i3c_ec_soc_mgmt_if_rec_intf_cfg: ReadWriteRegister::new(0),
             i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: ReadWriteRegister::new(0),
@@ -187,9 +206,12 @@ impl I3c {
                     self.tti_tx_desc_queue_raw.pop_front();
                     let resp = I3cTcriResponseXfer {
                         resp: resp_desc,
-                        data: self.tti_tx_data_raw.pop_front().unwrap(),
+                        // Strip word padding before handing the packet to the
+                        // controller; its descriptor counts only actual bytes.
+                        data: self.tti_tx_data_raw.pop_front().unwrap()[..data_size].to_vec(),
                     };
                     self.i3c_target.set_response(resp);
+                    self.tx_desc_in_flight = true;
                 }
             }
         }
@@ -197,10 +219,10 @@ impl I3c {
 
     fn read_rx_data_into_buffer(&mut self) {
         if let Some(xfer) = self.i3c_target.read_command() {
-            // TODO: we don't request data using rnw
-            let rnw = (u64::from(xfer.cmd.clone()) & (1 << 29)) as u32;
             let data_len = xfer.cmd.raw_data_len();
-            self.tti_rx_desc_queue_raw.push_back(data_len as u32 | rnw);
+            let error = self.i3c_target.next_rx_error();
+            self.tti_rx_desc_queue_raw
+                .push_back(data_len as u32 | ((error as u32) << 28));
             let data = match xfer.cmd.clone() {
                 I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
@@ -210,12 +232,22 @@ impl I3c {
                 ],
                 _ => xfer.data,
             };
-            self.tti_rx_data_raw.push_back(data);
+            // Empty writes have a descriptor but no data words in the FIFO.
+            if !data.is_empty() {
+                self.tti_rx_data_raw.push_back(data);
+            }
         }
     }
 
     fn check_interrupts(&mut self) {
         // TODO: implement the timeout interrupts
+
+        if self.tx_desc_in_flight && !self.i3c_target.has_pending_response() {
+            self.tx_desc_in_flight = false;
+            self.interrupt_status
+                .reg
+                .modify(InterruptStatus::TxDescComplete::SET);
+        }
 
         self.interrupt_status
             .reg
@@ -243,29 +275,65 @@ impl I3c {
                 + InterruptStatus::TxDescStat::SET
                 + InterruptStatus::RxDescTimeout::SET
                 + InterruptStatus::TxDescTimeout::SET
+                + InterruptStatus::TxDescComplete::SET
                 + InterruptStatus::IbiDone::SET,
         ));
     }
 
-    // check if there area valid IBI descriptors and messages
+    /// Empty the recovery indirect FIFO and rewind its indices for a new image.
+    fn reset_indirect_fifo(&mut self) {
+        self.indirect_fifo_data.clear();
+        self.indirect_fifo_words_written = 0;
+        self.indirect_fifo_words_read = 0;
+        // Set Empty bit (bit 0) to indicate FIFO can receive data
+        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
+            .reg
+            .write(IndirectFifoStatus0::Empty::SET);
+    }
+
     fn check_ibi_buffer(&mut self) {
-        loop {
-            if self.tti_ibi_buffer.len() < 4 {
-                return;
-            }
+        if self.pending_ibi.is_some() || self.tti_ibi_buffer.len() < 4 {
+            return;
+        }
+        let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[..4]).unwrap();
+        let len = desc.data_length() as usize;
+        let padded_len = (len + 4).next_multiple_of(4);
+        if self.tti_ibi_buffer.len() < padded_len {
+            return;
+        }
+        let (status, polls_remaining) = match self.i3c_target.next_ibi_outcome() {
+            I3cIbiOutcome::Complete {
+                status,
+                after_polls,
+            } => (status, Some(after_polls.max(1))),
+            I3cIbiOutcome::Missing => (I3cIbiStatus::Success, None),
+        };
+        self.pending_ibi = Some(PendingIbi {
+            mdb: (desc.0 >> 24) as u8,
+            data: self.tti_ibi_buffer[4..4 + len].to_vec(),
+            status,
+            polls_remaining,
+        });
+        self.tti_ibi_buffer.drain(..padded_len);
+    }
 
-            let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[0..4]).unwrap();
-            let len = desc.data_length() as usize;
-            if self.tti_ibi_buffer.len() < len + 4 {
-                // wait for more data
-                return;
+    fn complete_pending_ibi(&mut self) {
+        let Some(mut pending) = self.pending_ibi.take() else {
+            return;
+        };
+        match pending.polls_remaining {
+            Some(0 | 1) => {
+                if pending.status == I3cIbiStatus::Success {
+                    self.i3c_target.send_ibi(pending.mdb, pending.data);
+                }
+                self.ibi_status = Some(ReadWriteRegister::new(
+                    Status::LastIbiStatus.val(pending.status as u32).value,
+                ));
             }
-
-            // TODO: support sending more bytes of IBI to target
-            let mdb = (desc.0 >> 24) as u8;
-            self.i3c_target.send_ibi(mdb);
-            self.ibi_status = Some(ReadWriteRegister::new(0));
-            self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
+            remaining => {
+                pending.polls_remaining = remaining.map(|n| n - 1);
+                self.pending_ibi = Some(pending);
+            }
         }
     }
 
@@ -484,9 +552,10 @@ impl I3c {
                 Ok(())
             }
             0x038 => {
-                self.write_i3c_ec_sec_fw_recovery_if_device_reset(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
-                );
+                // Recovery-controller ingress is a hardware update, not W1C.
+                self.i3c_ec_sec_fw_recovery_if_device_reset
+                    .reg
+                    .set(val & 0x00ff_ffff);
                 Ok(())
             }
             0x03c => {
@@ -635,11 +704,17 @@ impl I3cPeripheral for I3c {
     }
 
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
-        self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
-        self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
+        let desc = self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0);
+        self.check_interrupts();
+        desc
     }
 
     fn read_i3c_ec_tti_rx_data_port(&mut self) -> u32 {
+        // Descriptor pops must not flush unread data. Otherwise a driver that
+        // fails to drain a rejected packet would appear to recover correctly.
+        if self.tti_rx_current.is_empty() {
+            self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
+        }
         let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
         data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
         data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
@@ -687,25 +762,11 @@ impl I3cPeripheral for I3c {
                     return;
                 }
 
-                let write_index = self
-                    .i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                    .reg
-                    .get();
-                let address = (write_index * 4) as usize;
-                self.indirect_fifo_data.resize(
-                    address + std::mem::size_of::<caliptra_emu_types::RvData>(),
-                    0,
-                );
+                // The whole image is kept so Caliptra can read it once uploaded;
+                // only the software-visible indices behave like a 64-dword ring.
                 self.indirect_fifo_data
-                    [address..address + std::mem::size_of::<caliptra_emu_types::RvData>()]
-                    .copy_from_slice(val.to_le_bytes().as_ref());
-                // head pointer must be aligned to 4 bytes at the end
-                self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                    .reg
-                    .set(
-                        (address + std::mem::size_of::<caliptra_emu_types::RvData>())
-                            .div_ceil(std::mem::size_of::<u32>()) as u32,
-                    );
+                    .extend_from_slice(&val.to_le_bytes());
+                self.indirect_fifo_words_written += 1;
             } else {
                 println!("[I3C-Emulator] Unknown bypass configuration: {bypass_cfg}");
             }
@@ -759,20 +820,10 @@ impl I3cPeripheral for I3c {
         // DevStatus is 0x3 when the device is ready for a new image
         if val.reg.read(DeviceStatus0::DevStatus) == 0x3 && current_status != 0x3 {
             // Reset the device status, when the device is ready for a new image
-            self.indirect_fifo_data.clear();
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0
                 .reg
                 .set(0);
-            // Set Empty bit (bit 0) to indicate FIFO can receive data
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
-                .reg
-                .write(IndirectFifoStatus0::Empty::SET);
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                .reg
-                .set(0);
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-                .reg
-                .set(0);
+            self.reset_indirect_fifo();
         }
         self.i3c_ec_sec_fw_recovery_if_device_status_0
             .reg
@@ -839,16 +890,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_types::RvData,
     ) {
-        self.indirect_fifo_data.clear();
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
-            .reg
-            .write(IndirectFifoStatus0::Empty::SET);
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-            .reg
-            .set(0);
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-            .reg
-            .set(0);
+        self.reset_indirect_fifo();
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1
             .reg
             .set(val);
@@ -864,11 +906,7 @@ impl I3cPeripheral for I3c {
             return 0xffff_ffff;
         }
 
-        let read_index = self
-            .i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-            .reg
-            .get();
-        let address = read_index * std::mem::size_of::<u32>() as u32;
+        let address = self.indirect_fifo_words_read * std::mem::size_of::<u32>() as u32;
         let image_len = self
             .i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1
             .reg
@@ -886,9 +924,7 @@ impl I3cPeripheral for I3c {
         let address: usize = address.try_into().unwrap();
         let range = address..(address + 4);
         let data = &self.indirect_fifo_data.clone()[range];
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-            .reg
-            .set(read_index + 1);
+        self.indirect_fifo_words_read += 1;
 
         u32::from_le_bytes(data.try_into().unwrap())
     }
@@ -909,21 +945,36 @@ impl I3cPeripheral for I3c {
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
-        caliptra_emu_types::RvData::from(
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                .reg
-                .get(),
-        )
+        self.indirect_fifo_words_written % INDIRECT_FIFO_DEPTH
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(
         &mut self,
     ) -> caliptra_emu_types::RvData {
-        caliptra_emu_types::RvData::from(
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-                .reg
-                .get(),
-        )
+        self.indirect_fifo_words_read % INDIRECT_FIFO_DEPTH
+    }
+
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
+        INDIRECT_FIFO_DEPTH
+    }
+
+    fn read_i3c_ec_sec_fw_recovery_if_device_reset(
+        &mut self,
+    ) -> ReadWriteRegister<u32, DeviceReset::Register> {
+        ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_reset.reg.get())
+    }
+
+    fn write_i3c_ec_sec_fw_recovery_if_device_reset(
+        &mut self,
+        val: ReadWriteRegister<u32, DeviceReset::Register>,
+    ) {
+        let value = val.reg.get();
+        let reset_ctrl = self.i3c_ec_sec_fw_recovery_if_device_reset.reg.get() & 0xff & !value;
+        self.i3c_ec_sec_fw_recovery_if_device_reset
+            .reg
+            .set(reset_ctrl | (value & 0x00ff_ff00));
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
@@ -1014,18 +1065,24 @@ impl I3cPeripheral for I3c {
         let new_device_reset = self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.read(
             caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::DeviceResetCtrl,
         );
-        let device_reset = self.read_i3c_ec_sec_fw_recovery_if_device_reset();
-        device_reset.reg.modify(
-            caliptra_mcu_registers_generated::i3c::bits::DeviceReset::ResetCtrl
-                .val(new_device_reset),
-        );
-        self.write_i3c_ec_sec_fw_recovery_if_device_reset(device_reset);
+        if self
+            .i3c_ec_soc_mgmt_if_rec_intf_cfg
+            .reg
+            .read(RecIntfCfg::RecIntfBypass)
+            == I3C_REC_INT_BYPASS_AXI_DIRECT
+        {
+            self.i3c_ec_sec_fw_recovery_if_device_reset
+                .reg
+                .modify(DeviceReset::ResetCtrl.val(new_device_reset));
+        }
     }
 
     fn poll(&mut self) {
-        self.check_interrupts();
+        self.complete_pending_ibi();
+        self.check_ibi_buffer();
         self.read_rx_data_into_buffer();
         self.write_tx_data_into_target();
+        self.check_interrupts();
         let next_poll = if self.incoming_poll_pending.swap(false, Ordering::Relaxed) {
             1
         } else {
@@ -1089,6 +1146,10 @@ impl I3cPeripheral for I3c {
 }
 
 #[cfg(test)]
+#[path = "i3c_tests.rs"]
+mod target_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use caliptra_emu_bus::Bus;
@@ -1100,6 +1161,111 @@ mod tests {
     };
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x270;
+
+    #[test]
+    fn device_reset_distinguishes_software_w1c_and_hardware_updates() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let mut controller = I3cController::default();
+        let mut i3c = I3c::new(
+            &clock,
+            &mut controller,
+            pic.register_irq(2),
+            Version::new(2, 1, 0),
+            Arc::new(Mutex::new(())),
+        );
+        let read = |i3c: &mut I3c| i3c.read_i3c_ec_sec_fw_recovery_if_device_reset().reg.get();
+        assert_eq!(read(&mut i3c), 0);
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0056_3411));
+        assert_eq!(read(&mut i3c), 0x0056_3400);
+
+        // The SoC mock aperture is effective only in bypass mode.
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x11));
+        assert_eq!(read(&mut i3c), 0x0056_3400);
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+            I3C_REC_INT_BYPASS_AXI_DIRECT,
+        ));
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x11));
+        assert_eq!(read(&mut i3c), 0x0056_3411);
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x10));
+        assert_eq!(read(&mut i3c), 0x0056_3410);
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x11));
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0056_3401));
+        assert_eq!(read(&mut i3c), 0x0056_3410);
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0056_3410));
+        assert_eq!(read(&mut i3c), 0x0056_3400);
+
+        // Actual recovery ingress also sets bits, instead of acknowledging them.
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+            I3C_REC_INT_BYPASS_I3C_CORE,
+        ));
+        i3c.write_recovery_interface(RvSize::Word, 0x38, 0xff12_3411)
+            .unwrap();
+        assert_eq!(read(&mut i3c), 0x0012_3411);
+        i3c.write_recovery_interface(RvSize::Word, 0x38, 0x0012_3410)
+            .unwrap();
+        assert_eq!(read(&mut i3c), 0x0012_3410);
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0012_34ff));
+        assert_eq!(read(&mut i3c), 0x0012_3400);
+    }
+
+    /// The indirect FIFO indices must wrap at the FIFO depth like hardware,
+    /// so firmware cannot use them to track how much of an image was sent.
+    #[test]
+    fn recovery_fifo_indices_wrap_at_fifo_depth() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let mut i3c_controller = I3cController::default();
+        let mut i3c = I3c::new(
+            &clock,
+            &mut i3c_controller,
+            pic.register_irq(2),
+            Version::new(2, 1, 0),
+            Arc::new(Mutex::new(())),
+        );
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+            I3C_REC_INT_BYPASS_AXI_DIRECT,
+        ));
+
+        // More than one FIFO's worth of data, ending mid-FIFO.
+        let image: Vec<u32> = (0..INDIRECT_FIFO_DEPTH * 2 + 5).collect();
+        i3c.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(image.len() as u32);
+        assert_eq!(
+            i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(),
+            INDIRECT_FIFO_DEPTH
+        );
+
+        let write_indices: Vec<u32> = image
+            .iter()
+            .map(|&word| {
+                i3c.write_i3c_ec_tti_tx_data_port(word);
+                i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1()
+            })
+            .collect();
+        let read_back: Vec<(u32, u32)> = image
+            .iter()
+            .map(|_| {
+                let word = i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data();
+                (
+                    word,
+                    i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(),
+                )
+            })
+            .collect();
+
+        let expected_indices: Vec<u32> = (1..=image.len() as u32)
+            .map(|n| n % INDIRECT_FIFO_DEPTH)
+            .collect();
+        assert_eq!(write_indices, expected_indices);
+        assert_eq!(
+            read_back.iter().map(|&(_, idx)| idx).collect::<Vec<_>>(),
+            expected_indices
+        );
+        assert_eq!(
+            read_back.iter().map(|&(word, _)| word).collect::<Vec<_>>(),
+            image
+        );
+    }
 
     #[test]
     fn receive_i3c_cmd() {
@@ -1133,7 +1299,15 @@ mod tests {
             vec![],
             None,
             None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             Some(i3c),
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,
@@ -1159,6 +1333,62 @@ mod tests {
             )
             .unwrap(),
             4
+        );
+    }
+
+    #[test]
+    fn tx_desc_complete_after_response_consumed() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let irq = pic.register_irq(2);
+        let mut i3c_controller = I3cController::default();
+        let step_lock = Arc::new(Mutex::new(()));
+        let mut i3c = I3c::new(
+            &clock,
+            &mut i3c_controller,
+            irq,
+            Version::new(2, 0, 0),
+            step_lock,
+        );
+        let target_addr = DynamicI3cAddress::new(8).unwrap();
+        i3c.i3c_target.set_address(target_addr);
+
+        i3c.write_i3c_ec_tti_tx_desc_queue_port(4);
+        i3c.write_i3c_ec_tti_tx_data_port(u32::from_le_bytes([1, 2, 3, 4]));
+
+        assert!(i3c.tx_desc_in_flight);
+        assert!(i3c.i3c_target.has_pending_response());
+        assert_eq!(
+            i3c.interrupt_status
+                .reg
+                .read(InterruptStatus::TxDescComplete),
+            0
+        );
+
+        // Consuming the queued response requires an explicit controller read.
+        let mut cmd = caliptra_mcu_testing_common::i3c::ReguDataTransferCommand(0);
+        cmd.set_rnw(1);
+        cmd.set_data_length(4);
+        i3c_controller
+            .tcri_send(
+                target_addr,
+                I3cTcriCommandXfer {
+                    cmd: I3cTcriCommand::Regular(cmd),
+                    data: vec![],
+                },
+            )
+            .unwrap();
+        let response = i3c_controller.tcri_receive(target_addr).unwrap();
+        assert_eq!(response.data, [1, 2, 3, 4]);
+
+        i3c.check_interrupts();
+
+        assert!(!i3c.tx_desc_in_flight);
+        assert_eq!(
+            i3c.interrupt_status
+                .reg
+                .read(InterruptStatus::TxDescComplete),
+            1
         );
     }
 }

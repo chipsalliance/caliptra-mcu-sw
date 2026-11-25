@@ -142,6 +142,24 @@ impl BaremetalNetIf {
         }
     }
 
+    /// Stop the DHCPv4 client so a later boot session can start it again.
+    pub fn dhcp_stop(&mut self) {
+        unsafe {
+            if self.dhcp_started {
+                ffi::dhcp_stop(self.netif.as_mut_ptr());
+                self.dhcp_started = false;
+            }
+        }
+    }
+
+    /// Stop the DHCPv6 client so a later boot session can start it again.
+    #[cfg(feature = "baremetal-ipv6")]
+    pub fn dhcp6_stop(&mut self) {
+        unsafe {
+            ffi::dhcp6_disable(self.netif.as_mut_ptr());
+        }
+    }
+
     /// Check if DHCP has assigned an IP address.
     pub fn dhcp_has_address(&self) -> bool {
         unsafe {
@@ -270,13 +288,8 @@ impl BaremetalNetIf {
     pub fn shutdown(&mut self) {
         unsafe {
             #[cfg(feature = "baremetal-ipv6")]
-            {
-                ffi::dhcp6_disable(self.netif.as_mut_ptr());
-            }
-            if self.dhcp_started {
-                ffi::dhcp_stop(self.netif.as_mut_ptr());
-                self.dhcp_started = false;
-            }
+            self.dhcp6_stop();
+            self.dhcp_stop();
             ffi::netif_set_down(self.netif.as_mut_ptr());
             ffi::netif_remove(self.netif.as_mut_ptr());
             self.callbacks = None;

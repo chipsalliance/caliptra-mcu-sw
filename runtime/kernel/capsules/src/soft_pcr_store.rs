@@ -150,14 +150,14 @@ impl SoftPcrStore {
         (available / MEASUREMENT_RECORD_SIZE).min(u16::MAX as usize) as u16
     }
 
-    fn record_count(&self) -> u16 {
+    fn record_count(&self) -> Result<u16, ErrorCode> {
         let mem = self.mem.borrow();
         read_u16_le(&mem, META_RECORD_COUNT)
     }
 
-    fn set_record_count(&self, count: u16) {
+    fn set_record_count(&self, count: u16) -> Result<(), ErrorCode> {
         let mut mem = self.mem.borrow_mut();
-        write_u16_le(&mut mem, META_RECORD_COUNT, count);
+        write_u16_le(&mut mem, META_RECORD_COUNT, count)
     }
 
     fn slot_offset(index: usize) -> usize {
@@ -165,19 +165,19 @@ impl SoftPcrStore {
     }
 
     /// Search `records[0..record_count]` for `fw_id`; return its index if found.
-    fn find_record_index(&self, fw_id: u32) -> Option<usize> {
+    fn find_record_index(&self, fw_id: u32) -> Result<Option<usize>, ErrorCode> {
         let mem = self.mem.borrow();
-        let count = read_u16_le(&mem, META_RECORD_COUNT) as usize;
+        let count = read_u16_le(&mem, META_RECORD_COUNT)? as usize;
         for i in 0..count {
             let off = Self::slot_offset(i);
-            if read_u32_le(&mem, off + REC_FW_ID) == fw_id {
-                return Some(i);
+            if read_u32_le(&mem, off + REC_FW_ID)? == fw_id {
+                return Ok(Some(i));
             }
         }
-        None
+        Ok(None)
     }
 
-    fn do_initialize_store(&self) {
+    fn do_initialize_store(&self) -> Result<(), ErrorCode> {
         let cap = {
             let mem = self.mem.borrow();
             Self::derived_capacity(mem.len())
@@ -185,36 +185,36 @@ impl SoftPcrStore {
         let slots_end = HEADER_SIZE + cap as usize * MEASUREMENT_RECORD_SIZE;
         let mut mem = self.mem.borrow_mut();
         let zero_end = slots_end.min(mem.len());
-        for b in mem[..zero_end].iter_mut() {
+        for b in mem.iter_mut().take(zero_end) {
             *b = 0;
         }
-        write_u32_le(&mut mem, META_MAGIC, HEADER_MAGIC);
-        write_u16_le(&mut mem, META_VERSION, HEADER_VERSION);
-        write_u16_le(&mut mem, META_HEADER_SIZE, HEADER_SIZE as u16);
-        write_u16_le(&mut mem, META_RECORD_SIZE, MEASUREMENT_RECORD_SIZE as u16);
-        write_u16_le(&mut mem, META_RECORD_CAPACITY, cap);
-        write_u16_le(&mut mem, META_RECORD_COUNT, 0);
+        write_u32_le(&mut mem, META_MAGIC, HEADER_MAGIC)?;
+        write_u16_le(&mut mem, META_VERSION, HEADER_VERSION)?;
+        write_u16_le(&mut mem, META_HEADER_SIZE, HEADER_SIZE as u16)?;
+        write_u16_le(&mut mem, META_RECORD_SIZE, MEASUREMENT_RECORD_SIZE as u16)?;
+        write_u16_le(&mut mem, META_RECORD_CAPACITY, cap)?;
+        write_u16_le(&mut mem, META_RECORD_COUNT, 0)
     }
 
     fn do_validate_store(&self) -> Result<(), ErrorCode> {
         let mem = self.mem.borrow();
         let cap = Self::derived_capacity(mem.len());
-        if read_u32_le(&mem, META_MAGIC) != HEADER_MAGIC {
+        if read_u32_le(&mem, META_MAGIC)? != HEADER_MAGIC {
             return Err(ErrorCode::FAIL);
         }
-        if read_u16_le(&mem, META_VERSION) != HEADER_VERSION {
+        if read_u16_le(&mem, META_VERSION)? != HEADER_VERSION {
             return Err(ErrorCode::FAIL);
         }
-        if read_u16_le(&mem, META_HEADER_SIZE) != HEADER_SIZE as u16 {
+        if read_u16_le(&mem, META_HEADER_SIZE)? != HEADER_SIZE as u16 {
             return Err(ErrorCode::FAIL);
         }
-        if read_u16_le(&mem, META_RECORD_SIZE) != MEASUREMENT_RECORD_SIZE as u16 {
+        if read_u16_le(&mem, META_RECORD_SIZE)? != MEASUREMENT_RECORD_SIZE as u16 {
             return Err(ErrorCode::FAIL);
         }
-        if read_u16_le(&mem, META_RECORD_CAPACITY) != cap {
+        if read_u16_le(&mem, META_RECORD_CAPACITY)? != cap {
             return Err(ErrorCode::FAIL);
         }
-        let count = read_u16_le(&mem, META_RECORD_COUNT);
+        let count = read_u16_le(&mem, META_RECORD_COUNT)?;
         if count > cap {
             return Err(ErrorCode::FAIL);
         }
@@ -229,13 +229,16 @@ impl SoftPcrStore {
         if slice.len() < MEASUREMENT_RECORD_SIZE {
             return Err(ErrorCode::SIZE);
         }
-        let idx = self.find_record_index(fw_id).ok_or(ErrorCode::FAIL)?;
+        let idx = self.find_record_index(fw_id)?.ok_or(ErrorCode::FAIL)?;
         let off = Self::slot_offset(idx);
         let mem = self.mem.borrow();
         slice
             .get(0..MEASUREMENT_RECORD_SIZE)
             .ok_or(ErrorCode::SIZE)?
-            .copy_from_slice(&mem[off..off + MEASUREMENT_RECORD_SIZE]);
+            .copy_from_slice(
+                mem.get(off..off + MEASUREMENT_RECORD_SIZE)
+                    .ok_or(ErrorCode::FAIL)?,
+            );
         Ok(())
     }
 
@@ -247,14 +250,14 @@ impl SoftPcrStore {
         if slice.len() < MEASUREMENT_RECORD_SIZE {
             return Err(ErrorCode::SIZE);
         }
-        if self.find_record_index(fw_id).is_some() {
+        if self.find_record_index(fw_id)?.is_some() {
             return Err(ErrorCode::ALREADY);
         }
         let cap = {
             let mem = self.mem.borrow();
             Self::derived_capacity(mem.len())
         };
-        let count = self.record_count();
+        let count = self.record_count()?;
         if count as usize >= cap as usize {
             return Err(ErrorCode::NOMEM);
         }
@@ -264,12 +267,14 @@ impl SoftPcrStore {
             slice
                 .get(0..MEASUREMENT_RECORD_SIZE)
                 .ok_or(ErrorCode::SIZE)?
-                .copy_to_slice(&mut mem[off..off + MEASUREMENT_RECORD_SIZE]);
+                .copy_to_slice(
+                    mem.get_mut(off..off + MEASUREMENT_RECORD_SIZE)
+                        .ok_or(ErrorCode::FAIL)?,
+                );
             // Ensure fw_id in the slot is consistent with the command argument.
-            write_u32_le(&mut mem, off + REC_FW_ID, fw_id);
+            write_u32_le(&mut mem, off + REC_FW_ID, fw_id)?;
         }
-        self.set_record_count(count + 1);
-        Ok(())
+        self.set_record_count(count + 1)
     }
 
     fn do_update_measurement(
@@ -280,16 +285,18 @@ impl SoftPcrStore {
         if slice.len() < MEASUREMENT_RECORD_SIZE {
             return Err(ErrorCode::SIZE);
         }
-        let idx = self.find_record_index(fw_id).ok_or(ErrorCode::FAIL)?;
+        let idx = self.find_record_index(fw_id)?.ok_or(ErrorCode::FAIL)?;
         let off = Self::slot_offset(idx);
         let mut mem = self.mem.borrow_mut();
         slice
             .get(0..MEASUREMENT_RECORD_SIZE)
             .ok_or(ErrorCode::SIZE)?
-            .copy_to_slice(&mut mem[off..off + MEASUREMENT_RECORD_SIZE]);
+            .copy_to_slice(
+                mem.get_mut(off..off + MEASUREMENT_RECORD_SIZE)
+                    .ok_or(ErrorCode::FAIL)?,
+            );
         // Preserve fw_id in the slot.
-        write_u32_le(&mut mem, off + REC_FW_ID, fw_id);
-        Ok(())
+        write_u32_le(&mut mem, off + REC_FW_ID, fw_id)
     }
 }
 
@@ -358,14 +365,13 @@ impl SyscallDriver for SoftPcrStore {
                 }
             }
 
-            cmd::INITIALIZE_STORE => {
-                self.apps
-                    .enter(processid, |_, _| {
-                        self.do_initialize_store();
-                    })
-                    .unwrap_or(());
-                CommandReturn::success()
-            }
+            cmd::INITIALIZE_STORE => match self
+                .apps
+                .enter(processid, |_, _| self.do_initialize_store())
+            {
+                Ok(Err(e)) => CommandReturn::failure(e),
+                _ => CommandReturn::success(),
+            },
 
             cmd::VALIDATE_STORE => {
                 let res = self.apps.enter(processid, |_, _| self.do_validate_store());
@@ -392,32 +398,69 @@ impl SoftPcrStore {
 }
 
 #[inline]
-fn read_u16_le(mem: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([mem[offset], mem[offset + 1]])
+fn read_u16_le(mem: &[u8], offset: usize) -> Result<u16, ErrorCode> {
+    let bytes = mem
+        .get(offset..)
+        .and_then(|bytes| bytes.first_chunk::<2>())
+        .ok_or(ErrorCode::FAIL)?;
+    Ok(u16::from_le_bytes(*bytes))
 }
 
 #[inline]
-fn write_u16_le(mem: &mut [u8], offset: usize, val: u16) {
-    let bytes = val.to_le_bytes();
-    mem[offset] = bytes[0];
-    mem[offset + 1] = bytes[1];
+fn write_u16_le(mem: &mut [u8], offset: usize, val: u16) -> Result<(), ErrorCode> {
+    let bytes = mem
+        .get_mut(offset..)
+        .and_then(|bytes| bytes.first_chunk_mut::<2>())
+        .ok_or(ErrorCode::FAIL)?;
+    *bytes = val.to_le_bytes();
+    Ok(())
 }
 
 #[inline]
-fn read_u32_le(mem: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes([
-        mem[offset],
-        mem[offset + 1],
-        mem[offset + 2],
-        mem[offset + 3],
-    ])
+fn read_u32_le(mem: &[u8], offset: usize) -> Result<u32, ErrorCode> {
+    let bytes = mem
+        .get(offset..)
+        .and_then(|bytes| bytes.first_chunk::<4>())
+        .ok_or(ErrorCode::FAIL)?;
+    Ok(u32::from_le_bytes(*bytes))
 }
 
 #[inline]
-fn write_u32_le(mem: &mut [u8], offset: usize, val: u32) {
-    let bytes = val.to_le_bytes();
-    mem[offset] = bytes[0];
-    mem[offset + 1] = bytes[1];
-    mem[offset + 2] = bytes[2];
-    mem[offset + 3] = bytes[3];
+fn write_u32_le(mem: &mut [u8], offset: usize, val: u32) -> Result<(), ErrorCode> {
+    let bytes = mem
+        .get_mut(offset..)
+        .and_then(|bytes| bytes.first_chunk_mut::<4>())
+        .ok_or(ErrorCode::FAIL)?;
+    *bytes = val.to_le_bytes();
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn little_endian_access_rejects_truncated_ranges() {
+        let mut mem = [0xa5; 4];
+        for offset in [3, mem.len(), usize::MAX] {
+            assert_eq!(read_u16_le(&mem, offset), Err(ErrorCode::FAIL));
+            assert_eq!(write_u16_le(&mut mem, offset, 0), Err(ErrorCode::FAIL));
+            assert_eq!(mem, [0xa5; 4]);
+        }
+        for offset in [1, mem.len(), usize::MAX] {
+            assert_eq!(read_u32_le(&mem, offset), Err(ErrorCode::FAIL));
+            assert_eq!(write_u32_le(&mut mem, offset, 0), Err(ErrorCode::FAIL));
+            assert_eq!(mem, [0xa5; 4]);
+        }
+    }
+
+    #[test]
+    fn little_endian_access_preserves_neighboring_bytes() {
+        let mut mem = [0xa5; 8];
+        write_u16_le(&mut mem, 1, 0x1234).unwrap();
+        write_u32_le(&mut mem, 3, 0x5678_9abc).unwrap();
+        assert_eq!(read_u16_le(&mem, 1), Ok(0x1234));
+        assert_eq!(read_u32_le(&mem, 3), Ok(0x5678_9abc));
+        assert_eq!(mem, [0xa5, 0x34, 0x12, 0xbc, 0x9a, 0x78, 0x56, 0xa5]);
+    }
 }

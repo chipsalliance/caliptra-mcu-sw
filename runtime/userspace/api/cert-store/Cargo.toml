@@ -1,0 +1,20 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-cert-store"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-common-commands.workspace = true
+caliptra-mcu-measurement-api.workspace = true
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
+mcu-error.workspace = true
+
+[dev-dependencies]
+futures.workspace = true
+
+[features]
+default = []
+set-certificate = []

@@ -530,6 +530,7 @@ impl Otp {
     }
 
     /// Read cptra_core_fmc_key_manifest_svn (4 bytes).
+    #[cfg(hw_rev = "2.1")]
     pub fn read_cptra_core_fmc_key_manifest_svn(&self) -> McuResult<[u8; 4]> {
         let mut data = [0u8; 4];
         self.read_entry_raw(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN, &mut data)?;
@@ -571,6 +572,13 @@ impl Otp {
         let mut data = [0u8; 4];
         self.read_entry_raw(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN, &mut data)?;
         Ok(data)
+    }
+
+    /// Decode the SDK Owner SoC Manifest floor by counting all programmed bits.
+    pub fn read_owner_soc_manifest_min_svn(&self) -> McuResult<u32> {
+        let mut data = [0u8; fuses::OWNER_SOC_MANIFEST_MIN_SVN.byte_size];
+        self.read_entry_raw(fuses::OWNER_SOC_MANIFEST_MIN_SVN, &mut data)?;
+        Ok(u64::from_le_bytes(data).count_ones())
     }
 
     /// Read cptra_ss_manuf_debug_unlock_token (64 bytes).
@@ -1010,30 +1018,6 @@ impl Otp {
         }
         Ok(())
     }
-
-    /// Mark a field entropy slot as started in OTP memory.
-    pub fn mark_field_entropy_started(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let bit = (slot as usize) * 3 + FieldEntropySlot::STARTED_BIT_OFFSET;
-        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
-        Ok(())
-    }
-
-    /// Mark a field entropy slot as finished in OTP memory.
-    pub fn mark_field_entropy_finished(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let bit = (slot as usize) * 3 + FieldEntropySlot::FINISHED_BIT_OFFSET;
-        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
-        Ok(())
-    }
-
-    /// Mark a field entropy slot as zeroized in OTP memory.
-    pub fn mark_field_entropy_zeroized(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let bit = (slot as usize) * 3 + FieldEntropySlot::ZEROIZED_BIT_OFFSET;
-        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
-        Ok(())
-    }
 }
 
 fn sw_digest_data_size(partition: &OtpPartitionInfo) -> McuResult<usize> {
@@ -1062,25 +1046,14 @@ fn sw_digest_data_size(partition: &OtpPartitionInfo) -> McuResult<usize> {
 }
 
 fn is_64bit_granule(byte_addr: usize) -> bool {
-    matches!(
-        byte_addr,
-        // Secret partitions and digest/zeroization fields require 64-bit DAI granules.
-        0x40..=0xf7
-            | 0x2f8..=0x3b7
-            | 0x418..=0x41f
-            | 0x458..=0x45f
-            | 0x7b8..=0x7bf
-            | 0x890..=0xaa7
-            | 0xca8..=0xcaf
-            | 0xcd0..=0xcdf
-            | 0xd00..=0xd0f
-            | 0xd30..=0xd3f
-            | 0xd60..=0xd6f
-            | 0xd90..=0xd9f
-            | 0xdc0..=0xdcf
-            | 0xdf0..=0xdff
-            | 0xe20..=0xe2f
-    )
+    fuses::OTP_PARTITIONS.iter().any(|partition| {
+        let end = partition.byte_offset + partition.byte_size;
+        (partition.secret && (partition.byte_offset..end).contains(&byte_addr))
+            || partition
+                .digest_offset
+                .is_some_and(|offset| (offset..offset + 8).contains(&byte_addr))
+            || (partition.zeroizable && (end - 8..end).contains(&byte_addr))
+    })
 }
 
 fn read_data_with(
@@ -1240,62 +1213,57 @@ pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEnt
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FieldEntropySlot {
-    Slot0 = 0,
-    Slot1 = 1,
-    Slot2 = 2,
-    Slot3 = 3,
-}
-
-impl TryFrom<usize> for FieldEntropySlot {
-    type Error = ();
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Slot0),
-            1 => Ok(Self::Slot1),
-            2 => Ok(Self::Slot2),
-            3 => Ok(Self::Slot3),
-            _ => Err(()),
-        }
-    }
-}
-
-impl FieldEntropySlot {
-    pub const STARTED_BIT_OFFSET: usize = 0;
-    pub const FINISHED_BIT_OFFSET: usize = 1;
-    pub const ZEROIZED_BIT_OFFSET: usize = 2;
-}
-
-pub enum FieldEntropyState {
-    Empty,
-    Started,
-    Finished,
-    Zeroized,
-}
-
-impl FieldEntropyState {
-    pub fn read(otp: &Otp, slot: FieldEntropySlot) -> McuResult<FieldEntropyState> {
-        let val = otp.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        let base_bit = (slot as usize) * 3;
-        let started = (val & (1 << (base_bit + FieldEntropySlot::STARTED_BIT_OFFSET))) != 0;
-        let finished = (val & (1 << (base_bit + FieldEntropySlot::FINISHED_BIT_OFFSET))) != 0;
-        let zeroized = (val & (1 << (base_bit + FieldEntropySlot::ZEROIZED_BIT_OFFSET))) != 0;
-        if zeroized {
-            Ok(FieldEntropyState::Zeroized)
-        } else if started && !finished {
-            Ok(FieldEntropyState::Started)
-        } else if started && finished {
-            Ok(FieldEntropyState::Finished)
-        } else {
-            Ok(FieldEntropyState::Empty)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(hw_rev = "latest")]
+    #[test]
+    fn vendor_hash_and_preceding_digest_use_distinct_dai_granules() {
+        let entry = fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
+        let digest = fuses::VENDOR_TEST_PARTITION.digest_offset.unwrap();
+        assert_eq!(entry.byte_offset, 0x430);
+        assert_eq!(digest, 0x428);
+        assert!(is_64bit_granule(digest));
+        assert!(is_64bit_granule(digest + 4));
+        let mut reads = std::vec::Vec::new();
+        let mut data = [0; 8];
+        read_data_with(
+            entry.byte_offset + 8,
+            8,
+            &mut data,
+            |addr| {
+                reads.push(addr * 4);
+                Ok(if addr * 4 == entry.byte_offset + 8 {
+                    0xd100e692
+                } else {
+                    0x6c7206b6
+                })
+            },
+            |_| panic!("vendor public hash payload must use 32-bit DAI reads"),
+        )
+        .unwrap();
+        assert_eq!(reads, [0x438, 0x43c]);
+        assert_eq!(data, 0x6c7206b6_d100e692u64.to_le_bytes());
+    }
+
+    #[test]
+    fn owner_svn_allocation_preserves_existing_fields_and_digest() {
+        let entry = fuses::OWNER_SOC_MANIFEST_MIN_SVN;
+        assert_eq!(entry.byte_size, 8);
+        assert_eq!(
+            entry.byte_offset,
+            fuses::FIELD_ENTROPY_STATE.byte_offset + fuses::FIELD_ENTROPY_STATE.byte_size
+        );
+        assert_eq!(
+            Some(entry.byte_offset + entry.byte_size),
+            fuses::VENDOR_TEST_PARTITION.digest_offset
+        );
+        assert!(matches!(
+            entry.layout,
+            fuses::FuseLayoutType::OneHot { bits: 64 }
+        ));
+    }
 
     #[test]
     fn test_sw_digest_data_size_uses_digest_offset_before_zer() {

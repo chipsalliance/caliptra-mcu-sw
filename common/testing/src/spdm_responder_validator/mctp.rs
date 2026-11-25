@@ -1,12 +1,16 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::BufferedStream;
+use crate::mctp_util::base_protocol::MCTP_HDR_SIZE;
 use crate::mctp_util::common::MctpUtil;
 use crate::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
 
 const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
+const I3C_PEC_SIZE: usize = 1;
+const MCTP_I3C_MIN_PACKET_SIZE: usize = MCTP_HDR_SIZE + 64 + I3C_PEC_SIZE;
+const MCTP_I3C_DEFAULT_PACKET_SIZE: usize = 256;
 
 #[derive(Debug, Clone)]
 enum TxRxState {
@@ -27,9 +31,30 @@ pub struct MctpTransport {
 
 impl MctpTransport {
     pub fn new(stream: BufferedStream, target_addr: u8, retry_count: usize) -> Self {
+        Self::new_with_max_packet_size(
+            stream,
+            target_addr,
+            retry_count,
+            MCTP_I3C_DEFAULT_PACKET_SIZE,
+        )
+    }
+
+    pub fn new_with_max_packet_size(
+        stream: BufferedStream,
+        target_addr: u8,
+        retry_count: usize,
+        max_packet_size: usize,
+    ) -> Self {
+        assert!(
+            (MCTP_I3C_MIN_PACKET_SIZE..=MCTP_I3C_DEFAULT_PACKET_SIZE).contains(&max_packet_size),
+            "MCTP I3C packet size must be between 69 and 256 bytes"
+        );
+        let mut mctp_util = MctpUtil::new();
+        mctp_util.set_pkt_payload_size(max_packet_size - MCTP_HDR_SIZE - I3C_PEC_SIZE);
+        mctp_util.set_boot_delay_ticks(0);
         Self {
             stream,
-            mctp_util: MctpUtil::new(),
+            mctp_util,
             target_addr,
             msg_tag: 0,
             tx_rx_state: TxRxState::Start,

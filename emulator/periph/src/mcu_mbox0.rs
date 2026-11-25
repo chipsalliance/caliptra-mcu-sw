@@ -210,6 +210,23 @@ impl MciMailboxImpl {
         }
     }
 
+    pub fn warm_reset(&mut self) {
+        self.lock.reg.set(Self::LOCK_VAL);
+        self.user.reg.set(Self::USER_VAL);
+        self.target_user.reg.set(Self::TARGET_USER_VAL);
+        self.target_user_valid.reg.set(Self::TARGET_USER_VALID_VAL);
+        self.cmd.reg.set(Self::CMD_VAL);
+        self.dlen.reg.set(Self::DLEN_VAL);
+        self.execute.reg.set(Self::EXECUTE_VAL);
+        self.target_status.reg.set(Self::TARGET_STATUS_VAL);
+        self.cmd_status.reg.set(Self::CMD_STATUS_VAL);
+        self.hw_status.reg.set(Self::HW_STATUS_VAL);
+        self.requester = MciMailboxRequester::Mcu;
+        self.max_dlen_in_lock_session = 0;
+        self.irq = false;
+        self.last_irq_event = None;
+    }
+
     // The mailbox starts locked by the MCU to prevent data leaks across warm resets.
     // The MCU must set MBOX_DLEN to the full SRAM size and write 0 to MBOX_EXECUTE
     // to release and wipe the mailbox SRAM before allowing further use.
@@ -478,12 +495,9 @@ impl MciMailboxImpl {
         let prev = self.target_status.reg.get();
         let new_val = val.reg.get();
         self.target_status.reg.set(new_val);
-        // If the DONE bit is set (rising edge), trigger TARGET_DONE event
-        let prev_done =
-            prev & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
-        let new_done = new_val
-            & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
-        if prev_done == 0 && new_done != 0 {
+        let prev_done = caliptra_mcu_mbox_common::target_status::is_complete(prev);
+        let new_done = caliptra_mcu_mbox_common::target_status::is_complete(new_val);
+        if !prev_done && new_done {
             self.irq = true;
             self.last_irq_event = Some(if self.mbox_index == 1 {
                 IrqEventToMcu::Mbox1TargetDone
@@ -574,6 +588,10 @@ mod tests {
         AutoRootBus::new(
             vec![],
             None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,
@@ -581,6 +599,10 @@ mod tests {
             None,
             None,
             Some(Box::new(mci)),
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,
@@ -971,8 +993,9 @@ mod tests {
         let test_cmd = 0xAA;
         let test_dlen = 0x10;
         let test_data: [u32; 4] = [0x11112222, 0x33334444, 0x55556666, 0x77778888];
-        let response_status =
-            MboxTargetStatus::Status::CmdComplete.value | MboxTargetStatus::Done::SET.value;
+        let response_status = caliptra_mcu_mbox_common::target_status::completion_value(
+            MboxTargetStatus::Status::CmdComplete.value,
+        );
 
         for (i, word) in test_data.iter().enumerate() {
             bus.write(RvSize::Word, sram_base + (i as u32) * 4, *word)
@@ -1064,11 +1087,9 @@ mod tests {
             MboxTargetStatus::Status::CmdComplete.value,
             "MCU should read correct TARGET_STATUS"
         );
-        assert_eq!(
-            target_status_val.reg.get() & MboxTargetStatus::Done::SET.value,
-            MboxTargetStatus::Done::SET.value,
-            "MCU should read DONE bit set in TARGET_STATUS"
-        );
+        assert!(caliptra_mcu_mbox_common::target_status::is_complete(
+            target_status_val.reg.get()
+        ));
 
         // MCU writes 0 to EXECUTE to release the mailbox (simulate via internal API)
         bus.write(

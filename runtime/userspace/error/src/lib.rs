@@ -22,7 +22,7 @@
 //! * `code` — the actual specific error within `(domain, subdomain)`.
 //!
 //! For wire-protocol errors that have a canonical byte assigned by a
-//! spec (SPDM DSP0274 §10.10.2, PLDM completion codes, …), protocol
+//! spec (SPDM DSP0274, PLDM completion codes, …), protocol
 //! crates encode the spec byte directly in the low bits of `code` so
 //! responders can extract it losslessly when emitting an error PDU.
 //!
@@ -142,6 +142,9 @@ pub mod domain {
 
     /// Attestation / measurement API (`caliptra-mcu-measurement-api`).
     pub const ATTESTATION: u8 = 0x07;
+
+    /// Common certificate-store policy, records, and endorsement validation.
+    pub const CERT_STORE: u8 = 0x08;
 
     /// Memory / allocator failures (singleton — any allocator may
     /// produce these, but the meaning never varies).

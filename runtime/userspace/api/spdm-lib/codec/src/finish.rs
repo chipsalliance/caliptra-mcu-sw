@@ -45,7 +45,9 @@ pub struct FinishRsp {
 }
 
 impl ResponseBody for FinishRsp {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::FINISH_RSP;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::FINISH_RSP
+    }
 
     fn body_size(&self) -> usize {
         if self.include_opaque {

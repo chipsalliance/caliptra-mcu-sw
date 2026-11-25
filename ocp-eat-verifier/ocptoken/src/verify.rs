@@ -55,8 +55,10 @@ pub(crate) fn run(args: &VerifyArgs, verifier: &CoseSign1Verifier<impl CryptoBac
     };
 
     // 3. Load optional cert chain
-    let cert_chain_blob = args.cert_chain.as_ref().map(|path| {
-        match std::fs::read(path) {
+    let cert_chain_blob = args
+        .cert_chain
+        .as_ref()
+        .map(|path| match std::fs::read(path) {
             Ok(b) => {
                 println!(
                     "Loaded certificate chain '{}' ({} bytes)",
@@ -73,8 +75,7 @@ pub(crate) fn run(args: &VerifyArgs, verifier: &CoseSign1Verifier<impl CryptoBac
                 );
                 std::process::exit(1);
             }
-        }
-    });
+        });
 
     // 4. Extract the leaf certificate (x5chain or cert-chain for kid)
     let leaf_cert = match extract_signing_leaf(&decoded, cert_chain_blob.as_deref()) {

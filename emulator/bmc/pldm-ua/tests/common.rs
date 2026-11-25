@@ -49,9 +49,13 @@ impl PldmSocket for MockPldmSocket {
         Ok(())
     }
 
-    fn receive(&self, _timeout: Option<Duration>) -> Result<RxPacket, PldmTransportError> {
+    fn receive(&self, timeout: Option<Duration>) -> Result<RxPacket, PldmTransportError> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {
-            if let Ok(pkt) = receiver.recv() {
+            let packet = match timeout {
+                Some(timeout) => receiver.recv_timeout(timeout).map_err(|_| ()),
+                None => receiver.recv().map_err(|_| ()),
+            };
+            if let Ok(pkt) = packet {
                 if pkt.payload.len == 0 {
                     Err(PldmTransportError::Underflow)
                 } else {

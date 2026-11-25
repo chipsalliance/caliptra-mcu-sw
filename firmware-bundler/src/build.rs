@@ -6,7 +6,10 @@
 //! `.cargo/config.toml` associated with the workspace the package is in to determine any features
 //! or compilation flags to include.
 
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{anyhow, bail, Result};
 use caliptra_mcu_tbf_header::TbfHeader;
@@ -81,7 +84,30 @@ pub fn build(
     common: &Common,
     build: &BuildArgs,
 ) -> Result<BuildOutput> {
-    BuildPass::new(manifest, build_definition, common, build)?.run()
+    BuildPass::new(manifest, common, build)?.run(build_definition)
+}
+
+/// Execute the `rustc` compiler against the ROM with the given linker script.  If successful the
+/// elf file and binary will exist in the `<workspace>/target/<tuple>/release` directory on the hard
+/// drive.
+///
+/// This could fail if the ROM is unable to compile for any reason, including exceeding the memory
+/// restrictions placed on the binary by the generated ld file.  It could also fail if a hard drive
+/// operation errors.
+pub fn build_rom(
+    manifest: &Manifest,
+    rom: &LinkerScript,
+    common: &Common,
+    build: &BuildArgs,
+) -> Result<()> {
+    BuildPass::new(manifest, common, build)?
+        .build_binary(
+            rom,
+            &build.rom_features,
+            ROM_OBJCOPY_FLAGS,
+            build.binary_output.as_deref(),
+        )
+        .map(|_| ())
 }
 
 /// Execute the `rustc` compiler against the specified target package within the manifest.  If
@@ -129,15 +155,19 @@ pub fn build_single_target(
         .find(|(b, _, _)| b.name == target)
         .ok_or_else(|| anyhow!("Binary target {target} not found in manifest file."))?;
 
-    let pass = BuildPass::new(manifest, build_definition, common, build)?;
-    pass.build_binary(&target_to_build, features, objcopy_flags)
-        .map(|_| ())
+    let pass = BuildPass::new(manifest, common, build)?;
+    pass.build_binary(
+        &target_to_build,
+        features,
+        objcopy_flags,
+        build.binary_output.as_deref(),
+    )
+    .map(|_| ())
 }
 
 /// A helper struct containing the context required to do a build run.
 struct BuildPass<'a> {
     manifest: &'a Manifest,
-    build_definition: &'a BuildDefinition,
     build_args: &'a BuildArgs,
     binary_dir: PathBuf,
     target_dir: PathBuf,
@@ -147,12 +177,7 @@ struct BuildPass<'a> {
 
 impl<'a> BuildPass<'a> {
     /// Create a new `BuildPass`.
-    fn new(
-        manifest: &'a Manifest,
-        build_definition: &'a BuildDefinition,
-        common: &Common,
-        build_args: &'a BuildArgs,
-    ) -> Result<Self> {
+    fn new(manifest: &'a Manifest, common: &Common, build_args: &'a BuildArgs) -> Result<Self> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
         let binary_dir = common.release_dir()?;
@@ -166,7 +191,6 @@ impl<'a> BuildPass<'a> {
 
         Ok(Self {
             manifest,
-            build_definition,
             build_args,
             binary_dir,
             target_dir,
@@ -177,21 +201,24 @@ impl<'a> BuildPass<'a> {
 
     /// Execute a BuildPass run.  This will include both building the elf with the specified linker
     /// file via `rustc` and then using `objcopy` to produce a binary file from that elf.
-    fn run(&self) -> Result<BuildOutput> {
-        let rom = if let Some(r) = &self.build_definition.rom {
-            Some(self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS)?)
-        } else {
-            None
+    fn run(&self, build_definition: &BuildDefinition) -> Result<BuildOutput> {
+        let rom = match &build_definition.rom {
+            Some(r) if !self.build_args.skip_rom => Some(self.build_binary(
+                r,
+                &self.build_args.rom_features,
+                ROM_OBJCOPY_FLAGS,
+                None,
+            )?),
+            _ => None,
         };
 
-        let runtime_objcopy_flags = if self.build_definition.runtime.is_bare_metal() {
+        let runtime_objcopy_flags = if build_definition.runtime.is_bare_metal() {
             RUNTIME_OBJCOPY_FLAGS
         } else {
             KERNEL_OBJCOPY_FLAGS
         };
 
-        let runtime: RuntimeVariant<Result<(BuiltBinary, Memory)>> = self
-            .build_definition
+        let runtime: RuntimeVariant<Result<(BuiltBinary, Memory)>> = build_definition
             .runtime
             .clone()
             .map(|(linker, instructions)| {
@@ -200,6 +227,7 @@ impl<'a> BuildPass<'a> {
                         &linker,
                         &self.build_args.runtime_features,
                         runtime_objcopy_flags,
+                        None,
                     )?,
                     instructions,
                 ))
@@ -211,8 +239,7 @@ impl<'a> BuildPass<'a> {
             RuntimeVariant::BareMetal(r) => RuntimeVariant::BareMetal(r?),
         };
 
-        let apps = self
-            .build_definition
+        let apps = build_definition
             .apps
             .iter()
             .map(|a| {
@@ -221,6 +248,7 @@ impl<'a> BuildPass<'a> {
                         &a.linker,
                         &self.build_args.runtime_features,
                         APP_OBJCOPY_FLAGS,
+                        None,
                     )?,
                     header: a.header.clone(),
                     instruction_block: a.instruction_block.clone(),
@@ -237,6 +265,7 @@ impl<'a> BuildPass<'a> {
         app: &LinkerScript,
         features: &Option<String>,
         objcopy_flags: &str,
+        binary_output: Option<&Path>,
     ) -> Result<BuiltBinary> {
         // Setup the linker args based on the associated path provided by the linker generation
         // phase.
@@ -251,6 +280,9 @@ impl<'a> BuildPass<'a> {
 
         // Instantiate the rustc command
         let mut cmd = Command::new("cargo");
+        let revision =
+            caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+        cmd.env(caliptra_mcu_hw_revision::ENV, revision.as_str());
         cmd.arg("rustc")
             .arg("--package")
             .arg(&app.name)
@@ -286,7 +318,7 @@ impl<'a> BuildPass<'a> {
 
         // Finally use objcopy to produce a binary from the output elf.
         let elf = self.binary_dir.join(&app.name);
-        let binary = elf.with_extension("bin");
+        let binary = binary_output.map_or_else(|| elf.with_extension("bin"), Path::to_path_buf);
         let mut objcopy_cmd = Command::new(&self.objcopy);
         objcopy_cmd
             .arg("--output-target=binary")

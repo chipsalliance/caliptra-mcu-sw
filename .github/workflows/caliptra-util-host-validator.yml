@@ -5,12 +5,35 @@ name: Caliptra Util Host Validator Tests
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: false
+        type: choice
+        options: ["2.1", "latest"]
+        default: "2.1"
+      run-validator-tests:
+        description: Run the Caliptra Util Host validator tests
+        required: false
+        type: boolean
+        default: true
   workflow_call:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: false
+        type: string
+        default: "2.1"
+      run-validator-tests:
+        description: Run the Caliptra Util Host validator tests
+        required: false
+        type: boolean
+        default: true
+
+# ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
 env:
-  # Pin the Caliptra core ROM to a release tag; image/update crates continue
-  # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
-  CALIPTRA_ROM_REF: rom-2.1.2
+  CALIPTRA_HW_REV: ${{ inputs.hw-revision }}
 
 jobs:
   precheckin:
@@ -39,6 +62,7 @@ jobs:
 
       - name: Fetch cargo git dependencies
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "$CALIPTRA_HW_REV"
           pushd caliptra-util-host
           cargo fetch
           popd
@@ -78,6 +102,7 @@ jobs:
           popd
 
   caliptra_util_host_validator_tests:
+    if: inputs.run-validator-tests
     runs-on: ubuntu-24.04
 
     env:
@@ -108,6 +133,7 @@ jobs:
 
       - name: Fetch cargo git dependencies
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "$CALIPTRA_HW_REV"
           pushd caliptra-util-host
           cargo fetch
           popd
@@ -185,7 +211,7 @@ jobs:
 
       - name: Build validator test firmware bundle
         run: |
-          cargo xtask all-build --separate-runtimes \
+          cargo xtask all-build --output target/all-fw.zip --separate-runtimes \
             --runtime-features test-caliptra-util-host-validator,test-caliptra-util-host-mctp-vdm-validator,test-caliptra-util-host-spdm-vdm-validator,test-mctp-spdm-set-certificate
 
       - name: Run Caliptra Util Host validator tests
@@ -229,10 +255,11 @@ jobs:
           cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
-      - name: Run OCP Device Identity provisioning test
+      - name: Run OCP Device Identity provisioning tests
         env:
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_dip_export_csr_with_ocp_provision_tool --exact --nocapture --include-ignored
           cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_set_certificate_with_ocp_provision_tool --exact --nocapture --include-ignored
           sccache --show-stats
 

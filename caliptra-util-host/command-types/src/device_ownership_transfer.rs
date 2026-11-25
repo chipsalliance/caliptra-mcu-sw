@@ -14,6 +14,7 @@ pub use caliptra_mcu_mbox_common::messages::{
 };
 
 pub const DOT_FAMILY_ID: u32 = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+pub const MC_DOT_ENABLE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_ENABLE.0;
 pub const MC_DOT_LOCK_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const MC_DOT_DISABLE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const MC_DOT_ROTATE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
@@ -25,26 +26,12 @@ pub const MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID: u32 = CommandId::MC_GET_DOT_B
 pub const MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE_CHALLENGE.0;
 pub const MC_DOT_OVERRIDE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE.0;
 
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct DotAuthorizationTrailer {
-    pub nonce: [u8; AUTH_CMD_NONCE_LEN],
-    pub ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-    pub ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-    pub mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
-    pub signature: HybridSignature,
-}
+pub type DotAuthorizationTrailer = caliptra_mcu_mbox_common::authorization::AuthorizationBlock;
 
-impl Default for DotAuthorizationTrailer {
-    fn default() -> Self {
-        Self {
-            nonce: [0; AUTH_CMD_NONCE_LEN],
-            ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-            ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-            mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
-            signature: HybridSignature::default(),
-        }
-    }
+#[repr(C)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DotEnableRequest {
+    pub authorization: DotAuthorizationTrailer,
 }
 
 #[repr(C)]
@@ -192,6 +179,7 @@ macro_rules! command_request {
     };
 }
 
+command_request!(DotEnableRequest, DotTransitionResponse, DotEnable);
 command_request!(DotLockRequest, DotTransitionResponse, DotLock);
 command_request!(DotDisableRequest, DotTransitionResponse, DotDisable);
 command_request!(DotRotateRequest, DotTransitionResponse, DotRotate);
@@ -221,6 +209,7 @@ mod tests {
 
     #[test]
     fn canonical_ids_match_mcu_mailbox_commands() {
+        assert_eq!(MC_DOT_ENABLE_CANONICAL_CMD_ID, CommandId::MC_DOT_ENABLE.0);
         assert_eq!(MC_DOT_LOCK_CANONICAL_CMD_ID, CommandId::MC_DOT_LOCK.0);
         assert_eq!(MC_DOT_DISABLE_CANONICAL_CMD_ID, CommandId::MC_DOT_DISABLE.0);
         assert_eq!(MC_DOT_ROTATE_CANONICAL_CMD_ID, CommandId::MC_DOT_ROTATE.0);

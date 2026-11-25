@@ -162,7 +162,7 @@ fn build_signed_cose(
 ) -> Vec<u8> {
     let cose = CoseSign1Builder::new()
         .payload(payload.to_vec())
-        .protected(HeaderBuilder::new().algorithm(Algorithm::ES384).build())
+        .protected(HeaderBuilder::new().algorithm(Algorithm::ESP384).build())
         .unprotected(
             HeaderBuilder::new()
                 .value(33, Value::Array(vec![Value::Bytes(cert_der.to_vec())]))
@@ -179,6 +179,176 @@ fn build_signed_cose(
         })
         .build();
     cose.to_vec().unwrap()
+}
+
+mod appraisal_tests {
+    use super::*;
+    use corim_rs::coev::{ConciseEvidence, EvTriples, TaggedConciseEvidence};
+    use corim_rs::{
+        Bytes, ClassIdTypeChoice, ClassMap, ConciseMidTagBuilder, CorimMapBuilder, Digest,
+        EnvironmentMap, HashAlgorithm, MeasuredElementTypeChoice, MeasurementMap,
+        MeasurementValuesMap, ReferenceTripleRecord, TagIdentityMap, TaggedBytes,
+        TriplesMapBuilder,
+    };
+    use coset::cwt::ClaimsSet;
+    use ocptoken::appraisal::appraise;
+    use ocptoken::corim::RefValCorims;
+    use ocptoken::token::claims::OcpEatClaims;
+
+    fn triple(class_id: &str, digest: u8) -> ReferenceTripleRecord<'static> {
+        ReferenceTripleRecord {
+            ref_env: EnvironmentMap {
+                class: Some(ClassMap {
+                    class_id: Some(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
+                        class_id.as_bytes().to_vec(),
+                    )))),
+                    vendor: Some("ACME Corp".into()),
+                    model: Some("DeviceX".into()),
+                    layer: None,
+                    index: None,
+                }),
+                instance: None,
+                group: None,
+            },
+            ref_claims: vec![MeasurementMap {
+                mkey: Some(MeasuredElementTypeChoice::UInt(1u64.into())),
+                mval: MeasurementValuesMap {
+                    digests: Some(vec![Digest {
+                        alg: HashAlgorithm::Sha384,
+                        val: vec![digest; 48].into(),
+                    }]),
+                    ..Default::default()
+                },
+                authorized_by: None,
+            }],
+        }
+    }
+
+    fn appraisal_inputs(
+        required_id: &str,
+        evidence: Vec<ReferenceTripleRecord<'static>>,
+    ) -> (OcpEatClaims, RefValCorims) {
+        let concise = TaggedConciseEvidence::from(ConciseEvidence {
+            ev_triples: EvTriples {
+                evidence_triples: Some(evidence),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let payload = build_cwt_payload_with(
+            None,
+            None,
+            None,
+            Some(Value::Array(vec![Value::Array(vec![
+                Value::Integer(10571.into()),
+                Value::Bytes(concise.to_cbor().unwrap()),
+            ])])),
+        );
+        let claims =
+            OcpEatClaims::from_claims_set(ClaimsSet::from_slice(&payload).unwrap()).unwrap();
+        let corim = CorimMapBuilder::new()
+            .id("test-vendor".into())
+            .add_tag(
+                ConciseMidTagBuilder::new()
+                    .tag_identity(TagIdentityMap {
+                        tag_id: "test-vendor".into(),
+                        tag_version: None,
+                    })
+                    .triples(
+                        TriplesMapBuilder::new()
+                            .reference_triples(vec![
+                                triple("0x00000002", 0xAA),
+                                triple(required_id, 0xAA),
+                            ])
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap()
+                    .into(),
+            )
+            .build()
+            .unwrap();
+        (
+            claims,
+            RefValCorims {
+                entries: vec![("test-vendor.cbor".into(), corim)],
+            },
+        )
+    }
+
+    #[test]
+    fn missing_mcu_rt_is_optional_but_not_appraised() {
+        let (claims, corims) = appraisal_inputs("0x00000004", vec![triple("0x00000004", 0xAA)]);
+        let nonce = hex::encode(&claims.nonce);
+        let report = appraise(&claims, &corims, Some(&nonce)).unwrap();
+
+        assert!(report.all_passed());
+        assert!(report.results[0].missing_optional_claim);
+        assert!(!report.results[0].env_matched);
+        assert!(!report.results[0].passed());
+        assert!(report.results[1].passed());
+    }
+
+    #[test]
+    fn missing_required_components_still_fail() {
+        for required_id in ["0x00000004", "0x00010000"] {
+            let (claims, corims) = appraisal_inputs(required_id, vec![triple("0x00002001", 0xAA)]);
+            let report = appraise(&claims, &corims, None).unwrap();
+
+            assert!(!report.all_passed(), "{required_id}");
+            assert!(report.results[0].missing_optional_claim);
+            assert!(!report.results[1].missing_optional_claim);
+            assert!(!report.results[1].env_matched);
+        }
+    }
+
+    #[test]
+    fn present_mcu_rt_identity_mismatch_is_not_optional() {
+        for field in ["vendor", "model"] {
+            let mut mcu = triple("0x00000002", 0xAA);
+            let class = mcu.ref_env.class.as_mut().unwrap();
+            if field == "vendor" {
+                class.vendor = Some("Other Vendor".into());
+            } else {
+                class.model = Some("Other Model".into());
+            }
+            let (claims, corims) =
+                appraisal_inputs("0x00000004", vec![mcu, triple("0x00000004", 0xAA)]);
+            let report = appraise(&claims, &corims, None).unwrap();
+
+            assert!(!report.all_passed(), "{field}");
+            assert!(!report.results[0].missing_optional_claim);
+            assert!(!report.results[0].env_matched);
+        }
+    }
+
+    #[test]
+    fn present_mcu_rt_measurements_are_required() {
+        for (key, digest, expected_pass) in [(1u64, 0xAA, true), (1, 0xBB, false), (2, 0xAA, false)]
+        {
+            let mut mcu = triple("0x00000002", digest);
+            mcu.ref_claims[0].mkey = Some(MeasuredElementTypeChoice::UInt(key.into()));
+            let (claims, corims) =
+                appraisal_inputs("0x00000004", vec![mcu, triple("0x00000004", 0xAA)]);
+            let report = appraise(&claims, &corims, None).unwrap();
+
+            assert_eq!(report.all_passed(), expected_pass);
+            assert!(!report.results[0].missing_optional_claim);
+            assert!(report.results[0].env_matched);
+        }
+    }
+
+    #[test]
+    fn nonce_mismatch_still_fails_with_missing_mcu_rt() {
+        let (claims, corims) = appraisal_inputs("0x00000004", vec![triple("0x00000004", 0xAA)]);
+        let nonce = hex::encode([0; 32]);
+        let report = appraise(&claims, &corims, Some(&nonce)).unwrap();
+
+        assert!(report.results[0].missing_optional_claim);
+        assert!(!report.verifier_checks[0].passed);
+        assert!(!report.all_passed());
+    }
 }
 
 mod cose_verify_tests {
@@ -529,6 +699,52 @@ mod eat_claims_tests {
         assert!(
             Evidence::decode(&encoded, &ta).is_err(),
             "measurements with wrong type should fail"
+        );
+    }
+
+    #[test]
+    fn accept_ecc_mldsa_eat_profile_oid() {
+        let ecc_mldsa_oid = Value::Bytes(b"1.3.6.1.4.1.42623.1.4".to_vec());
+        let (pkey, cert_der) = generate_key_and_cert("ecc-mldsa-oid");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(None, None, Some(ecc_mldsa_oid), None);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        let ev = Evidence::decode(&encoded, &ta).expect("1.3.6.1.4.1.42623.1.4 should be accepted");
+        assert_eq!(ev.claims().eat_profile, "1.3.6.1.4.1.42623.1.4");
+    }
+
+    #[test]
+    fn accept_cose_algorithms() {
+        use coset::iana::Algorithm;
+        use coset::RegisteredLabelWithPrivate;
+        use ocptoken::cose_verify::SigningAlgorithm;
+
+        assert_eq!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::Assigned(
+                Algorithm::ES384
+            ))
+            .unwrap(),
+            SigningAlgorithm::ES384
+        );
+        assert_eq!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::Assigned(
+                Algorithm::ESP384
+            ))
+            .unwrap(),
+            SigningAlgorithm::ESP384
+        );
+        assert_eq!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::Assigned(
+                Algorithm::ML_DSA_87
+            ))
+            .unwrap(),
+            SigningAlgorithm::MLDSA87
+        );
+        // Private use is rejected
+        assert!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::PrivateUse(-50))
+                .is_err()
         );
     }
 }

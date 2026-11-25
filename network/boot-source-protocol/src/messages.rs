@@ -65,7 +65,7 @@ impl Status {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCode {
     InvalidMessageType = 0x01,
-    InvalidFirmwareId = 0x02,
+    InvalidIdentifier = 0x02,
     ImageNotFound = 0x03,
     ChecksumMismatch = 0x04,
     TransferTimeout = 0x05,
@@ -85,7 +85,7 @@ impl ErrorCode {
     pub fn from_u8(val: u8) -> Option<Self> {
         match val {
             0x01 => Some(Self::InvalidMessageType),
-            0x02 => Some(Self::InvalidFirmwareId),
+            0x02 => Some(Self::InvalidIdentifier),
             0x03 => Some(Self::ImageNotFound),
             0x04 => Some(Self::ChecksumMismatch),
             0x05 => Some(Self::TransferTimeout),
@@ -108,9 +108,9 @@ impl ErrorCode {
     }
 }
 
-pub const FIRMWARE_ID_CALIPTRA_FMC_RT: u8 = 0x00;
-pub const FIRMWARE_ID_SOC_MANIFEST: u8 = 0x01;
-pub const FIRMWARE_ID_MCU_RT: u8 = 0x02;
+pub const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00;
+pub const SOC_MANIFEST_IDENTIFIER: u32 = 0x01;
+pub const MCU_RT_IDENTIFIER: u32 = 0x02;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, FromBytes, IntoBytes, Immutable, KnownLayout)]
@@ -156,18 +156,18 @@ impl InitiateBootResponse {
 #[derive(Debug, Clone, Copy, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct ImageMetadataRequest {
     pub message_type: u8,
-    pub firmware_id: u8,
-    pub reserved: [u8; 2],
+    pub reserved: [u8; 3],
+    pub identifier: u32,
 }
 
 impl ImageMetadataRequest {
     pub const SIZE: usize = core::mem::size_of::<Self>();
 
-    pub fn new(firmware_id: u8) -> Self {
+    pub fn new(identifier: u32) -> Self {
         Self {
             message_type: MessageType::ImageMetadataRequest.as_u8(),
-            firmware_id,
-            reserved: [0u8; 2],
+            reserved: [0u8; 3],
+            identifier,
         }
     }
 }
@@ -222,22 +222,20 @@ impl ImageMetadataResponse {
 #[derive(Debug, Clone, Copy, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct ImageDownloadRequest {
     pub message_type: u8,
-    pub firmware_id: u8,
-    pub reserved0: [u8; 2],
+    pub reserved0: [u8; 3],
+    pub identifier: u32,
     pub reserved1: u32,
-    pub reserved2: u32,
 }
 
 impl ImageDownloadRequest {
     pub const SIZE: usize = core::mem::size_of::<Self>();
 
-    pub fn new(firmware_id: u8) -> Self {
+    pub fn new(identifier: u32) -> Self {
         Self {
             message_type: MessageType::ImageDownloadRequest.as_u8(),
-            firmware_id,
-            reserved0: [0u8; 2],
+            reserved0: [0u8; 3],
+            identifier,
             reserved1: 0,
-            reserved2: 0,
         }
     }
 }
@@ -336,21 +334,21 @@ impl ImageChunk {
 #[derive(Debug, Clone, Copy, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct ChunkAck {
     pub message_type: u8,
-    pub firmware_id: u8,
+    pub reserved: u8,
     pub sequence_number: u16,
-    pub reserved: u32,
+    pub identifier: u32,
     pub flags: ChunkAckFlags,
 }
 
 impl ChunkAck {
     pub const SIZE: usize = core::mem::size_of::<Self>();
 
-    pub fn new(firmware_id: u8, sequence_number: u16, flags: ChunkAckFlags) -> Self {
+    pub fn new(identifier: u32, sequence_number: u16, flags: ChunkAckFlags) -> Self {
         Self {
             message_type: MessageType::ChunkAck.as_u8(),
-            firmware_id,
-            sequence_number,
             reserved: 0,
+            sequence_number,
+            identifier,
             flags,
         }
     }
@@ -486,7 +484,7 @@ mod tests {
     fn error_code_round_trip() {
         let variants = [
             (0x01, ErrorCode::InvalidMessageType),
-            (0x02, ErrorCode::InvalidFirmwareId),
+            (0x02, ErrorCode::InvalidIdentifier),
             (0x03, ErrorCode::ImageNotFound),
             (0x04, ErrorCode::ChecksumMismatch),
             (0x05, ErrorCode::TransferTimeout),
@@ -549,7 +547,7 @@ mod tests {
     fn packet_sizes() {
         assert_eq!(InitiateBootRequest::SIZE, 8);
         assert_eq!(InitiateBootResponse::SIZE, 4);
-        assert_eq!(ImageMetadataRequest::SIZE, 4);
+        assert_eq!(ImageMetadataRequest::SIZE, 8);
         assert_eq!(ImageMetadataResponse::SIZE, 52);
         assert_eq!(ImageDownloadRequest::SIZE, 12);
         assert_eq!(ImageChunkHeader::SIZE, 12);
@@ -589,14 +587,15 @@ mod tests {
 
     #[test]
     fn image_metadata_request_serialization() {
-        let pkt = ImageMetadataRequest::new(FIRMWARE_ID_MCU_RT);
+        let pkt = ImageMetadataRequest::new(MCU_RT_IDENTIFIER);
 
         assert_eq!(pkt.message_type, MessageType::ImageMetadataRequest.as_u8());
-        assert_eq!(pkt.firmware_id, 0x02);
+        assert_eq!(pkt.identifier, 0x02);
 
         let bytes = pkt.as_bytes();
         assert_eq!(bytes[0], 0x02);
-        assert_eq!(bytes[1], 0x02);
+        assert_eq!(bytes[1..4], [0, 0, 0]);
+        assert_eq!(bytes[4..8], MCU_RT_IDENTIFIER.to_le_bytes());
     }
 
     #[test]
@@ -622,23 +621,55 @@ mod tests {
 
     #[test]
     fn image_download_request_serialization() {
-        let pkt = ImageDownloadRequest::new(FIRMWARE_ID_SOC_MANIFEST);
+        let pkt = ImageDownloadRequest::new(SOC_MANIFEST_IDENTIFIER);
 
         assert_eq!(pkt.message_type, MessageType::ImageDownloadRequest.as_u8());
-        assert_eq!(pkt.firmware_id, 0x01);
+        assert_eq!(pkt.identifier, 0x01);
+        assert_eq!(pkt.as_bytes()[1..4], [0, 0, 0]);
+        assert_eq!(pkt.as_bytes()[4..8], SOC_MANIFEST_IDENTIFIER.to_le_bytes());
+        assert_eq!(pkt.as_bytes()[8..12], [0, 0, 0, 0]);
     }
 
     #[test]
     fn chunk_ack_serialization() {
         let mut flags = ChunkAckFlags(0);
         flags.set_ready_for_next(true);
-        let pkt = ChunkAck::new(FIRMWARE_ID_CALIPTRA_FMC_RT, 42, flags);
+        let pkt = ChunkAck::new(CALIPTRA_FMC_RT_IDENTIFIER, 42, flags);
 
         assert_eq!(pkt.message_type, MessageType::ChunkAck.as_u8());
-        assert_eq!(pkt.firmware_id, 0x00);
+        assert_eq!(pkt.identifier, 0x00);
         assert_eq!(pkt.sequence_number, 42);
         assert!(pkt.flags.ready_for_next());
         assert!(!pkt.flags.error_detected());
+        assert_eq!(pkt.as_bytes()[1], 0);
+        assert_eq!(pkt.as_bytes()[2..4], 42u16.to_le_bytes());
+        assert_eq!(
+            pkt.as_bytes()[4..8],
+            CALIPTRA_FMC_RT_IDENTIFIER.to_le_bytes()
+        );
+        assert_eq!(pkt.as_bytes()[8..12], 1u32.to_le_bytes());
+    }
+
+    #[test]
+    fn identifiers_preserve_all_four_bytes() {
+        for identifier in [0, 1, 2, 0x1000, 0xFFFF, 0x10000, 0x12345678, u32::MAX] {
+            let metadata = ImageMetadataRequest::new(identifier);
+            assert_eq!(metadata.as_bytes()[4..8], identifier.to_le_bytes());
+            let parsed: &ImageMetadataRequest = parse_fixed(metadata.as_bytes()).unwrap();
+            assert_eq!(parsed.identifier, identifier);
+
+            let download = ImageDownloadRequest::new(identifier);
+            assert_eq!(download.as_bytes()[4..8], identifier.to_le_bytes());
+            let parsed: &ImageDownloadRequest = parse_fixed(download.as_bytes()).unwrap();
+            assert_eq!(parsed.identifier, identifier);
+
+            let ack = ChunkAck::new(identifier, u16::MAX, ChunkAckFlags(1));
+            assert_eq!(ack.as_bytes()[4..8], identifier.to_le_bytes());
+            let parsed: &ChunkAck = parse_fixed(ack.as_bytes()).unwrap();
+            assert_eq!(parsed.identifier, identifier);
+            assert_eq!(parsed.sequence_number, u16::MAX);
+            assert!(parsed.flags.ready_for_next());
+        }
     }
 
     #[test]
@@ -836,7 +867,7 @@ mod tests {
 
     #[test]
     fn parse_fixed_works() {
-        let pkt = ImageMetadataRequest::new(FIRMWARE_ID_CALIPTRA_FMC_RT);
+        let pkt = ImageMetadataRequest::new(CALIPTRA_FMC_RT_IDENTIFIER);
         let bytes = pkt.as_bytes();
 
         let parsed: &ImageMetadataRequest = parse_fixed(bytes).unwrap();
@@ -844,7 +875,7 @@ mod tests {
             parsed.message_type,
             MessageType::ImageMetadataRequest.as_u8()
         );
-        assert_eq!(parsed.firmware_id, FIRMWARE_ID_CALIPTRA_FMC_RT);
+        assert_eq!(parsed.identifier, CALIPTRA_FMC_RT_IDENTIFIER);
     }
 
     #[test]

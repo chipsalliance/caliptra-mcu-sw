@@ -17,7 +17,9 @@ use caliptra_mcu_command_auth_challenge_signer::{CommandAuthChallengeSigner, Hyb
 use caliptra_mcu_core_util_host_command_types::attestation::{
     formats_from_bitmap, AsymAlgo, AttestationValidationError, EvidenceFormat, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    AttestedCsrValidationError, CERT_CHAIN_DIGEST_SIZE, MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
     GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
@@ -26,11 +28,10 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
-    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
-    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
-    OCP_LOCK_FAMILY_ID,
+    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID, OCP_LOCK_FAMILY_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
@@ -381,6 +382,7 @@ pub fn run_dot(
         cak,
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: lock_auth.nonce,
             ecc_pub_x: lock_auth.ecc_pub_x,
             ecc_pub_y: lock_auth.ecc_pub_y,
@@ -420,6 +422,7 @@ pub fn run_dot(
     };
     let backup_request = GetDotBackupBlobRequest {
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: backup_auth.nonce,
             ecc_pub_x: backup_auth.ecc_pub_x,
             ecc_pub_y: backup_auth.ecc_pub_y,
@@ -466,6 +469,7 @@ pub fn run_dot(
         cak,
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: rotate_auth.nonce,
             ecc_pub_x: rotate_auth.ecc_pub_x,
             ecc_pub_y: rotate_auth.ecc_pub_y,
@@ -560,6 +564,7 @@ pub fn run_dot(
     let disable_request = DotDisableRequest {
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: disable_auth.nonce,
             ecc_pub_x: disable_auth.ecc_pub_x,
             ecc_pub_y: disable_auth.ecc_pub_y,
@@ -850,11 +855,12 @@ struct AuthorizedCommandAuthorization {
 impl AuthorizedCommandAuthorization {
     fn as_command_data(&self) -> AuthorizedCommandData<'_> {
         AuthorizedCommandData {
-            sig: &self.sig,
+            metadata: Default::default(),
             nonce: &self.nonce,
             ecc_pub_x: &self.ecc_pub_x,
             ecc_pub_y: &self.ecc_pub_y,
             mldsa_pub: &self.mldsa_pub,
+            sig: &self.sig,
         }
     }
 }
@@ -1234,7 +1240,9 @@ fn signed_ocp_lock_rotate_hek(
     slot: u32,
     authorizer: &dyn CommandAuthChallengeSigner,
 ) -> Result<(), AuthorizedCommandError> {
-    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID
+        .to_le_bytes()
+        .to_vec();
     payload.extend_from_slice(&slot.to_le_bytes());
     let auth = authorize_command(client, OCP_LOCK_FAMILY_ID, &payload, Some(authorizer))
         .map_err(AuthorizedCommandError::Preparation)?;
@@ -1242,11 +1250,12 @@ fn signed_ocp_lock_rotate_hek(
         .ocp_lock_rotate_hek(
             slot,
             AuthorizedCommandData {
-                sig: &auth.sig,
+                metadata: Default::default(),
                 nonce: &auth.nonce,
                 ecc_pub_x: &auth.ecc_pub_x,
                 ecc_pub_y: &auth.ecc_pub_y,
                 mldsa_pub: &auth.mldsa_pub,
+                sig: &auth.sig,
             },
         )
         .map(|_| ())
@@ -1262,12 +1271,45 @@ fn signed_ocp_lock_set_perma_hek(
         .map_err(AuthorizedCommandError::Preparation)?;
     client
         .ocp_lock_set_perma_hek(AuthorizedCommandData {
-            sig: &auth.sig,
+            metadata: Default::default(),
             nonce: &auth.nonce,
             ecc_pub_x: &auth.ecc_pub_x,
             ecc_pub_y: &auth.ecc_pub_y,
             mldsa_pub: &auth.mldsa_pub,
+            sig: &auth.sig,
         })
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_auth_set_cert_chain(
+    client: &mut SpdmVdmClient,
+    pki_entity_slot: u32,
+    algorithm: u32,
+    total_size: u32,
+    expected_sha384: &[u8; CERT_CHAIN_DIGEST_SIZE],
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let mut payload = Vec::with_capacity(60);
+    payload.extend_from_slice(&pki_entity_slot.to_le_bytes());
+    payload.extend_from_slice(&algorithm.to_le_bytes());
+    payload.extend_from_slice(&total_size.to_le_bytes());
+    payload.extend_from_slice(expected_sha384);
+    let auth = authorize_command(
+        client,
+        MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .auth_set_cert_chain(
+            pki_entity_slot,
+            algorithm,
+            total_size,
+            expected_sha384,
+            auth.as_command_data(),
+        )
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -1514,6 +1556,30 @@ fn run_fuse_suite(
                 Some(authorizer),
                 verbose,
             ));
+            results.push(expect_completion(
+                "AuthSetCertChain rejects Tenant slot with Owner authority",
+                signed_auth_set_cert_chain(
+                    client,
+                    PkiEntitySlot::Tenant as u32,
+                    AsymAlgo::EccP384 as u32,
+                    512,
+                    &hash,
+                    authorizer,
+                ),
+                CaliptraVdmCompletionCode::AccessDenied,
+            ));
+            results.push(expect_completion(
+                "AuthSetCertChain rejects invalid algorithm",
+                signed_auth_set_cert_chain(
+                    client,
+                    PkiEntitySlot::Owner as u32,
+                    99,
+                    512,
+                    &hash,
+                    authorizer,
+                ),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ));
             results
         }
         "provision-vendor-pk-hash" => vec![
@@ -1697,7 +1763,11 @@ fn run_fuse_suite(
         "ocp-lock-set-perma-hek" => vec![
             expect_completion(
                 "OLSP rejects native 0x13 access",
-                send_native_ocp_lock_command(client, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, &[]),
+                send_native_ocp_lock_command(
+                    client,
+                    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+                    &[],
+                ),
                 CaliptraVdmCompletionCode::AccessDenied,
             ),
             expect_success(

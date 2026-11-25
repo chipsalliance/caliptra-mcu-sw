@@ -11,6 +11,8 @@ use kernel::{ErrorCode, ProcessId};
 
 pub const MCU_MBOX0_DRIVER_NUM: usize = 0x8000_0010;
 
+const IS_PL0_AXI_USER: usize = 4;
+
 // Read-only buffer to read the response from.
 mod ro_allow {
     pub const RESPONSE: usize = 0;
@@ -37,6 +39,7 @@ mod upcall {
 #[derive(Copy, Clone)]
 struct StagedRequest {
     command: u32,
+    axi_user: u32,
     dlen: usize,
 }
 
@@ -56,6 +59,7 @@ pub struct McuMboxDriver<'a, T: hil::Mailbox<'a>> {
     >,
     current_app: OptionalCell<ProcessId>,
     staged_request: OptionalCell<StagedRequest>,
+    pl0_axi_users: &'a [u32],
 }
 
 impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
@@ -67,12 +71,14 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
+        pl0_axi_users: &'a [u32],
     ) -> Self {
         McuMboxDriver {
             driver,
             apps,
             current_app: OptionalCell::empty(),
             staged_request: OptionalCell::empty(),
+            pl0_axi_users,
         }
     }
 
@@ -127,7 +133,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         Ok(())
     }
 
-    fn stage_request(&self, command: u32, dlen: usize) {
+    fn stage_request(&self, command: u32, axi_user: u32, dlen: usize) {
         // Print warning if replacing an old staged request
         if self.staged_request.is_some() {
             capsule_debug!(
@@ -136,7 +142,11 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             );
         }
         // Always replace the old staged request with the new one
-        self.staged_request.set(StagedRequest { command, dlen });
+        self.staged_request.set(StagedRequest {
+            command,
+            axi_user,
+            dlen,
+        });
     }
 
     fn deliver_message(
@@ -154,6 +164,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         }
 
         let command = staged.command;
+        let axi_user = staged.axi_user;
         let dlen = staged.dlen;
         let dw_len = dlen.div_ceil(4);
 
@@ -186,9 +197,10 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
         match result {
             Ok(Ok(len)) => {
-                if let Err(_e) = kernel_data
-                    .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
-                {
+                if let Err(_e) = kernel_data.schedule_upcall(
+                    upcall::REQUEST_RECEIVED,
+                    (command as usize, len, axi_user as usize),
+                ) {
                     capsule_debug!(
                         "MCU_MBOX",
                         "deliver_message error scheduling upcall: {}",
@@ -223,7 +235,13 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 }
 
 impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
-    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize) {
+    fn request_received(
+        &self,
+        command: u32,
+        axi_user: u32,
+        rx_buf: &'static mut [u32],
+        dlen: usize,
+    ) {
         let dw_len = dlen.div_ceil(4);
         if dw_len > rx_buf.len() {
             capsule_debug!(
@@ -280,7 +298,10 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
             match process_result {
                 Ok(Ok(len)) => {
                     if kernel_data
-                        .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
+                        .schedule_upcall(
+                            upcall::REQUEST_RECEIVED,
+                            (command as usize, len, axi_user as usize),
+                        )
                         .is_ok()
                     {
                         delivered = true;
@@ -309,7 +330,7 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
         // sender stays blocked until the command status is set, so only record the
         // notification.
         if !delivered {
-            self.stage_request(command, dlen);
+            self.stage_request(command, axi_user, dlen);
         }
     }
 
@@ -424,6 +445,12 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                     Ok(Ok(())) => CommandReturn::success(),
                     Ok(Err(e)) | Err(e) => CommandReturn::failure(e),
                 }
+            }
+            // Check if AXI user is configured as a privileged (PL0) user
+            IS_PL0_AXI_USER => {
+                let axi_user = arg1 as u32;
+                let is_pl0 = self.pl0_axi_users.contains(&axi_user);
+                CommandReturn::success_u32(u32::from(is_pl0))
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
