@@ -35,6 +35,8 @@ mod test_i3c_faults;
 mod test_i3c_simple;
 mod test_log_flash_usermode;
 mod test_mctp_capsule_loopback;
+#[cfg(not(feature = "fpga_realtime"))]
+mod test_mctp_i3c_pec;
 mod test_mctp_spdm_attestation;
 mod test_mctp_spdm_attestation_pcr_quote;
 mod test_mctp_spdm_responder_conformance;
