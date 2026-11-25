@@ -21,7 +21,7 @@ use std::io::IsTerminal;
 use std::rc::Rc;
 
 // CPU Main Loop (free_run no GDB)
-fn free_run(mut emulator: Emulator) {
+fn free_run(mut emulator: Emulator) -> io::Result<()> {
     while caliptra_mcu_testing_common::is_emulator_running() {
         match emulator.step() {
             StepAction::Break => break,
@@ -29,6 +29,11 @@ fn free_run(mut emulator: Emulator) {
             _ => {}
         }
     }
+    #[cfg(hw_rev = "latest")]
+    if let Some(error) = emulator.usbip_error.take() {
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn main() -> io::Result<()> {
@@ -67,7 +72,7 @@ fn run(cli: EmulatorArgs, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         }
         _ => {
             // Create the emulator with all the setup
-            free_run(emulator);
+            free_run(emulator)?;
         }
     }
 

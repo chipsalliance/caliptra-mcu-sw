@@ -11,6 +11,8 @@ fn params() -> UsbParams {
     let registers = Box::leak(Box::new(unsafe { core::mem::zeroed() }));
     let memory = Box::leak(Box::new(unsafe { core::mem::zeroed() }));
     UsbParams {
+        enable_hub: false,
+        enable_logs: false,
         registers: unsafe { StaticRef::new(registers) },
         packet_memory: unsafe { StaticRef::new(memory) },
         vendor_id: 0x1234,
@@ -26,6 +28,72 @@ fn params() -> UsbParams {
 
 fn setup(raw: [u8; 8]) -> SetupPacket {
     zerocopy::transmute!(raw)
+}
+
+#[test]
+fn hub_policy_is_applied_before_connecting_without_forcing_vbus() {
+    let mut params = params();
+    params.enable_hub = true;
+    let registers = params.registers;
+    let driver = LpcipUsbDriver::new(params);
+    registers.hub_descriptor_high[1].set(0x8000_0000);
+    registers.hub_descriptor_high[2].set(250);
+    registers.hub_descriptor_high[49].set(0x8000_0000);
+    registers.hub_descriptor_high[50].set(250);
+    driver.configure_hub(false).unwrap();
+    assert!(registers.hub_control.is_set(Control::Enable));
+    assert!(!registers.hub_control.is_set(Control::Dcon));
+    assert!(!registers.hub_control.is_set(Control::ForceVbus));
+    assert!(!registers.hub_control.is_set(Control::LpmSup));
+    for (attributes, power) in [(1, 2), (49, 50)] {
+        assert_eq!(registers.hub_descriptor_high[attributes].get() >> 24, 0xc0);
+        assert_eq!(registers.hub_descriptor_high[power].get() & 0xff, 5);
+    }
+    let before = registers.hub_descriptor_high[1].get();
+    driver.configure_hub(true).unwrap();
+    assert!(registers.hub_control.is_set(Control::Dcon));
+    assert_eq!(registers.hub_descriptor_high[1].get(), before);
+}
+
+#[test]
+fn direct_device_initialization_preserves_hub_policy() {
+    let params = params();
+    let registers = params.registers;
+    registers.hub_control.set(0x1234_5678);
+    let mut driver = LpcipUsbDriver::new(params);
+    assert_eq!(driver.initialize(), Err(UsbError::UnsupportedPhyInterface));
+    assert_eq!(registers.hub_control.get(), 0x1234_5678);
+}
+
+#[test]
+fn verbose_logs_are_opt_in_without_changing_errors() {
+    use std::string::String;
+    use std::sync::{Arc, Mutex};
+
+    struct Capture(Arc<Mutex<String>>);
+    impl core::fmt::Write for Capture {
+        fn write_str(&mut self, text: &str) -> core::fmt::Result {
+            self.0.lock().unwrap().push_str(text);
+            Ok(())
+        }
+    }
+    let output = Arc::new(Mutex::new(String::new()));
+    caliptra_mcu_romtime::set_printer(Box::leak(Box::new(Capture(output.clone()))));
+    for enabled in [false, true] {
+        output.lock().unwrap().clear();
+        let mut params = params();
+        params.enable_hub = true;
+        params.enable_logs = enabled;
+        let mut driver = LpcipUsbDriver::new(params);
+        assert_eq!(driver.initialize(), Err(UsbError::UnsupportedPhyInterface));
+        let output = output.lock().unwrap();
+        if enabled {
+            assert!(output.contains("[usb] Initializing Device 0: hub=true"));
+            assert!(output.contains("[usb] Hub enabled, connected=false"));
+        } else {
+            assert!(output.is_empty(), "{output}");
+        }
+    }
 }
 
 fn bytes(params: &UsbParams, raw: [u8; 8]) -> ([u8; 64], usize) {

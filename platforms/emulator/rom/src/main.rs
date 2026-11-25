@@ -21,7 +21,10 @@ compile_error!("LPCIP USB enumeration requires CALIPTRA_HW_REV=latest");
 #[cfg(all(
     target_arch = "riscv32",
     hw_rev = "latest",
-    feature = "test-lpcip-usb-enumeration"
+    any(
+        feature = "test-lpcip-usb-enumeration",
+        feature = "test-lpcip-usb-ocp-recovery"
+    )
 ))]
 mod usb;
 

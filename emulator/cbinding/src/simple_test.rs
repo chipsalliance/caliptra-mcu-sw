@@ -50,6 +50,8 @@ fn test_emulator_args_creation() {
         flash_based_boot: false,
         #[cfg(hw_rev = "latest")]
         usb_recovery: false,
+        #[cfg(hw_rev = "latest")]
+        usbip_listen: None,
         i3c_port: None,
         device_security_state: DeviceLifecycle::Production as u32,
         test_feature: None,

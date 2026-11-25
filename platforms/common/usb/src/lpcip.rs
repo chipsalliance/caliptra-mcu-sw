@@ -3,9 +3,9 @@
 use caliptra_mcu_ocp::usb::descriptors::*;
 use caliptra_mcu_ocp::usb::setup::SetupPacket;
 use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem};
-use caliptra_mcu_romtime::StaticRef;
-use tock_registers::interfaces::{Readable, Writeable};
-use usb_combo::bits::{ConfigT, DevcmdstatT, UlpidebugT};
+use caliptra_mcu_romtime::{HexWord, StaticRef};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use usb_combo::bits::{ConfigT, Control, DevcmdstatT, UlpidebugT};
 use zerocopy::IntoBytes;
 
 const PACKET_SIZE: usize = 64;
@@ -32,6 +32,10 @@ pub struct UsbParams {
     /// Currently unsupported: initialization rejects `true`.
     pub remote_wakeup: bool,
     pub force_full_speed: bool,
+    /// Select the hardware-serviced hub with Device 0 on port 1.
+    pub enable_hub: bool,
+    /// Enable verbose bring-up/link logs without suppressing caller-reported errors.
+    pub enable_logs: bool,
     /// Maximum MMIO polls per PHY access, VBUS wait or endpoint cancellation.
     pub poll_limit: u32,
 }
@@ -46,6 +50,7 @@ pub enum UsbError {
     PhyAccessTimeout,
     PhyIdentityMismatch,
     PhyConfigurationMismatch,
+    HubConfigurationMismatch,
     VbusTimeout,
     CancellationTimeout,
     NotInitialized,
@@ -118,6 +123,8 @@ pub struct LpcipUsbDriver {
     address: u8,
     configuration: u8,
     initialized: bool,
+    connected: bool,
+    status_only: bool,
     buffer_base: u32,
 }
 
@@ -129,6 +136,8 @@ impl LpcipUsbDriver {
             address: 0,
             configuration: 0,
             initialized: false,
+            connected: false,
+            status_only: false,
             buffer_base: 0,
         }
     }
@@ -137,15 +146,35 @@ impl LpcipUsbDriver {
         self.configuration
     }
 
+    /// Disable hardware OCP claims and serve diagnostic reads through EP0.
+    pub fn enter_status_only(&mut self) {
+        self.params.registers.recovery_caliptra_ctrl.modify(
+            usb_combo::bits::CaliptraCtrl::OcpPathDisable::SET
+                + usb_combo::bits::CaliptraCtrl::OcpClaimAbort::SET,
+        );
+        self.status_only = true;
+    }
+
     /// Disconnect, initialize SRAM/ULPI, validate USB3320 and wait for real VBUS
     /// before asserting DCON. Errors leave Device 0 disconnected with its clock on.
     pub fn initialize(&mut self) -> Result<(), UsbError> {
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] Initializing Device 0: hub={} force_full_speed={}",
+                self.params.enable_hub,
+                self.params.force_full_speed
+            );
+        }
         self.initialized = false;
+        self.connected = false;
         self.address = 0;
         self.configuration = 0;
         self.stage = Stage::Idle;
         self.command(false, 0);
         self.validate()?;
+        if self.params.enable_hub {
+            self.configure_hub(false)?;
+        }
         if !self.params.registers.dev0_csr_config.is_set(ConfigT::Ulpi) {
             return Err(UsbError::UnsupportedPhyInterface);
         }
@@ -172,6 +201,13 @@ impl LpcipUsbDriver {
         for (address, value) in identity.iter_mut().enumerate() {
             *value = self.ulpi(address as u8, None)?;
         }
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] PHY VID={} PID={}",
+                HexWord(u32::from(u16::from_le_bytes([identity[0], identity[1]]))),
+                HexWord(u32::from(u16::from_le_bytes([identity[2], identity[3]])))
+            );
+        }
         if identity != [0x24, 0x04, 0x07, 0] {
             return Err(UsbError::PhyIdentityMismatch);
         }
@@ -190,7 +226,70 @@ impl LpcipUsbDriver {
             UsbError::VbusTimeout,
         )?;
         self.command(true, 0);
+        if self.params.enable_hub {
+            self.configure_hub(true)?;
+        }
         self.initialized = true;
+        self.connected = true;
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!("[usb] Device 0 connected after PHY/VBUS readiness");
+        }
+        Ok(())
+    }
+
+    fn configure_hub(&self, connected: bool) -> Result<(), UsbError> {
+        let control = Control::Enable::SET.value
+            | Control::ForceNeedclk::SET.value
+            | if self.params.self_powered {
+                Control::SelfPowered::SET.value
+            } else {
+                0
+            }
+            | if self.params.force_full_speed {
+                Control::ForceFullspeed::SET.value
+            } else {
+                0
+            }
+            | if connected {
+                Control::Dcon::SET.value
+            } else {
+                0
+            };
+        let registers = self.params.registers;
+        registers.hub_control.set(control);
+        if !connected {
+            for index in [1, 49] {
+                // Checked lookup keeps ROM builds free of bounds-check panic paths.
+                let attributes_register = registers
+                    .hub_descriptor_high
+                    .get(index)
+                    .ok_or(UsbError::HubConfigurationMismatch)?;
+                let power_register = registers
+                    .hub_descriptor_high
+                    .get(index + 1)
+                    .ok_or(UsbError::HubConfigurationMismatch)?;
+                let word = attributes_register.get();
+                let attributes = if self.params.self_powered {
+                    0xc0u32
+                } else {
+                    0x80
+                };
+                attributes_register.set((word & 0x00ff_ffff) | (attributes << 24));
+                let word = power_register.get();
+                power_register.set((word & !0xff) | u32::from(self.params.max_power_2ma));
+            }
+        }
+        let mask = Control::Enable::SET.value | Control::Dcon::SET.value;
+        if registers.hub_control.get() & mask != control & mask {
+            return Err(UsbError::HubConfigurationMismatch);
+        }
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] Hub enabled, connected={}, HUB_CONTROL={}",
+                connected,
+                HexWord(registers.hub_control.get())
+            );
+        }
         Ok(())
     }
 
@@ -310,7 +409,12 @@ impl LpcipUsbDriver {
             first[0], first[1], first[2], first[3], second[0], second[1], second[2], second[3],
         ]);
         self.cancel()?;
-        let result = match request(&self.params, &setup, self.address, self.configuration) {
+        let reply = if self.status_only && matches!(setup.bm_request_type.0, 0x21 | 0xa1) {
+            Self::status_request(self.params.registers, &setup)
+        } else {
+            request(&self.params, &setup, self.address, self.configuration)
+        };
+        let result = match reply {
             Ok(reply) => {
                 if let Some(action) = reply.action {
                     self.arm(true, 0)?;
@@ -345,18 +449,106 @@ impl LpcipUsbDriver {
         Ok(result)
     }
 
+    fn status_request(
+        registers: StaticRef<usb_combo::regs::UsbCombo>,
+        setup: &SetupPacket,
+    ) -> Result<Reply, UsbError> {
+        if setup.bm_request_type.0 != 0xa1
+            || setup.b_request != 0
+            || setup.w_value[1] != 0
+            || setup.w_index != [0, 0]
+        {
+            return Err(UsbError::UnsupportedRequest);
+        }
+        let words = match setup.w_value[0] {
+            0x22 => (
+                [
+                    registers.recovery_prot_cap_0.get(),
+                    registers.recovery_prot_cap_1.get(),
+                    registers.recovery_prot_cap_2.get(),
+                    registers.recovery_prot_cap_3.get(),
+                    0,
+                    0,
+                ],
+                15,
+            ),
+            0x23 => (
+                [
+                    registers.recovery_device_id_0.get(),
+                    registers.recovery_device_id_1.get(),
+                    registers.recovery_device_id_2.get(),
+                    registers.recovery_device_id_3.get(),
+                    registers.recovery_device_id_4.get(),
+                    registers.recovery_device_id_5.get(),
+                ],
+                24,
+            ),
+            0x24 => (
+                [
+                    registers.recovery_device_status_0.get(),
+                    registers.recovery_device_status_1.get(),
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
+                7,
+            ),
+            0x27 => ([registers.recovery_recovery_status.get(), 0, 0, 0, 0, 0], 2),
+            0x28 => ([registers.recovery_hw_status.get(), 0, 0, 0, 0, 0], 4),
+            0x2e => (
+                [
+                    registers.recovery_indirect_fifo_status_0.get(),
+                    registers.recovery_indirect_fifo_status_1.get(),
+                    registers.recovery_indirect_fifo_status_2.get(),
+                    registers.recovery_indirect_fifo_status_3.get(),
+                    registers.recovery_indirect_fifo_status_4.get(),
+                    0,
+                ],
+                20,
+            ),
+            _ => return Err(UsbError::UnsupportedRequest),
+        };
+        let mut data = [0; 24];
+        for (bytes, word) in data.chunks_exact_mut(4).zip(words.0) {
+            bytes.copy_from_slice(&word.to_le_bytes());
+        }
+        Reply::read(&data[..words.1], usize::from(setup.data_length()))
+    }
+
     pub fn poll(&mut self) -> Result<UsbPoll, UsbError> {
         if !self.initialized {
             return Err(UsbError::NotInitialized);
         }
         let command = self.params.registers.dev0_csr_devcmdstat.get();
         if command & DevcmdstatT::VbusDebounced::SET.value == 0 {
+            if !self.connected {
+                return Ok(UsbPoll::Idle);
+            }
             self.cancel()?;
+            self.address = 0;
             self.command(false, 0);
-            self.initialized = false;
+            if self.params.enable_hub {
+                self.configure_hub(false)?;
+            }
+            self.connected = false;
             self.configuration = 0;
             self.stage = Stage::Idle;
+            if self.params.enable_logs {
+                caliptra_mcu_romtime::println!("[usb] VBUS lost; Device 0 disconnected");
+            }
             return Ok(UsbPoll::Disconnected);
+        }
+        if !self.connected {
+            self.command(true, 0);
+            if self.params.enable_hub {
+                self.configure_hub(true)?;
+            }
+            self.connected = true;
+            if self.params.enable_logs {
+                caliptra_mcu_romtime::println!("[usb] VBUS restored; Device 0 reconnected");
+            }
+            return Ok(UsbPoll::BusReset);
         }
         if command & DevcmdstatT::DresC::SET.value != 0 {
             self.cancel()?;
@@ -364,6 +556,11 @@ impl LpcipUsbDriver {
             self.configuration = 0;
             self.stage = Stage::Idle;
             self.command(true, DevcmdstatT::DresC::SET.value);
+            if self.params.enable_logs {
+                caliptra_mcu_romtime::println!(
+                    "[usb] Bus reset; address and configuration cleared"
+                );
+            }
             return Ok(UsbPoll::BusReset);
         }
         if command & DevcmdstatT::Setup::SET.value != 0 {
@@ -398,10 +595,19 @@ impl LpcipUsbDriver {
                         // Selected RTL latches the next SETUP token's address.
                         self.address = address;
                         self.command(true, 0);
+                        if self.params.enable_logs {
+                            caliptra_mcu_romtime::println!("[usb] Address set to {}", address);
+                        }
                         Ok(UsbPoll::Progress)
                     }
                     Action::Configuration(configuration) => {
                         self.configuration = configuration;
+                        if self.params.enable_logs {
+                            caliptra_mcu_romtime::println!(
+                                "[usb] Configuration set to {}",
+                                configuration
+                            );
+                        }
                         Ok(UsbPoll::ConfigurationChanged(configuration))
                     }
                     Action::None => Ok(UsbPoll::Progress),
