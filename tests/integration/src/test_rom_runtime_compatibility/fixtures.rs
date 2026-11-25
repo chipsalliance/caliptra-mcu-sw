@@ -89,6 +89,32 @@ fn write_reference_manifest(manifest: &[u8], policy: &Path, output: &Path) -> Re
     Ok(())
 }
 
+/// Core firmwares prior to `caliptra-sw#4343` (`fw-2.1.5`) verify
+/// `AuthManifestPreamble::owner_pub_keys_signatures` over `owner_pub_keys`
+/// alone rather than `version || svn || flags || owner_pub_keys`.
+fn resign_legacy_owner_preamble(path: &Path) -> Result<()> {
+    use caliptra_image_crypto::RustCrypto as Crypto;
+    use caliptra_image_fake_keys::{
+        OWNER_ECC_KEY_PRIVATE, OWNER_ECC_KEY_PUBLIC, OWNER_LMS_KEY_PRIVATE,
+    };
+    use caliptra_image_gen::ImageGeneratorCrypto;
+    use zerocopy::IntoBytes;
+
+    let mut bytes = fs::read(path)?;
+    let manifest = AuthorizationManifest::mut_from_bytes(&mut bytes)
+        .map_err(|error| anyhow::anyhow!("Invalid signed manifest: {error}"))?;
+    let crypto = Crypto::default();
+    let digest = crypto.sha384_digest(manifest.preamble.owner_pub_keys.as_bytes())?;
+    manifest.preamble.owner_pub_keys_signatures.ecc_sig =
+        crypto.ecdsa384_sign(&digest, &OWNER_ECC_KEY_PRIVATE, &OWNER_ECC_KEY_PUBLIC)?;
+    let lms_sig = crypto.lms_sign(&digest, &OWNER_LMS_KEY_PRIVATE)?;
+    let lms_bytes = lms_sig.as_bytes();
+    manifest.preamble.owner_pub_keys_signatures.pqc_sig.0[..lms_bytes.len()]
+        .copy_from_slice(lms_bytes);
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
 fn write_json(path: &Path, value: &serde_json::Value) -> Result<()> {
     fs::write(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
@@ -280,6 +306,46 @@ fn streaming_package_preserves_fixture_images() -> Result<()> {
     assert_eq!(
         image,
         FlashImage::new(&expected_images, &expected_headers).to_bytes()
+    );
+    Ok(())
+}
+
+#[test]
+fn resign_legacy_owner_preamble_covers_owner_pub_keys() -> Result<()> {
+    use caliptra_auth_man_types::AuthManifestImageMetadata;
+    use caliptra_image_fake_keys::OWNER_ECC_KEY_PUBLIC;
+    use caliptra_mcu_builder::offline_signing::verify_ecdsa384_signature;
+    use zerocopy::IntoBytes;
+
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("soc-manifest.bin");
+    let manifest = CaliptraBuilder::create_auth_manifest_with_metadata(
+        vec![AuthManifestImageMetadata::default()],
+        1,
+    );
+    fs::write(&path, manifest.as_bytes())?;
+
+    let legacy_digest: [u8; 48] =
+        sha2::Sha384::digest(manifest.preamble.owner_pub_keys.as_bytes()).into();
+    assert!(verify_ecdsa384_signature(
+        &legacy_digest,
+        &OWNER_ECC_KEY_PUBLIC,
+        &manifest.preamble.owner_pub_keys_signatures.ecc_sig,
+    )
+    .is_err());
+
+    resign_legacy_owner_preamble(&path)?;
+    let resigned_bytes = fs::read(&path)?;
+    let resigned = AuthorizationManifest::ref_from_bytes(&resigned_bytes)
+        .map_err(|error| anyhow::anyhow!("Invalid resigned manifest: {error}"))?;
+    verify_ecdsa384_signature(
+        &legacy_digest,
+        &OWNER_ECC_KEY_PUBLIC,
+        &resigned.preamble.owner_pub_keys_signatures.ecc_sig,
+    )?;
+    assert_eq!(
+        resigned.image_metadata_col.as_bytes(),
+        manifest.image_metadata_col.as_bytes()
     );
     Ok(())
 }
@@ -496,6 +562,9 @@ fn prepare_inputs() -> Result<()> {
                     ..runtime_args.clone()
                 });
                 builder.get_soc_manifest(Some(manifest_path.to_str().context("Manifest path")?))?;
+                if runtime != "main-2.1" {
+                    resign_legacy_owner_preamble(&manifest_path)?;
+                }
                 let bytes = fs::read(&manifest_path)?;
                 let manifest = AuthorizationManifest::ref_from_bytes(&bytes)
                     .map_err(|error| anyhow::anyhow!("Invalid signed manifest: {error}"))?;

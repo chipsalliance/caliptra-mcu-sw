@@ -64,7 +64,8 @@ pub(crate) fn expected_mcu_mailbox_capabilities(core_capabilities: [u8; 16]) -> 
             | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
             | AuthorizedSubcommandCapabilities::DOT_ROTATE
-            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB)
+            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
+            | AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN)
             .bits()
             .to_be_bytes(),
     );

@@ -37,6 +37,7 @@ struct BootstrapArgs<'a> {
 
 struct BuildTestArgs<'a> {
     package_filter: &'a Option<String>,
+    usb: bool,
 }
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
@@ -174,6 +175,10 @@ pub(crate) enum Fpga {
         /// Uses a `cargo-nextest` package filter-set, e.g. `package(caliptra-rom)`.
         #[arg(long)]
         package_filter: Option<String>,
+
+        /// Include optional Subsystem USB host support (`--features usb`).
+        #[arg(long)]
+        usb: bool,
     },
     /// Run FPGA tests
     Test {
@@ -191,6 +196,7 @@ pub(crate) enum Fpga {
 }
 
 pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
+    let fpga_path = caliptra_mcu_builder::hardware_revision()?.fpga_path();
     disable_all_cpus_idle(target_host)?;
 
     // Make file assumes we are in the same directory.
@@ -198,14 +204,14 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     // to build kernel modules.
     run_command(
         target_host,
-        "(cd caliptra-mcu-sw/hw/fpga/kernel-modules && make)",
+        &format!("(cd caliptra-mcu-sw/{fpga_path}/kernel-modules && make)"),
     )?;
 
     // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
     // to build kernel modules.
     run_command(
         target_host,
-        "sudo insmod caliptra-mcu-sw/hw/fpga/kernel-modules/io_module.ko",
+        &format!("sudo insmod caliptra-mcu-sw/{fpga_path}/kernel-modules/io_module.ko"),
     )?;
 
     fix_permissions(target_host)?;
@@ -289,6 +295,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             configuration,
             target_host,
             package_filter,
+            usb,
         } => {
             println!("Building FPGA tests");
             let resolved_target = resolve_target_host(target_host.as_deref());
@@ -297,7 +304,10 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             config
                 .executor()
                 .set_target_host(resolved_target.as_deref())
-                .build_test(&BuildTestArgs { package_filter })?;
+                .build_test(&BuildTestArgs {
+                    package_filter,
+                    usb: *usb,
+                })?;
         }
         Fpga::Bootstrap {
             target_host,

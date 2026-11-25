@@ -203,6 +203,11 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
             | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK;
     }
+    if cfg!(feature = "cert-provisioning")
+        && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
+        capabilities |= AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN;
+    }
     capabilities
 }
 
@@ -389,6 +394,16 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::provision_idevid_cert(alloc, algorithm, mode, data).await
     }
 
+    async fn auth_set_cert_chain(
+        &self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        total_size: u32,
+        expected_sha384: &[u8; 48],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::auth_set_cert_chain(entity, algorithm, total_size, expected_sha384).await
+    }
+
     /// Drain entries of `log_type` from the backing store.
     ///
     /// The debug log is backed by the Tock logging-flash capsule via
@@ -483,8 +498,11 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::program_field_entropy(alloc, partition).await
     }
 
-    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
-        device_ops::field_entropy_already_provisioned()
+    async fn field_entropy_status<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<u32> {
+        device_ops::field_entropy_status(alloc).await
     }
 
     async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
@@ -832,6 +850,10 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
             ocp_lock_transport
+        );
+        assert_eq!(
+            authorized.contains(AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN),
+            authorized_transport && cfg!(feature = "cert-provisioning")
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::OCP_LOCK),
