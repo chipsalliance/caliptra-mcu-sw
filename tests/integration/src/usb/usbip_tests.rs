@@ -20,6 +20,8 @@ use std::process::{Child, Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const STEP_QUANTUM: usize = 1000;
+
 struct Process(Option<Child>);
 
 impl Process {
@@ -264,6 +266,51 @@ impl Fixture {
         }
     }
 
+    fn mci_read(&mut self, offset: u32) -> Result<u32> {
+        let address = EMULATOR_MEMORY_MAP.mci_offset + offset;
+        match &mut self.executor {
+            Executor::Model { model, .. } => model.mcu_bus_for_test().read(RvSize::Word, address),
+            Executor::Standalone(emulator) => emulator.mcu_cpu.bus.read(RvSize::Word, address),
+        }
+        .map_err(|error| anyhow::anyhow!("read MCI register {offset:#x}: {error:?}"))
+    }
+
+    fn mci_write(&mut self, offset: u32, value: u32) -> Result<()> {
+        let address = EMULATOR_MEMORY_MAP.mci_offset + offset;
+        match &mut self.executor {
+            Executor::Model { model, .. } => {
+                model.mcu_bus_for_test().write(RvSize::Word, address, value)
+            }
+            Executor::Standalone(emulator) => {
+                emulator.mcu_cpu.bus.write(RvSize::Word, address, value)
+            }
+        }
+        .map_err(|error| anyhow::anyhow!("write MCI register {offset:#x}: {error:?}"))
+    }
+
+    fn budget_watchdog(&mut self, timeout: Duration) -> Result<()> {
+        if self.paused || !self.host().connected() {
+            return Ok(());
+        }
+        ensure!(
+            self.mci_read(0xb0)? & 1 != 0,
+            "USB ROM must keep the MCU watchdog enabled"
+        );
+        // wait_child advances STEP_QUANTUM ticks per 1-ms host poll. Give the
+        // watchdog the helper's bounded OS-stack budget, not a firmware-only budget.
+        let requested = u64::try_from(timeout.as_millis())?
+            .checked_mul(STEP_QUANTUM as u64)
+            .context("USB/IP watchdog budget overflow")?;
+        let current = (u64::from(self.mci_read(0xbc)?) << 32) | u64::from(self.mci_read(0xb8)?);
+        let ticks = current.max(requested);
+        self.mci_write(0xb8, ticks as u32)?;
+        self.mci_write(0xbc, (ticks >> 32) as u32)?;
+        self.mci_write(
+            0xb4,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer1Ctrl::Timer1Restart::SET.value,
+        )
+    }
+
     fn step(&mut self) -> Result<()> {
         match &mut self.executor {
             Executor::Model { server, .. } => server.poll().context("USB/IP bridge")?,
@@ -274,7 +321,7 @@ impl Fixture {
                 .poll()?,
             Executor::Standalone(_) => {}
         }
-        for _ in 0..1000 {
+        for _ in 0..STEP_QUANTUM {
             if self.paused {
                 break;
             }
@@ -298,6 +345,12 @@ impl Fixture {
             }
             .map_err(|error| anyhow::anyhow!("read MCU fatal error: {error:?}"))?;
             if fatal != 0 {
+                eprintln!(
+                    "USB ROM watchdog status={:#x}, timer1={}, timer2={}",
+                    self.mci_read(0xd0)?,
+                    self.mci_read(0xb8)?,
+                    self.mci_read(0xc8)?
+                );
                 eprintln!("USB ROM fatal error: {fatal:#x}; {}", self.log());
                 self.fatal = Some(fatal);
                 self.paused = true;
@@ -700,6 +753,9 @@ fn complete_boot(standalone: bool) -> Result<()> {
     let files = RecoveryFiles::new()?;
     let (fixture, capture) = recovery_fixture(&files, standalone)?;
     let (mut attachment, selector, cli) = attach_fixture(fixture)?;
+    attachment
+        .fixture
+        .budget_watchdog(Duration::from_secs(240))?;
     let output = check_output(attachment.fixture.wait_output_timeout(
         &mut files.command(&cli, &selector, 180000, 30000),
         Duration::from_secs(240),
@@ -756,6 +812,9 @@ fn usbip_linux_rejects_partial_word_corrupt_manifest() -> Result<()> {
     std::fs::write(&files.paths[1], &files.images[1])?;
     let (fixture, capture) = recovery_fixture(&files, false)?;
     let (mut attachment, selector, cli) = attach_fixture(fixture)?;
+    attachment
+        .fixture
+        .budget_watchdog(Duration::from_secs(240))?;
     let output = attachment.fixture.wait_output_timeout(
         &mut files.command(&cli, &selector, 180000, 30000),
         Duration::from_secs(240),
@@ -788,6 +847,9 @@ fn invalid_mcu_input(missing: bool) -> Result<()> {
     }
     let (fixture, capture) = recovery_fixture(&files, false)?;
     let (mut attachment, selector, cli) = attach_fixture(fixture)?;
+    attachment
+        .fixture
+        .budget_watchdog(Duration::from_secs(180))?;
     let output = attachment.fixture.wait_output_timeout(
         &mut files.command(&cli, &selector, 120000, 30000),
         Duration::from_secs(180),

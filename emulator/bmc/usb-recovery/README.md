@@ -115,6 +115,13 @@ including zero-padding of a partial final DWORD, and require the actual MCI
 `FIRMWARE_BOOT_FLOW_COMPLETE` milestone. CPUs stop at that milestone or a fatal
 ROM error while the bridge continues serving status and teardown requests.
 
+The OS-stack fixtures advance 1000 simulated CPU cycles per 1-ms host poll.
+They keep the MCU watchdog enabled, but budget its first timer for each bounded
+helper deadline without shortening the ROM-configured period. This test-only
+adjustment accounts for Linux/libusb scheduling and does not change production
+ROM watchdog policy. The emulator also routes the programmed MCI NMI vector to
+the CPU so a watchdog NMI does not fetch instructions from address zero.
+
 The required profile includes enumeration/probe, both complete boot paths,
 a corrupt partial-word manifest, missing and empty MCU images, detach and VBUS disconnect
 during a real FIFO transfer, and stalled-ROM timeout handling. Failure cases
