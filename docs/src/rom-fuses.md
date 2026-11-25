@@ -68,7 +68,7 @@ or remove the read path.
 
 | Fuse | Logical size | Notes |
 |---|---|---|
-| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | 32 bits | Reserved; neither MCU nor Caliptra Core currently checks the value |
+| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` (2.1 only) | 32 bits | Reserved; not checked. Absent from the latest map and not forwarded on latest |
 | `CPTRA_CORE_SOC_STEPPING_ID` | 16 bits | Lives in a 32-bit field; could be RTL-tied or strapped |
 | `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` | 1 bit | Lives in a 32-bit field; defaults to 0 (enforcement on). Should only be set on dev/manuf parts |
 | `CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER` | 128 bits (16 B) | Manufacturing HSM identifier |
@@ -113,7 +113,9 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   constant: MLDSA → 1, LMS → 3.
   _Example: LMS → OTP bytes `3f 00 00 00` → `FUSE_PQC_KEY_TYPE = 3`_
 
-- **`CPTRA_CORE_FMC_KEY_MANIFEST_SVN`** ✓ → `FUSE_FMC_KEY_MANIFEST_SVN`: raw u32
+- **`CPTRA_CORE_FMC_KEY_MANIFEST_SVN`** (2.1 only) ✓ → `FUSE_FMC_KEY_MANIFEST_SVN`: raw u32.
+  Latest no longer has this OTP field or forwards this input. The newly
+  allocated `MCU_RUNTIME_SVN` bitmap is not substituted for it.
 
 - **`CPTRA_CORE_RUNTIME_SVN`** ✓ → `FUSE_RUNTIME_SVN[0..3]`: raw u32 × 4
 
@@ -316,7 +318,7 @@ must preserve compatible read and write paths. See
 | OTP field | ECC | Recommended layout |
 |---|:---:|---|
 | `CPTRA_CORE_VENDOR_PK_HASH_{0..N}` | ✅ | `Single{bits:384}` |
-| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |
+| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` (2.1 only) | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |
 | `CPTRA_CORE_RUNTIME_SVN` | ❌ | `LinearMajorityVote{bits:128, dupe:3}` |
 | `CPTRA_CORE_SOC_MANIFEST_SVN` | ❌ | `LinearMajorityVote{bits:128, dupe:3}` |
 | `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |

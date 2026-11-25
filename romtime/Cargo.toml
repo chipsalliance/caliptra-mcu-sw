@@ -6,6 +6,9 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
+
 [dependencies]
 bitflags.workspace = true
 caliptra-api.workspace = true
