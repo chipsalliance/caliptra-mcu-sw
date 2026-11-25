@@ -2,7 +2,6 @@
 
 use caliptra_emu_bus::Bus;
 use caliptra_emu_types::RvSize;
-use caliptra_mcu_builder::{rom_build, CaliptraBuildArgs};
 use caliptra_mcu_emulator_periph::{LpcipUsbError, LpcipUsbSpeed};
 use caliptra_mcu_hw_model::{InitParams, McuHwModel, ModelEmulated};
 use std::sync::OnceLock;
@@ -11,14 +10,7 @@ const LIMIT: usize = 500_000;
 
 fn model(vbus: bool) -> ModelEmulated {
     static ROM: OnceLock<Vec<u8>> = OnceLock::new();
-    let rom = ROM.get_or_init(|| {
-        let path = rom_build(&CaliptraBuildArgs {
-            features: Some("test-lpcip-usb-enumeration"),
-            ..Default::default()
-        })
-        .unwrap();
-        std::fs::read(path).unwrap()
-    });
+    let rom = ROM.get_or_init(|| super::test_rom("test-lpcip-usb-enumeration").unwrap());
     let mut model = ModelEmulated::new_unbooted(InitParams {
         mcu_rom: rom,
         check_booted_to_runtime: false,
