@@ -760,17 +760,22 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Encode concise measurement evidence for all eligible manifest entries.
     ///
     /// Measurement API owns manifest iteration and selected-AK lineage policy;
-    /// callers provide only the output buffer. On success the returned length is
-    /// the complete encoded evidence size. A too-small buffer returns
+    /// callers may append request-scoped raw evidence in separate classes.
+    /// On success the returned length is the complete encoded evidence size.
+    /// A too-small buffer returns
     /// [`MeasurementApiError::EvidenceBufferTooSmall`] without returning a
     /// partial length.
     pub async fn encode_measurement_evidence<A: ScratchAlloc>(
         &self,
         alloc: &A,
         buffer: &mut [u8],
+        additional_evidence: &[crate::RawValueEvidence<'_>],
     ) -> MeasurementApiResult<usize> {
         self.attestation_state_active()?;
-        let measurement_count = self.evidence_measurement_count()?;
+        let measurement_count = self
+            .evidence_measurement_count()?
+            .checked_add(additional_evidence.len())
+            .ok_or(MeasurementApiError::EvidenceBufferTooSmall)?;
         let mut encoder = evidence::MeasurementEvidenceEncoder::new(
             buffer,
             self.manifest.vendor(),
@@ -786,6 +791,9 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             }
             let measurement = self.read_measurement(alloc, entry.fw_id).await?;
             encoder.encode_measurement(&measurement)?;
+        }
+        for measurement in additional_evidence {
+            encoder.encode_raw_value(measurement)?;
         }
         encoder.finish()
     }
@@ -1791,7 +1799,7 @@ mod tests {
                 encoder.finish()
             })();
             let mut actual = std::vec![0; CONCISE_EVIDENCE_MAX_SIZE];
-            let actual_result = run(api.encode_measurement_evidence(&TestAlloc, &mut actual));
+            let actual_result = run(api.encode_measurement_evidence(&TestAlloc, &mut actual, &[]));
             let reference_len = match reference_result {
                 Ok(len) => len,
                 Err(error) => {
@@ -1804,6 +1812,53 @@ mod tests {
             let actual_len = actual_result.unwrap();
             assert_eq!(&actual[..actual_len], &reference[..reference_len]);
             corim_rs::coev::TaggedConciseEvidence::from_cbor(&actual[..actual_len]).unwrap();
+        }
+    }
+
+    #[test]
+    fn additional_evidence_is_counted_without_becoming_firmware_inventory() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let kernel = fake::Kernel::new();
+        let base = valid_manifest_with_entries(&[(0x2000, 0)]);
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[0x2000]).unwrap();
+        api.state = AttestationState::Active;
+        let expected: Vec<_> = evidence_measurements()
+            .into_iter()
+            .filter(|value| value.target_env_id == 0x2000)
+            .collect();
+        let _stores = evidence_stores(&kernel, MCU_RT_FW_ID, &expected);
+        let additional = [crate::RawValueEvidence {
+            class_id: b"hardware",
+            raw_value: &[1, 1, 0, 1, 2, 3],
+        }];
+        for extra in [&additional[..], &[]] {
+            let mut reference = [0; 1024];
+            let mut encoder = evidence::MeasurementEvidenceEncoder::new(
+                &mut reference,
+                api.manifest.vendor(),
+                api.manifest.model(),
+                expected.len() + extra.len(),
+            )
+            .unwrap();
+            for value in &expected {
+                encoder.encode_measurement(value).unwrap();
+            }
+            for value in extra {
+                encoder.encode_raw_value(value).unwrap();
+            }
+            let reference_len = encoder.finish().unwrap();
+            let mut actual = [0; 1024];
+            let len = run(api.encode_measurement_evidence(&TestAlloc, &mut actual, extra)).unwrap();
+            assert_eq!(&actual[..len], &reference[..reference_len]);
+            let evidence =
+                corim_rs::coev::TaggedConciseEvidence::from_cbor(&actual[..len]).unwrap();
+            for triple in evidence.ev_triples.evidence_triples.as_ref().unwrap() {
+                assert!(triple
+                    .ref_claims
+                    .iter()
+                    .all(|measurement| measurement.mkey.is_none()));
+            }
+            assert_eq!(api.evidence_measurement_count().unwrap(), expected.len());
         }
     }
 
@@ -1842,7 +1897,7 @@ mod tests {
                 drop(records);
                 let mut buffer = std::vec![0; CONCISE_EVIDENCE_MAX_SIZE];
                 assert_eq!(
-                    run(api.encode_measurement_evidence(&TestAlloc, &mut buffer)),
+                    run(api.encode_measurement_evidence(&TestAlloc, &mut buffer, &[])),
                     Err(if fw_id == 0x10001 {
                         MeasurementApiError::InvalidSoftwarePcrStoreState
                     } else {
@@ -1865,12 +1920,12 @@ mod tests {
         let _stores = evidence_stores(&kernel, MCU_RT_FW_ID, &expected);
         let mut buffer = [0; 256];
         assert_eq!(
-            run(api.encode_measurement_evidence(&TestAlloc, &mut buffer)),
+            run(api.encode_measurement_evidence(&TestAlloc, &mut buffer, &[])),
             Err(MeasurementApiError::AttestationDisabled)
         );
         api.state = AttestationState::Active;
         assert_eq!(
-            run(api.encode_measurement_evidence(&TestAlloc, &mut buffer)),
+            run(api.encode_measurement_evidence(&TestAlloc, &mut buffer, &[])),
             Err(MeasurementApiError::EvidenceBufferTooSmall)
         );
     }

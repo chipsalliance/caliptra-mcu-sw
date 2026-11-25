@@ -48,7 +48,6 @@ mod hmac;
 pub mod image_loader;
 #[cfg(feature = "mailbox-io")]
 mod import;
-pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
 mod ml_kem;
 #[cfg(feature = "mailbox-io")]

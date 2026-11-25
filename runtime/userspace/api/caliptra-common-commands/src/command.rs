@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer};
+use crate::{
+    AsymAlgo, AuthSetCertChainPayload, CaliptraCmdHandler, CaliptraCmdResult,
+    CaliptraCompletionCode, CommandAuthorizer, PkiEntitySlot,
+};
 use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, SvnTarget, AUTH_CMD_NONCE_LEN,
@@ -28,7 +31,7 @@ const AUTHORIZATION_TRAILER_LEN: usize = core::mem::size_of::<AuthorizationBlock
 pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
 #[cfg(not(feature = "device-ownership-transfer"))]
 /// Largest payload supported by the canonical authorization buffers.
-pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = core::mem::size_of::<AuthSetCertChainPayload>();
 
 /// Largest canonical AuthorizedCommand body, including its target ID.
 pub const MAX_AUTHORIZED_REQUEST_LEN: usize =
@@ -106,6 +109,15 @@ struct FuseWritePayload {
     word_addr: U32,
     data: U32,
     mask: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct WireAuthSetCertChainPayload {
+    pki_entity_slot: U32,
+    algorithm: U32,
+    total_size: U32,
+    expected_sha384: [u8; 48],
 }
 
 #[cfg(feature = "ocp-lock")]
@@ -367,6 +379,23 @@ where
                 .await?;
             Ok(CommandResponse::Empty)
         }
+        value if value == CommandId::MC_AUTH_SET_CERT_CHAIN.0 => {
+            let payload = WireAuthSetCertChainPayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+            let entity = PkiEntitySlot::try_from(payload.pki_entity_slot.get())
+                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+            let algorithm = AsymAlgo::try_from(payload.algorithm.get())
+                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+            commands
+                .auth_set_cert_chain(
+                    entity,
+                    algorithm,
+                    payload.total_size.get(),
+                    &payload.expected_sha384,
+                )
+                .await?;
+            Ok(CommandResponse::Empty)
+        }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             execute_authorized_dot(commands, alloc, parsed.payload, output).await
         }
@@ -522,6 +551,9 @@ fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<u
         value if value == CommandId::MC_FUSE_READ.0 => Ok(core::mem::size_of::<FuseReadPayload>()),
         value if value == CommandId::MC_FUSE_WRITE.0 => {
             Ok(core::mem::size_of::<FuseWritePayload>())
+        }
+        value if value == CommandId::MC_AUTH_SET_CERT_CHAIN.0 => {
+            Ok(core::mem::size_of::<AuthSetCertChainPayload>())
         }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             authorized_dot_payload_len(request)

@@ -69,7 +69,7 @@ pub struct CaliptraBuildArgs<'a> {
     pub user_app_config_fingerprint: Option<String>,
 }
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -80,8 +80,10 @@ pub const TARGET: &str = "riscv32imc-unknown-none-elf";
 
 pub static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
     let current_dir = std::env::current_dir().expect("Could not get current directory");
-    if current_dir.join("Cargo.toml").exists() && current_dir.join("xtask").exists() {
-        return current_dir;
+    if let Some(root) = current_dir.ancestors().find(|path| {
+        path.join("hw/revision/Cargo.toml").is_file() && path.join("builder/Cargo.toml").is_file()
+    }) {
+        return root.to_path_buf();
     }
     option_env!("CARGO_MANIFEST_DIR")
         .map(|s| {
@@ -103,21 +105,144 @@ pub fn target_dir() -> PathBuf {
         .unwrap_or_else(|_| PROJECT_ROOT.join("target"))
 }
 
+pub fn hardware_revision() -> Result<caliptra_mcu_hw_revision::HardwareRevision> {
+    caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)
+}
+
+/// Name cached and packaged artifacts independently of Cargo's compilation cache.
+pub fn revisioned_name(name: &str) -> Result<String> {
+    Ok(match hardware_revision()? {
+        caliptra_mcu_hw_revision::HardwareRevision::V2_1 => name.to_owned(),
+        revision => revision.cache_name(name),
+    })
+}
+
+/// Record source identities, not a claim that different hardware pins are equivalent.
+pub fn hardware_provenance() -> Result<String> {
+    let revision = hardware_revision()?;
+    let hardware = PROJECT_ROOT.join(revision.hardware_path());
+    let git_revision = |directory: &Path| -> Result<String> {
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(directory)
+            .output()?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Cannot read hardware/source revision in {}: {}",
+                directory.display(),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+    };
+    let submodules = Command::new("git")
+        .args(["submodule", "status", "--recursive"])
+        .current_dir(&hardware)
+        .output()?;
+    if !submodules.status.success() {
+        return Err(anyhow!(
+            "Cannot read nested hardware revisions: {}",
+            String::from_utf8_lossy(&submodules.stderr)
+        ));
+    }
+    let core_root = caliptra_sw_workspace_root();
+    let core_revision = caliptra_source_revision()?;
+    let core_changes = caliptra_source_changes()?;
+    let rom_source = std::env::var("CALIPTRA_ROM_REF")
+        .map(|value| format!("separate caliptra-sw ref {value}"))
+        .unwrap_or_else(|_| format!("core/caliptra-sw {core_revision}"));
+    Ok(format!(
+        "CALIPTRA_HW_REV={revision}\nMCU source={}\nMCU subsystem={} {}\n\
+         Nested MCU hardware:\n{}\nCaliptra FMC/runtime source={core_revision}\n\
+         Caliptra working tree={}\n\
+         Caliptra ROM source={rom_source}\nCPTRA_CI_ROM_VERSION={}\n\
+         CPTRA_ROM_TYPE={}\nCALIPTRA_PREBUILT_FW_DIR={}\n\
+         Core hardware pins (not assumed identical to MCU pins):\n{}",
+        git_revision(&PROJECT_ROOT)?,
+        revision.hardware_path(),
+        git_revision(&hardware)?,
+        String::from_utf8(submodules.stdout)?,
+        if core_changes.is_empty() {
+            "clean"
+        } else {
+            &core_changes
+        },
+        std::env::var("CPTRA_CI_ROM_VERSION").unwrap_or_else(|_| "source build".into()),
+        std::env::var("CPTRA_ROM_TYPE").unwrap_or_else(|_| "ROM_WITH_UART".into()),
+        std::env::var("CALIPTRA_PREBUILT_FW_DIR").unwrap_or_else(|_| "unset".into()),
+        {
+            let output = Command::new("git")
+                .args([
+                    "ls-tree",
+                    "HEAD",
+                    "hw/latest/caliptra-ss",
+                    "hw/rev-2_1/caliptra-ss",
+                ])
+                .current_dir(core_root)
+                .output()?;
+            if !output.status.success() {
+                return Err(anyhow!("Cannot read core hardware pins"));
+            }
+            String::from_utf8(output.stdout)?
+        }
+    ))
+}
+
+pub fn write_hardware_provenance(binary: &Path) -> Result<()> {
+    let mut name = binary.as_os_str().to_os_string();
+    name.push(".provenance.txt");
+    std::fs::write(PathBuf::from(name), hardware_provenance()?)?;
+    Ok(())
+}
+
 /// Returns the Path to the caliptra-sw workspace root.
 pub fn caliptra_sw_workspace_root() -> PathBuf {
-    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
-    let package = metadata
-        .packages
-        .iter()
-        .find(|p| {
-            p.name.as_ref() == "caliptra-image-fake-keys" || p.name.as_ref() == "caliptra-api-types"
-        })
-        .map(|p| p.manifest_path.clone())
-        .and_then(|p| p.ancestors().nth(3).map(|p| p.to_path_buf()));
-    match package {
-        Some(path) => path.into(),
-        None => panic!("Could not determine caliptra-sw path"),
+    PROJECT_ROOT.join("core/caliptra-sw")
+}
+
+pub fn caliptra_source_revision() -> Result<String> {
+    let root = caliptra_sw_workspace_root();
+    if !root.join(".git").exists() {
+        bail!("Initialize core/caliptra-sw with git submodule update --init --recursive");
     }
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(root)
+        .output()?;
+    if !output.status.success() {
+        bail!(
+            "Cannot read Caliptra source revision: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let revision = String::from_utf8(output.stdout)?.trim().to_owned();
+    if revision != env!("CALIPTRA_SW_REVISION") {
+        bail!(
+            "This builder was compiled against caliptra-sw {}, but the checkout is {revision}. \
+             Rebuild the tool with Cargo after switching versions.",
+            env!("CALIPTRA_SW_REVISION")
+        );
+    }
+    Ok(revision)
+}
+
+pub(crate) fn caliptra_source_changes() -> Result<String> {
+    let output = Command::new("git")
+        .args([
+            "status",
+            "--porcelain",
+            "--untracked-files=normal",
+            "--ignore-submodules=none",
+        ])
+        .current_dir(caliptra_sw_workspace_root())
+        .output()?;
+    if !output.status.success() {
+        bail!(
+            "Cannot inspect Caliptra working tree: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_owned())
 }
 
 pub(crate) static SYSROOT: LazyLock<String> = LazyLock::new(|| {

@@ -53,6 +53,19 @@ pub enum MeasurementSigningAlgo {
     MlDsa87,
 }
 
+/// Request-scoped raw evidence in a tagged-bytes class. Vendor and model are
+/// inherited from the authenticated Base Attestation Manifest.
+pub struct RawValueEvidence<'a> {
+    pub class_id: &'a [u8],
+    pub raw_value: &'a [u8],
+}
+
+/// Concise-evidence storage and optional producer-supplied measurements.
+pub struct EvidenceBuffer<'a> {
+    pub buffer: &'a mut [u8],
+    pub additional_evidence: &'a [RawValueEvidence<'a>],
+}
+
 /// Builds evidence token buffers and the to-be-signed digest while Measurement
 /// API keeps measurement state locked.
 ///
@@ -76,6 +89,15 @@ pub trait EvidenceBuilder<A: ScratchAlloc> {
 
     /// Return the final concise-evidence slot.
     fn concise_evidence_buffer_mut(&mut self) -> McuResult<&mut [u8]>;
+
+    /// Return the evidence slot together with measurements collected by the
+    /// producer before entering the Measurement API.
+    fn concise_evidence_with_additional_mut(&mut self) -> McuResult<EvidenceBuffer<'_>> {
+        Ok(EvidenceBuffer {
+            buffer: self.concise_evidence_buffer_mut()?,
+            additional_evidence: &[],
+        })
+    }
 
     /// Build the evidence payload and signature digest/mu from concise evidence.
     /// Writes the SHA-384 digest (48 bytes) for EccP384 or the external `mu`
@@ -355,8 +377,8 @@ where
         }
     }
     let concise_evidence_len = {
-        let concise_evidence = evidence_builder.concise_evidence_buffer_mut()?;
-        api.encode_measurement_evidence(alloc, concise_evidence)
+        let evidence = evidence_builder.concise_evidence_with_additional_mut()?;
+        api.encode_measurement_evidence(alloc, evidence.buffer, evidence.additional_evidence)
             .await?
     };
 
@@ -399,7 +421,7 @@ pub async fn encode_measurement_evidence<A: ScratchAlloc>(
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.encode_measurement_evidence(alloc, buffer).await
+    api.encode_measurement_evidence(alloc, buffer, &[]).await
 }
 
 /// Derive an exported CDI context from `target_fw_id`, persist the 32-byte exported CDI

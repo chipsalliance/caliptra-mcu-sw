@@ -10,12 +10,13 @@ use caliptra_api::{
 use caliptra_image_types::MLDSA87_SIGNATURE_BYTE_SIZE;
 use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
-    CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
-    CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    DpeSignerContextSignReq, EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq,
-    FirmwareVersionReq, GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq,
-    GetCertChainInfoResp, GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
+    AuthSetCertChainPayload, AuthSetCertChainReq, CmEcdhFinishReq, CmEcdhGenerateReq,
+    CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq, CmImportReq, CmKeyUsage,
+    CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk, CommandId as McuCommandId,
+    DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq, DpeSignerContextSignReq,
+    EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
+    GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq, GetCertChainInfoResp,
+    GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
@@ -1275,7 +1276,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     let public_key_response = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
-            cmk,
+            cmk: cmk.clone(),
             ..Default::default()
         })),
     )?;
@@ -1289,7 +1290,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
 
     let message = b"ECDSA mailbox test";
     let mut sign_request = CmEcdsaSignReq {
-        cmk,
+        cmk: cmk.clone(),
         message_size: message.len() as u32,
         ..Default::default()
     };
@@ -1309,7 +1310,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     let verify_response = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(
-            cmk,
+            cmk.clone(),
             message,
             signature.0.signature_r,
             signature.0.signature_s,
@@ -1336,11 +1337,11 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     for invalid_cmk in [Cmk::default(), aes_cmk] {
         for request in [
             McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::EcdsaCmkSign(McuEcdsaCmkSignReq(CmEcdsaSignReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(invalid_cmk, &[], [0; 48], [0; 48])),
@@ -1364,7 +1365,7 @@ fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
     });
 
     let resp = hw.mailbox_execute_req(McuFeStatusReq::default())?;
-    assert_eq!(resp.already_provisioned, 0);
+    assert_eq!(resp.fe_status, 0);
 
     let cmd = McuCommandId::MC_FE_STATUS.into();
 
@@ -1390,7 +1391,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     let public_key_response = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
-            cmk,
+            cmk: cmk.clone(),
             ..Default::default()
         })),
     )?;
@@ -1403,7 +1404,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
 
     let message = b"ML-DSA mailbox test";
     let mut sign_request = CmMldsaSignReq {
-        cmk,
+        cmk: cmk.clone(),
         message_size: message.len() as u32,
         ..Default::default()
     };
@@ -1421,7 +1422,11 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
 
     let verify_response = execute_raw_mcu_req(
         &mut hw,
-        McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(cmk, message, signature.0.signature)),
+        McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(
+            cmk.clone(),
+            message,
+            signature.0.signature,
+        )),
     )?;
     assert_eq!(
         assert_fixed_response::<MailboxRespHeader>(&verify_response).fips_status,
@@ -1439,11 +1444,11 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     for invalid_cmk in [Cmk::default(), aes_cmk] {
         for request in [
             McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::MldsaCmkSign(McuMldsaCmkSignReq(CmMldsaSignReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(
@@ -1811,6 +1816,86 @@ fn test_fe_prog_authorized_req() -> Result<()> {
     assert!(
         result.is_ok(),
         "FE_PROG authorized request failed: {result:?}"
+    );
+
+    // Verify MC_AUTH_SET_CERT_CHAIN (0x4D41_5343) + MC_SET_CERT_CHAIN SHA-384 enforcement:
+    // 1) Owner-signed MC_AUTH_SET_CERT_CHAIN on Vendor slot (slot 0) is rejected.
+    use sha2::{Digest, Sha384};
+    let auth_endorsement = synthetic_der_cert(240, 0x44);
+    let auth_digest: [u8; 48] = Sha384::digest(&auth_endorsement).into();
+    assert!(
+        execute_authorized_req(
+            &mut hw,
+            AuthSetCertChainReq {
+                payload: AuthSetCertChainPayload {
+                    pki_entity_slot: 0, // Vendor
+                    algorithm: 1,       // ECC384
+                    total_size: auth_endorsement.len() as u32,
+                    expected_sha384: auth_digest,
+                },
+                ..Default::default()
+            }
+        )
+        .is_err(),
+        "Owner-signed MC_AUTH_SET_CERT_CHAIN must be rejected for Vendor slot"
+    );
+
+    // 2) Arm Owner slot (slot 1) with expected (total_size, expected_sha384).
+    let arm_owner_req = AuthSetCertChainReq {
+        payload: AuthSetCertChainPayload {
+            pki_entity_slot: 1, // Owner
+            algorithm: 1,       // ECC384
+            total_size: auth_endorsement.len() as u32,
+            expected_sha384: auth_digest,
+        },
+        ..Default::default()
+    };
+    execute_authorized_req(&mut hw, arm_owner_req)?;
+
+    // Streaming a tampered endorsement whose SHA-384 does not match the armed digest fails.
+    let mut tampered_endorsement = auth_endorsement.clone();
+    *tampered_endorsement.last_mut().unwrap() ^= 0xFF;
+    let mut tampered_set_req = SetCertChainReq {
+        pki_entity_slot: 1,
+        algorithm: 1,
+        device_key_id: 1,
+        offset: 0,
+        total_size: tampered_endorsement.len() as u32,
+        data_len: tampered_endorsement.len() as u32,
+        ..Default::default()
+    };
+    tampered_set_req.cert_data[..tampered_endorsement.len()].copy_from_slice(&tampered_endorsement);
+    assert_mcu_req_fails(&mut hw, McuMailboxReq::SetCertChain(tampered_set_req));
+
+    // Re-arm and stream the matching endorsement chain -> succeeds and commits to flash.
+    execute_authorized_req(
+        &mut hw,
+        AuthSetCertChainReq {
+            payload: AuthSetCertChainPayload {
+                pki_entity_slot: 1,
+                algorithm: 1,
+                total_size: auth_endorsement.len() as u32,
+                expected_sha384: auth_digest,
+            },
+            ..Default::default()
+        },
+    )?;
+    let mut valid_set_req = SetCertChainReq {
+        pki_entity_slot: 1,
+        algorithm: 1,
+        device_key_id: 1,
+        offset: 0,
+        total_size: auth_endorsement.len() as u32,
+        data_len: auth_endorsement.len() as u32,
+        ..Default::default()
+    };
+    valid_set_req.cert_data[..auth_endorsement.len()].copy_from_slice(&auth_endorsement);
+    let set_resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::SetCertChain(valid_set_req))?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&set_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
     );
 
     Ok(())
@@ -2274,6 +2359,7 @@ fn read_full_mci_cert_chain(
 
 #[test]
 fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
+    use crate::runtime::{execute_authorized_req, start_command_authorized_runtime};
     use sha2::{Digest, Sha384};
 
     const FORMAT_OCP_EAT: u32 = 1;
@@ -2286,7 +2372,10 @@ fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
     const KEY_ID_LDEV_ID: u32 = 1;
     const KEY_ID_FMC_ALIAS: u32 = 2;
 
-    let mut hw = start_crypto_mailbox_hw();
+    let mut hw = start_command_authorized_runtime(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
 
     // 1. Vendor slot: read-only, anchored at IDevID (device_key_id == 0).
     //    Use MAX_RESP_DATA_SIZE (4096) for ML-DSA-87 to exercise >1024-byte reads across the DPE leaf cert.
@@ -2378,6 +2467,19 @@ fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
     // 3. Provision Owner slot in two chunks with policy default device_key_id == 0 (resolves to LDevID == 1).
     let mut owner_endorsement = synthetic_der_cert(300, 0x21);
     owner_endorsement.extend_from_slice(&synthetic_der_cert(260, 0x22));
+    let owner_endorsement_digest: [u8; 48] = Sha384::digest(&owner_endorsement).into();
+    execute_authorized_req(
+        &mut hw,
+        AuthSetCertChainReq {
+            payload: AuthSetCertChainPayload {
+                pki_entity_slot: SLOT_OWNER,
+                algorithm: ALGO_ECC384,
+                total_size: owner_endorsement.len() as u32,
+                expected_sha384: owner_endorsement_digest,
+            },
+            ..Default::default()
+        },
+    )?;
     let split = 256usize;
     for (offset, chunk) in [
         (0usize, &owner_endorsement[..split]),
@@ -2453,6 +2555,19 @@ fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
 
     // Provision Owner ML-DSA-87 endorsement and verify 4 KB chain read + ML-DSA EAT attestation.
     let owner_mldsa_endorsement = synthetic_der_cert(512, 0x29);
+    let owner_mldsa_endorsement_digest: [u8; 48] = Sha384::digest(&owner_mldsa_endorsement).into();
+    execute_authorized_req(
+        &mut hw,
+        AuthSetCertChainReq {
+            payload: AuthSetCertChainPayload {
+                pki_entity_slot: SLOT_OWNER,
+                algorithm: ALGO_MLDSA87,
+                total_size: owner_mldsa_endorsement.len() as u32,
+                expected_sha384: owner_mldsa_endorsement_digest,
+            },
+            ..Default::default()
+        },
+    )?;
     let mut owner_mldsa_req = SetCertChainReq {
         pki_entity_slot: SLOT_OWNER,
         algorithm: ALGO_MLDSA87,
@@ -2597,6 +2712,20 @@ fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
         (SLOT_OWNER, ALGO_ECC384),
         (SLOT_OWNER, ALGO_MLDSA87),
     ] {
+        if slot == SLOT_OWNER {
+            execute_authorized_req(
+                &mut hw,
+                AuthSetCertChainReq {
+                    payload: AuthSetCertChainPayload {
+                        pki_entity_slot: slot,
+                        algorithm: algo,
+                        total_size: 0,
+                        expected_sha384: [0u8; 48],
+                    },
+                    ..Default::default()
+                },
+            )?;
+        }
         let erase_resp = execute_raw_mcu_req(
             &mut hw,
             McuMailboxReq::SetCertChain(SetCertChainReq {
@@ -2677,6 +2806,7 @@ fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
 #[cfg_attr(feature = "fpga_realtime", ignore)]
 #[test]
 fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
+    use crate::runtime::{execute_authorized_req, start_command_authorized_runtime};
     use sha2::{Digest, Sha384};
 
     const ISOLATED_PROCESS_ENV: &str = "CALIPTRA_MCU_ISOLATED_VENDOR_CERTS_OOB_TEST";
@@ -2702,7 +2832,7 @@ fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
     const KEY_ID_DEFAULT: u32 = 0;
     const KEY_ID_LDEV_ID: u32 = 1;
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds,vendor-certs-oob"),
         ..Default::default()
     });
@@ -2794,6 +2924,19 @@ fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
     // 2. Owner slot (anchored at LDevID) still skips LDevID and appends the 3 remaining
     //    device certs `[FMC Alias, RT Alias, DPE Leaf]` when IDevID is unpopulated in Core.
     let owner_endorsement = synthetic_der_cert(280, 0x31);
+    let owner_endorsement_digest: [u8; 48] = Sha384::digest(&owner_endorsement).into();
+    execute_authorized_req(
+        &mut hw,
+        AuthSetCertChainReq {
+            payload: AuthSetCertChainPayload {
+                pki_entity_slot: SLOT_OWNER,
+                algorithm: ALGO_ECC384,
+                total_size: owner_endorsement.len() as u32,
+                expected_sha384: owner_endorsement_digest,
+            },
+            ..Default::default()
+        },
+    )?;
     let mut owner_set_req = SetCertChainReq {
         pki_entity_slot: SLOT_OWNER,
         algorithm: ALGO_ECC384,
@@ -2849,6 +2992,18 @@ fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
     );
 
     // Erase Owner slot so persistent flash state stays clean across tests.
+    execute_authorized_req(
+        &mut hw,
+        AuthSetCertChainReq {
+            payload: AuthSetCertChainPayload {
+                pki_entity_slot: SLOT_OWNER,
+                algorithm: ALGO_ECC384,
+                total_size: 0,
+                expected_sha384: [0u8; 48],
+            },
+            ..Default::default()
+        },
+    )?;
     let erase_resp = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::SetCertChain(SetCertChainReq {
