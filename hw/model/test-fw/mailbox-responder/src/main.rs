@@ -18,6 +18,12 @@ fn run() -> ! {
         .intr_block_rf_notif0_intr_en_r
         .modify(mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET);
 
+    // The MCU holds the lock of the mailbox after a reset, and a requester
+    // cannot take it until the MCU has released the mailbox.
+    mci.registers
+        .mcu_mbox0_csr_mbox_execute
+        .write(mci::bits::MboxExecute::Execute::CLEAR);
+
     mci.caliptra_boot_go();
 
     // This is used to tell the hardware model it is ready to start testing
