@@ -777,7 +777,7 @@ mod test {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_consts::{RAM_ORG, RAM_SIZE};
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusArgs};
     use caliptra_mcu_registers_generated::primary_flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };
@@ -836,60 +836,14 @@ mod test {
         }
 
         match fl_type {
-            FlashType::ImagePartitionA => AutoRootBus::new(
-                vec![],
-                None,
-                None,
-                None,
-                None,
-                #[cfg(hw_rev = "latest")]
-                None,
-                #[cfg(hw_rev = "latest")]
-                None,
-                Some(flash_controller),
-                #[cfg(hw_rev = "latest")]
-                None,
-                #[cfg(hw_rev = "latest")]
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ),
-            FlashType::ImagePartitionB => AutoRootBus::new(
-                vec![],
-                None,
-                None,
-                None,
-                None,
-                None,
-                #[cfg(hw_rev = "latest")]
-                None,
-                #[cfg(hw_rev = "latest")]
-                None,
-                Some(flash_controller),
-                #[cfg(hw_rev = "latest")]
-                None,
-                #[cfg(hw_rev = "latest")]
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ),
+            FlashType::ImagePartitionA => AutoRootBus::new(AutoRootBusArgs {
+                primary_flash_periph: Some(flash_controller),
+                ..Default::default()
+            }),
+            FlashType::ImagePartitionB => AutoRootBus::new(AutoRootBusArgs {
+                secondary_flash_periph: Some(flash_controller),
+                ..Default::default()
+            }),
         }
     }
 

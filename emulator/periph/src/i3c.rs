@@ -1155,7 +1155,7 @@ mod tests {
     use caliptra_emu_bus::Bus;
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::{RvAddr, RvSize};
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusArgs};
     use caliptra_mcu_testing_common::i3c::{
         DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
     };
@@ -1295,33 +1295,10 @@ mod tests {
             .tcri_send(DynamicI3cAddress::new(8).unwrap(), cmd)
             .unwrap();
 
-        let mut bus = AutoRootBus::new(
-            vec![],
-            None,
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            Some(i3c),
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let mut bus = AutoRootBus::new(AutoRootBusArgs {
+            i3c_periph: Some(i3c),
+            ..Default::default()
+        });
         for _ in 0..10000 {
             clock.increment_and_process_timer_actions(1, &mut bus);
         }

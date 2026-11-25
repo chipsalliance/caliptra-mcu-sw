@@ -88,6 +88,31 @@ impl Default for AutoRootBusOffsets {
         }
     }
 }
+/// Arguments for [`AutoRootBus::new`]. Peripherals left as `None` are not mounted.
+#[derive(Default)]
+pub struct AutoRootBusArgs {
+    pub delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
+    pub offsets: AutoRootBusOffsets,
+    pub usbdev_periph: Option<Box<dyn crate::usbdev::UsbdevPeripheral>>,
+    pub usb_combo_periph: Option<Box<dyn crate::usb_combo::UsbComboPeripheral>>,
+    pub usb_dev1_periph: Option<Box<dyn crate::usb_dev1::UsbDev1Peripheral>>,
+    pub i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
+    pub i3c1_periph: Option<Box<dyn crate::i3c1::I3c1Peripheral>>,
+    pub primary_flash_periph: Option<Box<dyn crate::primary_flash::PrimaryFlashPeripheral>>,
+    pub secondary_flash_periph: Option<Box<dyn crate::secondary_flash::SecondaryFlashPeripheral>>,
+    pub network_mbox_periph: Option<Box<dyn crate::network_mbox::NetworkMboxPeripheral>>,
+    pub mci_periph: Option<Box<dyn crate::mci::MciPeripheral>>,
+    pub doe_mbox_periph: Option<Box<dyn crate::doe_mbox::DoeMboxPeripheral>>,
+    pub usb_dev0_mem_periph: Option<Box<dyn crate::usb_dev0_mem::UsbDev0MemPeripheral>>,
+    pub usb_dev1_mem_periph: Option<Box<dyn crate::usb_dev1_mem::UsbDev1MemPeripheral>>,
+    pub el2_pic_periph: Option<Box<dyn crate::el2_pic::El2PicPeripheral>>,
+    pub otp_periph: Option<Box<dyn crate::otp::OtpPeripheral>>,
+    pub lc_periph: Option<Box<dyn crate::lc::LcPeripheral>>,
+    pub mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
+    pub sha512_acc_periph: Option<Box<dyn crate::sha512_acc::Sha512AccPeripheral>>,
+    pub soc_periph: Option<Box<dyn crate::soc::SocPeripheral>>,
+    pub axicdma_periph: Option<Box<dyn crate::axicdma::AxicdmaPeripheral>>,
+}
 pub struct AutoRootBus {
     delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
     offsets: AutoRootBusOffsets,
@@ -112,58 +137,53 @@ pub struct AutoRootBus {
     pub axicdma_periph: Option<crate::axicdma::AxicdmaBus>,
 }
 impl AutoRootBus {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
-        offsets: Option<AutoRootBusOffsets>,
-        usbdev_periph: Option<Box<dyn crate::usbdev::UsbdevPeripheral>>,
-        usb_combo_periph: Option<Box<dyn crate::usb_combo::UsbComboPeripheral>>,
-        usb_dev1_periph: Option<Box<dyn crate::usb_dev1::UsbDev1Peripheral>>,
-        i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
-        i3c1_periph: Option<Box<dyn crate::i3c1::I3c1Peripheral>>,
-        primary_flash_periph: Option<Box<dyn crate::primary_flash::PrimaryFlashPeripheral>>,
-        secondary_flash_periph: Option<Box<dyn crate::secondary_flash::SecondaryFlashPeripheral>>,
-        network_mbox_periph: Option<Box<dyn crate::network_mbox::NetworkMboxPeripheral>>,
-        mci_periph: Option<Box<dyn crate::mci::MciPeripheral>>,
-        doe_mbox_periph: Option<Box<dyn crate::doe_mbox::DoeMboxPeripheral>>,
-        usb_dev0_mem_periph: Option<Box<dyn crate::usb_dev0_mem::UsbDev0MemPeripheral>>,
-        usb_dev1_mem_periph: Option<Box<dyn crate::usb_dev1_mem::UsbDev1MemPeripheral>>,
-        el2_pic_periph: Option<Box<dyn crate::el2_pic::El2PicPeripheral>>,
-        otp_periph: Option<Box<dyn crate::otp::OtpPeripheral>>,
-        lc_periph: Option<Box<dyn crate::lc::LcPeripheral>>,
-        mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
-        sha512_acc_periph: Option<Box<dyn crate::sha512_acc::Sha512AccPeripheral>>,
-        soc_periph: Option<Box<dyn crate::soc::SocPeripheral>>,
-        axicdma_periph: Option<Box<dyn crate::axicdma::AxicdmaPeripheral>>,
-    ) -> Self {
+    pub fn new(args: AutoRootBusArgs) -> Self {
         Self {
-            delegates,
-            offsets: offsets.unwrap_or_default(),
-            usbdev_periph: usbdev_periph.map(|p| crate::usbdev::UsbdevBus { periph: p }),
-            usb_combo_periph: usb_combo_periph.map(|p| crate::usb_combo::UsbComboBus { periph: p }),
-            usb_dev1_periph: usb_dev1_periph.map(|p| crate::usb_dev1::UsbDev1Bus { periph: p }),
-            i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
-            i3c1_periph: i3c1_periph.map(|p| crate::i3c1::I3c1Bus { periph: p }),
-            primary_flash_periph: primary_flash_periph
+            delegates: args.delegates,
+            offsets: args.offsets,
+            usbdev_periph: args
+                .usbdev_periph
+                .map(|p| crate::usbdev::UsbdevBus { periph: p }),
+            usb_combo_periph: args
+                .usb_combo_periph
+                .map(|p| crate::usb_combo::UsbComboBus { periph: p }),
+            usb_dev1_periph: args
+                .usb_dev1_periph
+                .map(|p| crate::usb_dev1::UsbDev1Bus { periph: p }),
+            i3c_periph: args.i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
+            i3c1_periph: args.i3c1_periph.map(|p| crate::i3c1::I3c1Bus { periph: p }),
+            primary_flash_periph: args
+                .primary_flash_periph
                 .map(|p| crate::primary_flash::PrimaryFlashBus { periph: p }),
-            secondary_flash_periph: secondary_flash_periph
+            secondary_flash_periph: args
+                .secondary_flash_periph
                 .map(|p| crate::secondary_flash::SecondaryFlashBus { periph: p }),
-            network_mbox_periph: network_mbox_periph
+            network_mbox_periph: args
+                .network_mbox_periph
                 .map(|p| crate::network_mbox::NetworkMboxBus { periph: p }),
-            mci_periph: mci_periph.map(|p| crate::mci::MciBus { periph: p }),
-            doe_mbox_periph: doe_mbox_periph.map(|p| crate::doe_mbox::DoeMboxBus { periph: p }),
-            usb_dev0_mem_periph: usb_dev0_mem_periph
+            mci_periph: args.mci_periph.map(|p| crate::mci::MciBus { periph: p }),
+            doe_mbox_periph: args
+                .doe_mbox_periph
+                .map(|p| crate::doe_mbox::DoeMboxBus { periph: p }),
+            usb_dev0_mem_periph: args
+                .usb_dev0_mem_periph
                 .map(|p| crate::usb_dev0_mem::UsbDev0MemBus { periph: p }),
-            usb_dev1_mem_periph: usb_dev1_mem_periph
+            usb_dev1_mem_periph: args
+                .usb_dev1_mem_periph
                 .map(|p| crate::usb_dev1_mem::UsbDev1MemBus { periph: p }),
-            el2_pic_periph: el2_pic_periph.map(|p| crate::el2_pic::El2PicBus { periph: p }),
-            otp_periph: otp_periph.map(|p| crate::otp::OtpBus { periph: p }),
-            lc_periph: lc_periph.map(|p| crate::lc::LcBus { periph: p }),
-            mbox_periph: mbox_periph.map(|p| crate::mbox::MboxBus { periph: p }),
-            sha512_acc_periph: sha512_acc_periph
+            el2_pic_periph: args
+                .el2_pic_periph
+                .map(|p| crate::el2_pic::El2PicBus { periph: p }),
+            otp_periph: args.otp_periph.map(|p| crate::otp::OtpBus { periph: p }),
+            lc_periph: args.lc_periph.map(|p| crate::lc::LcBus { periph: p }),
+            mbox_periph: args.mbox_periph.map(|p| crate::mbox::MboxBus { periph: p }),
+            sha512_acc_periph: args
+                .sha512_acc_periph
                 .map(|p| crate::sha512_acc::Sha512AccBus { periph: p }),
-            soc_periph: soc_periph.map(|p| crate::soc::SocBus { periph: p }),
-            axicdma_periph: axicdma_periph.map(|p| crate::axicdma::AxicdmaBus { periph: p }),
+            soc_periph: args.soc_periph.map(|p| crate::soc::SocBus { periph: p }),
+            axicdma_periph: args
+                .axicdma_periph
+                .map(|p| crate::axicdma::AxicdmaBus { periph: p }),
         }
     }
 }

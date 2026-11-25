@@ -190,6 +190,19 @@ impl LcCtrl {
         }
     }
 
+    /// Create an LC controller without OTP access from the raw contents of the
+    /// OTP `LIFE_CYCLE` partition. A blank (all-zero) partition is the Raw state.
+    pub fn from_otp_bytes(lc_bytes: &[u8]) -> caliptra_mcu_otp_lifecycle::Result<Self> {
+        if lc_bytes.iter().all(|&b| b == 0) {
+            return Ok(Self::default());
+        }
+        let mem: &[u8; caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] = lc_bytes
+            .try_into()
+            .map_err(|_| caliptra_mcu_otp_lifecycle::Error::DecodeFailed)?;
+        let (state_index, count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(mem)?;
+        Ok(Self::with_state(state_index.into(), count.into()))
+    }
+
     /// Provide OTP partition access after construction.
     pub fn set_otp_partitions(&mut self, otp: Rc<RefCell<Vec<u8>>>) {
         self.otp_partitions = Some(otp);
@@ -499,6 +512,18 @@ mod tests {
         0x57, 0x5e, 0xd6, 0xcf, 0x32, 0x17, 0x18, 0xde, 0x30, 0xc8, 0xfc, 0x08, 0xc6, 0xb8, 0xed,
         0x05,
     ];
+
+    #[test]
+    fn test_from_otp_bytes() {
+        let blank = LcCtrl::from_otp_bytes(&[0u8; LIFECYCLE_MEM_SIZE]).unwrap();
+        assert_eq!((blank.lc_state_index, blank.lc_transition_cnt), (0, 0));
+
+        let mem = caliptra_mcu_otp_lifecycle::lc_generate_memory(DEV as u8, 9).unwrap();
+        let lc = LcCtrl::from_otp_bytes(&mem).unwrap();
+        assert_eq!((lc.lc_state_index, lc.lc_transition_cnt), (DEV, 9));
+
+        assert!(LcCtrl::from_otp_bytes(&mem[1..]).is_err());
+    }
 
     #[test]
     fn test_mnemonic_roundtrip() {

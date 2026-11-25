@@ -1086,10 +1086,10 @@ fn emu_make_root_bus<'a>(
         let periph = format_ident!("{}Peripheral", camel_base);
         let bus = format_ident!("{}Bus", camel_base);
         constructor_params_tokens.extend(quote! {
-            #periph_field: Option<Box<dyn crate::#crate_name::#periph>>,
+            pub #periph_field: Option<Box<dyn crate::#crate_name::#periph>>,
         });
         constructor_tokens.extend(quote! {
-            #periph_field: #periph_field.map(|p| crate::#crate_name::#bus { periph: p }),
+            #periph_field: args.#periph_field.map(|p| crate::#crate_name::#bus { periph: p }),
         });
         field_tokens.extend(quote! {
             pub #periph_field: Option<crate::#crate_name::#bus>,
@@ -1162,21 +1162,24 @@ fn emu_make_root_bus<'a>(
             }
         }
 
+        /// Arguments for [`AutoRootBus::new`]. Peripherals left as `None` are not mounted.
+        #[derive(Default)]
+        pub struct AutoRootBusArgs {
+            pub delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
+            pub offsets: AutoRootBusOffsets,
+            #constructor_params_tokens
+        }
+
         pub struct AutoRootBus {
             delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
             offsets: AutoRootBusOffsets,
             #field_tokens
         }
         impl AutoRootBus {
-            #[allow(clippy::too_many_arguments)]
-            pub fn new(
-                delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
-                offsets: Option<AutoRootBusOffsets>,
-                #constructor_params_tokens
-            ) -> Self {
+            pub fn new(args: AutoRootBusArgs) -> Self {
                 Self {
-                    delegates,
-                    offsets: offsets.unwrap_or_default(),
+                    delegates: args.delegates,
+                    offsets: args.offsets,
                     #constructor_tokens
                 }
             }

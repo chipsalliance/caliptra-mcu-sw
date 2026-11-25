@@ -120,6 +120,10 @@ pub fn new(init_params: InitParams) -> Result<DefaultHwModel> {
     DefaultHwModel::new(init_params)
 }
 
+/// Bit of MCI `generic_input_wires[1]` that tells MCU ROM to boot from flash
+/// using the MCU recovery interface.
+pub const MCI_FLASH_BOOT_WIRE_BIT: u32 = 1 << 29;
+
 pub struct InitParams<'a> {
     /// Explicit emulator hardware revision; otherwise retain boot-mode defaults.
     pub hw_revision: Option<semver::Version>,
@@ -365,6 +369,19 @@ impl Default for InitParams<'_> {
             use_strap_secrets: false,
             target_provisioning_stage: Default::default(),
         }
+    }
+}
+
+/// Convert [`InitParams`] to the accroding hardware [`semver::Version`].
+impl From<&InitParams<'_>> for semver::Version {
+    fn from(value: &InitParams<'_>) -> Self {
+        value.hw_revision.clone().unwrap_or_else(|| {
+            if value.flash_boot || value.network_boot {
+                Self::new(2, 1, 0)
+            } else {
+                Self::new(2, 0, 0)
+            }
+        })
     }
 }
 

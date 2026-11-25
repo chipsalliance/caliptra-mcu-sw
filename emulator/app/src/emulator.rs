@@ -33,11 +33,13 @@ use caliptra_mcu_emulator_consts::{DEFAULT_CPU_ARGS, NETWORK_CPU_ARGS, RAM_ORG, 
 use caliptra_mcu_emulator_periph::MciMailboxRequester;
 use caliptra_mcu_emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, NetworkRootBus, NetworkRootBusArgs,
+    MciArgs, McuRootBus, McuRootBusArgs, McuRootBusOffsets, NetworkRootBus, NetworkRootBusArgs,
     NetworkRootBusOffsets, Otp, OtpArgs,
 };
 use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
-use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
+use caliptra_mcu_emulator_registers_generated::root_bus::{
+    AutoRootBus, AutoRootBusArgs, AutoRootBusOffsets,
+};
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
 use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
@@ -88,16 +90,16 @@ fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
     }
 }
 
-/// Map an LC state index (0–20) to the Caliptra device lifecycle string per the HW spec.
-/// TestUnlocked* → "unprovisioned", Dev → "manufacturing", all others → "production".
-fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
+/// Map an LC state index (0–20) to the Caliptra device lifecycle per the HW spec.
+/// TestUnlocked* → Unprovisioned, Dev → Manufacturing, all others → Production.
+fn lc_state_to_device_lifecycle(lc_state_index: u32) -> DeviceLifecycle {
     match lc_state_index {
         // TestUnlocked0..TestUnlocked7 = indices 1,3,5,7,9,11,13,15
-        1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => "unprovisioned",
+        1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => DeviceLifecycle::Unprovisioned,
         // Dev = index 16
-        16 => "manufacturing",
+        16 => DeviceLifecycle::Manufacturing,
         // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
-        _ => "production",
+        _ => DeviceLifecycle::Production,
     }
 }
 
@@ -455,9 +457,8 @@ impl Emulator {
             (idx as u32, cnt as u32, Some(fuse_data.to_vec()))
         };
 
-        // Map LC state index to Caliptra device lifecycle string per the HW spec.
-        let device_lifecycle_str: Option<String> =
-            Some(lc_state_to_device_lifecycle_str(lc_state_index).into());
+        // Map LC state index to Caliptra device lifecycle per the HW spec.
+        let caliptra_device_lifecycle = lc_state_to_device_lifecycle(lc_state_index);
 
         let req_idevid_csr: Option<bool> = if lc_state_index == 16 {
             // Dev state → manufacturing
@@ -470,7 +471,7 @@ impl Emulator {
 
         let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
-            device_lifecycle: device_lifecycle_str,
+            device_lifecycle: Some(caliptra_device_lifecycle),
             req_idevid_csr,
             use_mcu_recovery_interface,
             extra_soc_bus: None,
@@ -619,7 +620,7 @@ impl Emulator {
             allow_sideloaded_rom: cli.allow_sideloaded_rom,
             straps,
         };
-        let root_bus = McuRootBus::new(bus_args).unwrap();
+        let root_bus = McuRootBus::new(bus_args);
 
         // Set test_mcu_mbox_driver if requested
         if test_feature == "test-mcu-mbox-driver" {
@@ -883,8 +884,7 @@ impl Emulator {
             Some(root_bus.external_test_sram.clone()),
             Some(root_bus.mcu_mailbox0.clone()),
             Some(root_bus.mcu_mailbox1.clone()),
-        )
-        .unwrap();
+        );
 
         caliptra_mcu_emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
         let mci_irq = root_bus.mci_irq.clone();
@@ -961,45 +961,34 @@ impl Emulator {
             &clock.clone(),
             ext_mci,
             mci_irq,
-            Some(mcu_mailbox0),
-            Some(mcu_mailbox1),
-            Some(soc_ifc),
-            [0, 0],
-            false,
-            cptra_boot_go.clone(),
+            MciArgs {
+                mcu_mailbox0: Some(mcu_mailbox0),
+                mcu_mailbox1: Some(mcu_mailbox1),
+                soc_regs: Some(soc_ifc),
+                cptra_boot_go: cptra_boot_go.clone(),
+                ..Default::default()
+            },
         );
 
         let usb_irq = pic.register_irq(McuRootBus::USB_IRQ);
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new_with_irq(usb_irq);
         let usb_host_controller = usb_periph.host_controller();
 
-        let mut auto_root_bus = AutoRootBus::new(
+        let mut auto_root_bus = AutoRootBus::new(AutoRootBusArgs {
             delegates,
-            Some(auto_root_bus_offsets),
-            Some(Box::new(usb_periph)),
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            Some(Box::new(i3c)),
-            Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
-            Some(Box::new(primary_flash_controller)),
-            Some(Box::new(secondary_flash_controller)),
-            None,
-            Some(Box::new(mci)),
-            Some(Box::new(doe_mbox)),
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            None,
-            Some(Box::new(otp)),
-            Some(Box::new(lc)),
-            None,
-            None,
-            None,
-            Some(Box::new(dma_ctrl)),
-        );
+            offsets: auto_root_bus_offsets,
+            usbdev_periph: Some(Box::new(usb_periph)),
+            i3c_periph: Some(Box::new(i3c)),
+            i3c1_periph: Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
+            primary_flash_periph: Some(Box::new(primary_flash_controller)),
+            secondary_flash_periph: Some(Box::new(secondary_flash_controller)),
+            mci_periph: Some(Box::new(mci)),
+            doe_mbox_periph: Some(Box::new(doe_mbox)),
+            otp_periph: Some(Box::new(otp)),
+            lc_periph: Some(Box::new(lc)),
+            axicdma_periph: Some(Box::new(dma_ctrl)),
+            ..Default::default()
+        });
 
         // Set the DMA RAM for Primary Flash Controller
         auto_root_bus
@@ -1081,7 +1070,7 @@ impl Emulator {
                 clock: clock.clone(),
                 network_mbox: None,
             };
-            let network_root_bus = NetworkRootBus::new(network_bus_args).unwrap();
+            let network_root_bus = NetworkRootBus::new(network_bus_args);
 
             let network_cpu_args = NETWORK_CPU_ARGS;
             let mut network_cpu = Cpu::new(

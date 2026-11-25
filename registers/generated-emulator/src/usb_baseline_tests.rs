@@ -11,29 +11,7 @@ use caliptra_emu_bus::{Bus, BusError};
 use caliptra_emu_types::RvSize;
 
 fn fixture() -> AutoRootBus {
-    let mut bus = AutoRootBus::new(
-        vec![],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+    let mut bus = AutoRootBus::new(Default::default());
     bus.usb_combo_periph = Some(UsbComboBus {
         periph: Box::new(UsbComboGenerated::new()),
     });

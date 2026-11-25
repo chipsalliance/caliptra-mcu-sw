@@ -74,6 +74,23 @@ impl Default for McuRootBusOffsets {
     }
 }
 
+/// Take the regions that a platform memory map describes from it; regions that
+/// only exist in the emulator keep their defaults.
+impl From<&caliptra_mcu_config::McuMemoryMap> for McuRootBusOffsets {
+    fn from(map: &caliptra_mcu_config::McuMemoryMap) -> Self {
+        Self {
+            rom_offset: map.rom_offset,
+            rom_size: map.rom_size,
+            ram_offset: map.sram_offset,
+            ram_size: map.sram_size,
+            pic_offset: map.pic_offset,
+            staging_sram_offset: map.staging_sram_offset,
+            staging_sram_size: map.staging_sram_size,
+            ..Default::default()
+        }
+    }
+}
+
 const PIC_SIZE: u32 = 0x5400;
 
 /// MCU Root Bus Arguments
@@ -122,7 +139,7 @@ impl McuRootBus {
     pub const DOE_MBOX_EVENT_IRQ: u8 = 25;
     pub const USB_IRQ: u8 = 26;
 
-    pub fn new(mut args: McuRootBusArgs) -> Result<Self, std::io::Error> {
+    pub fn new(mut args: McuRootBusArgs) -> Self {
         let clock = args.clock;
         let pic = args.pic;
         let mut rom_data = std::mem::take(&mut args.rom);
@@ -139,7 +156,7 @@ impl McuRootBus {
         let mcu_mailbox0 = McuMailbox0Internal::new_with_mbox_index(&clock.clone(), 0);
         let mcu_mailbox1 = McuMailbox0Internal::new_with_mbox_index(&clock.clone(), 1);
 
-        Ok(Self {
+        Self {
             rom,
             ram: Rc::new(RefCell::new(ram)),
             rom_sram: Rc::new(RefCell::new(rom_sram)),
@@ -156,7 +173,7 @@ impl McuRootBus {
             mcu_mailbox0,
             mcu_mailbox1,
             straps: args.straps,
-        })
+        }
     }
 
     fn write_rom_when_idle(

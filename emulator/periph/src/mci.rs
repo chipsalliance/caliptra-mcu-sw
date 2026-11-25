@@ -84,19 +84,47 @@ pub struct Mci {
     cptra_boot_go: Rc<Cell<bool>>,
 }
 
+/// Optional configuration for [`Mci::new`].
+pub struct MciArgs {
+    pub mcu_mailbox0: Option<McuMailbox0Internal>,
+    pub mcu_mailbox1: Option<McuMailbox0Internal>,
+    /// Caliptra's SoC interface registers, used to coordinate hitless update resets.
+    pub soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+    pub generic_input_wires: [u32; 2],
+    pub fips_zeroization: bool,
+    /// Shared flag: Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO.
+    /// Defaults to `true`, i.e. Caliptra is not held.
+    pub cptra_boot_go: Rc<Cell<bool>>,
+}
+
+impl Default for MciArgs {
+    fn default() -> Self {
+        Self {
+            mcu_mailbox0: None,
+            mcu_mailbox1: None,
+            soc_regs: None,
+            generic_input_wires: [0, 0],
+            fips_zeroization: false,
+            cptra_boot_go: Rc::new(Cell::new(true)),
+        }
+    }
+}
+
 impl Mci {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         clock: &Clock,
         ext_mci_regs: caliptra_emu_periph::mci::Mci,
         irq: Rc<RefCell<Irq>>,
-        mcu_mailbox0: Option<McuMailbox0Internal>,
-        mcu_mailbox1: Option<McuMailbox0Internal>,
-        soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
-        generic_input_wires: [u32; 2],
-        fips_zeroization: bool,
-        cptra_boot_go: Rc<Cell<bool>>,
+        args: MciArgs,
     ) -> Self {
+        let MciArgs {
+            mcu_mailbox0,
+            mcu_mailbox1,
+            soc_regs,
+            generic_input_wires,
+            fips_zeroization,
+            cptra_boot_go,
+        } = args;
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
         ext_mci_regs.regs.borrow_mut().generic_input_wires = generic_input_wires;
@@ -1601,12 +1629,11 @@ mod tests {
             &clock,
             ext.clone(),
             Rc::new(RefCell::new(pic.register_irq(1))),
-            Some(mailbox.clone()),
-            None,
-            None,
-            [0x1234, 0x5678],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(mailbox.clone()),
+                generic_input_wires: [0x1234, 0x5678],
+                ..Default::default()
+            },
         );
         mci.generated.write_mci_reg_ss_config_done_sticky(1.into());
         mci.generated.write_mci_reg_ss_config_done(1.into());
@@ -1682,12 +1709,9 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            None,
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                ..Default::default()
+            },
         );
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
@@ -1779,12 +1803,10 @@ mod tests {
             &clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -1879,12 +1901,11 @@ mod tests {
             &clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new_with_mbox_index(&clock, 0)),
-            Some(McuMailbox0Internal::new_with_mbox_index(&clock, 1)),
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new_with_mbox_index(&clock, 0)),
+                mcu_mailbox1: Some(McuMailbox0Internal::new_with_mbox_index(&clock, 1)),
+                ..Default::default()
+            },
         );
         // Sanity: mailbox1 is constructed with index 1 so its IRQ events get
         // routed to the Mbox1 notification bits.
@@ -1972,12 +1993,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         let hi: u32 = 0x0022_3344;
@@ -2004,12 +2023,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         let lo: u32 = 0x0000_FFFF;
@@ -2036,12 +2053,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         // Seed a known value.
@@ -2066,12 +2081,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
@@ -2112,12 +2125,9 @@ mod tests {
             &clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
-            None,
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                ..Default::default()
+            },
         );
 
         // Step 1: Cold boot - reset_reason should be 0x0
@@ -2174,12 +2184,9 @@ mod tests {
             &clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
-            None,
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                ..Default::default()
+            },
         );
 
         // Cold boot: reset_reason = 0x0
@@ -2207,12 +2214,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         // Initial time is 0
@@ -2236,12 +2241,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         // Move time to a known value.
@@ -2274,12 +2277,10 @@ mod tests {
             &clock,
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(McuMailbox0Internal::new(&clock)),
+                ..Default::default()
+            },
         );
 
         // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0

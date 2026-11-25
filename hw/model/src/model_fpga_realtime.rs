@@ -669,7 +669,7 @@ impl McuHwModel for ModelFpgaRealtime {
         let gpio1 = 0xc000_0000;
         // Notify MCU ROM whether or not we are going to flash boot
         let gpio1 = if self.flash_boot {
-            gpio1 | (1 << 29)
+            gpio1 | crate::MCI_FLASH_BOOT_WIRE_BIT
         } else {
             gpio1
         };

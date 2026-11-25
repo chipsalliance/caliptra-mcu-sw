@@ -637,7 +637,7 @@ mod tests {
     use super::*;
     use caliptra_emu_bus::Bus;
     use caliptra_emu_types::RvSize;
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusArgs};
     use tock_registers::interfaces::Writeable;
 
     const USBDEV_BASE: u32 = caliptra_mcu_registers_generated::usbdev::USBDEV_ADDR;
@@ -664,33 +664,10 @@ mod tests {
     fn setup() -> (AutoRootBus, UsbHostController) {
         let periph = UsbDevPeriph::new();
         let host = periph.host_controller();
-        let bus = AutoRootBus::new(
-            vec![],
-            None,
-            Some(Box::new(periph)),
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let bus = AutoRootBus::new(AutoRootBusArgs {
+            usbdev_periph: Some(Box::new(periph)),
+            ..Default::default()
+        });
         (bus, host)
     }
 

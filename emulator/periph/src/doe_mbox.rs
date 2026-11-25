@@ -361,7 +361,7 @@ mod tests {
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusArgs};
     use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
     use caliptra_mcu_registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
@@ -490,33 +490,10 @@ mod tests {
             step_lock,
         ));
 
-        AutoRootBus::new(
-            vec![],
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            Some(doe_mbox),
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        AutoRootBus::new(AutoRootBusArgs {
+            doe_mbox_periph: Some(doe_mbox),
+            ..Default::default()
+        })
     }
 
     #[test]

@@ -47,7 +47,7 @@ pub use flash_ctrl::DummyFlashCtrl;
 pub use i3c::I3c;
 pub use i3c_protocol::*;
 pub use lc_ctrl::LcCtrl;
-pub use mci::Mci;
+pub use mci::{Mci, MciArgs};
 pub use mcu_mbox0::{MciMailboxRequester, McuMailbox0External, McuMailbox0Internal};
 pub use network_mbox::{NetworkMailboxInternal, NetworkMboxIrqEvent};
 pub use network_root_bus::{NetworkRootBus, NetworkRootBusArgs, NetworkRootBusOffsets};
