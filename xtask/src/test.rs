@@ -196,7 +196,10 @@ pub(crate) fn test_xtask_runtime() -> Result<()> {
         }])?;
 
     crate::runtime::runtime_run(Commands::Runtime {
-        hw_revision: semver::Version::new(2, 0, 0),
+        hw_revision: caliptra_mcu_hw_revision::HardwareRevision::from_env()
+            .map_err(anyhow::Error::msg)?
+            .emulator_version()
+            .parse()?,
         trace: false,
         i3c_port: None,
         features: vec!["test-xtask-runtime".to_string()],
