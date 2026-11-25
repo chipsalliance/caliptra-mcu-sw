@@ -52,7 +52,7 @@ mod test_svn_manifest;
 mod test_sw_pcr_store;
 mod test_timer_alarm;
 mod test_usb_ocp_recovery;
-#[cfg(all(test, hw_rev = "latest", not(feature = "fpga_realtime")))]
+#[cfg(all(test, hw_rev = "latest"))]
 mod usb;
 
 pub fn platform() -> &'static str {

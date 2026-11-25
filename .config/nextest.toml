@@ -41,6 +41,18 @@ path = "/tmp/junit-usb.xml"
 store-success-output = false
 store-failure-output = true
 
+[profile.usb-fpga]
+default-filter = 'package(caliptra-mcu-tests-integration) and test(test_fpga_usb_arch_b)'
+test-threads = 1
+retries = 0
+failure-output = "immediate-final"
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[profile.usb-fpga.junit]
+path = "/tmp/junit-usb-fpga.xml"
+store-success-output = true
+store-failure-output = true
+
 [profile.nightly-ci]
 inherits = "nightly"
 retries = 2
@@ -52,6 +64,7 @@ default-filter = """
 (package(caliptra-mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
 (package(caliptra-mcu-tests-integration) and test(test_axi_bypass)) |
+(package(caliptra-mcu-tests-integration) and test(test_fpga_usb_arch_b)) |
 (package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
 (package(caliptra-mcu-tests-integration) and test(test_bare_metal_jtag_sideload)) |
 (package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |

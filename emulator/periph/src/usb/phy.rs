@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! USB3320 register subset (datasheet chapter 7), not ULPI pin timing.
+//! Reference ULPI PHY register subset, not ULPI pin timing.
 //!
 //! ULPIDEBUG at Combo offset 0x103c stages address[7:0], write data[15:8],
 //! direction[24] and ULPI mode[31]. ACCESS[25] starts a transaction; polling

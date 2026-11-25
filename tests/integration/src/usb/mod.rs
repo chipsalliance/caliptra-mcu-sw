@@ -1,12 +1,19 @@
 // Licensed under the Apache-2.0 license
 
+#[cfg(feature = "fpga_realtime")]
+mod test_fpga_usb_arch_b;
+#[cfg(not(feature = "fpga_realtime"))]
 mod usb_driver_tests;
+#[cfg(not(feature = "fpga_realtime"))]
 mod usb_phy_tests;
+#[cfg(not(feature = "fpga_realtime"))]
 mod usb_recovery_tests;
+#[cfg(not(feature = "fpga_realtime"))]
 mod usb_rom_recovery_tests;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(feature = "fpga_realtime")))]
 mod usbip_tests;
 
+#[cfg(not(feature = "fpga_realtime"))]
 fn test_rom(feature: &str) -> anyhow::Result<Vec<u8>> {
     use anyhow::ensure;
     use caliptra_mcu_builder::{rom_build, CaliptraBuildArgs, FirmwareBinaries};

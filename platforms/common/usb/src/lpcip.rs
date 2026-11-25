@@ -155,7 +155,7 @@ impl LpcipUsbDriver {
         self.status_only = true;
     }
 
-    /// Disconnect, initialize SRAM/ULPI, validate USB3320 and wait for real VBUS
+    /// Disconnect, initialize SRAM/ULPI, validate the reference PHY and wait for VBUS
     /// before asserting DCON. Errors leave Device 0 disconnected with its clock on.
     pub fn initialize(&mut self) -> Result<(), UsbError> {
         if self.params.enable_logs {

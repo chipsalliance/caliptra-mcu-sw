@@ -143,9 +143,31 @@ sequenceDiagram
 With `CALIPTRA_HW_REV=latest`, enable the common ROM's `usb-recovery` feature,
 select `RomParameters::recovery_interface = RecoveryInterface::Usb`, and provide
 `RomParameters::usb` with the platform's generated Device 0 CSR/SRAM mappings,
-approved USB identity and VBUS power budget. The platform must release USB3320
-reset and supply its clocks. There are no production identity or power defaults.
-Hub topology and Device 1 remain platform responsibilities.
+approved USB identity and VBUS power budget. The platform must release its PHY
+reset and supply the required clocks. There are no production identity or power
+defaults. Hub topology and Device 1 remain platform responsibilities.
+
+The subsystem USB controller does not mandate a particular PHY. Integrators
+choose the PHY, supported controller interface and board-level configuration.
+The supplied reference driver uses ULPI and checks the reference PHY identity;
+a different PHY or interface requires corresponding initialization and driver
+support. Reference platform configurations are not subsystem requirements.
+
+For standalone HTG-940 development, build only the MCU ROM with
+`CALIPTRA_HW_REV=latest cargo xtask rom-build --platform fpga --features htg940`.
+This opt-in feature selects USB recovery, initializes vendor-hash slot 0 through
+FPGA OTP backing RAM at `0xB0080000` plus the generated fuse offset, and supplies
+no DOT flash backend. It installs the fixed development signing-key hash only
+when the slot is zero, accepts an existing matching hash, and fails on a
+different hash or failed readback. This is not physical OTP provisioning and
+must not be used with production hardware or different signing keys. The
+HTG variant uses a 3,600,000,000-cycle MCU recovery watchdog budget for GUI
+bring-up (60 seconds at 60 MHz) in production, manufacturing and debug states.
+Core watchdog settings and the ordinary FPGA MCU watchdog budget remain
+unchanged. No separate HTG fuse map, ROM repacking or hardware programming is
+performed by this build command.
+Latest FPGA CI bundles also include `mcu-test-rom-feature-htg940.bin` alongside
+the ordinary MCU ROM. This variant is not included in emulator or 2.1 bundles.
 
 On 2.2, cold and warm boot explicitly select the hardware recovery interface
 before Caliptra boot-go and verify readback, preserving other capability bits.

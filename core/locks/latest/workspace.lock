@@ -2299,6 +2299,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-error",
  "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
