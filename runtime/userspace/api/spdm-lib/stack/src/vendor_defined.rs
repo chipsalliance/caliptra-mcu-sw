@@ -130,7 +130,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
             let rsp_body = VendorDefinedRspBody {
                 standard_id: decoded.standard_id,
                 vendor_id: decoded.vendor_id,
-                payload: &inline_buf[..n],
+                payload: inline_buf.get(..n).ok_or(SPDM_UNSPECIFIED)?,
                 is_large: decoded.is_large,
             };
             let spdm_len = rsp_body.encoded_size();

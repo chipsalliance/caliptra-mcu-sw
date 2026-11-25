@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod test {
+    use crate::runtime::start_command_authorized_runtime;
     use crate::test::{start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK};
     use caliptra_api::{
         calc_checksum,
@@ -11,6 +12,7 @@ mod test {
             CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacReq, CmHmacResp,
             CmStableKeyType, CommandId,
         },
+        SocManager,
     };
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
@@ -794,6 +796,17 @@ mod test {
             "Forced fuse owner boot should not fatal: 0x{:x}",
             fatal_error.unwrap_or(0)
         );
+        assert!(
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE),
+            "Forced fuse owner boot timed out before completing cold boot"
+        );
+        if caliptra_mcu_builder::hardware_revision().unwrap().as_str() == "latest" {
+            let mut manager = hw.caliptra_soc_manager();
+            let soc = manager.soc_ifc();
+            assert_eq!(soc.cptra_owner_pk_hash().read(), get_owner_pk_hash());
+            assert!(soc.cptra_owner_pk_hash_lock().read().lock());
+        }
 
         let output = hw.output().peek().to_string();
         // The DOT flow must be skipped entirely.
@@ -1498,7 +1511,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: true,
             ..Default::default()
@@ -1538,7 +1551,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: false,
             ..Default::default()
@@ -1592,7 +1605,7 @@ mod test {
             .is_err());
 
         drop(hw);
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: true,
             ..Default::default()
@@ -1611,7 +1624,7 @@ mod test {
 
         drop(hw);
         let blob = create_valid_dot_blob(get_owner_pk_hash(), [0; 12]);
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(create_locked_otp_memory()),
             dot_flash_initial_contents: Some(blob.to_flash_contents()),
@@ -1648,7 +1661,7 @@ mod test {
 
         let mut otp = create_locked_otp_memory();
         otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(otp),
             ..Default::default()
@@ -1735,7 +1748,7 @@ mod test {
 
         let mut otp = create_locked_otp_memory();
         otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(otp),
             ..Default::default()
@@ -1787,7 +1800,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: true,
             ..Default::default()
@@ -1818,7 +1831,7 @@ mod test {
         };
         let mut otp = create_locked_otp_memory();
         otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(otp),
             ..Default::default()
@@ -1896,7 +1909,7 @@ mod test {
             cak,
             lak_hash,
         };
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: true,
             ..Default::default()
@@ -2016,7 +2029,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: false,
             ..Default::default()
@@ -2066,7 +2079,7 @@ mod test {
         let mut otp = vec![0u8; otp_size];
         otp[DOT_FUSE_ARRAY.byte_offset] = 1;
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(otp),
             ..Default::default()
@@ -2120,7 +2133,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: true,
             ..Default::default()
@@ -2169,7 +2182,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let backup = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(create_locked_otp_memory()),
             dot_flash_initial_contents: Some(backup.clone()),
@@ -2223,7 +2236,7 @@ mod test {
         );
 
         drop(hw);
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             dot_enabled: true,
             ..Default::default()
@@ -2260,7 +2273,7 @@ mod test {
             &recovery_mldsa_pub,
         );
         let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
             dot_flash_initial_contents: Some(blob),
@@ -2335,7 +2348,7 @@ mod test {
             &recovery_mldsa_pub,
         );
         let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
             dot_flash_initial_contents: Some(blob),
@@ -2424,7 +2437,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(create_locked_otp_memory()),
             dot_flash_initial_contents: Some(blob.to_flash_contents()),
@@ -2468,7 +2481,7 @@ mod test {
             *word = u32::from_le_bytes(bytes.try_into().unwrap());
         }
         let blob = create_valid_dot_blob(get_owner_pk_hash(), lak_words);
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some("test-mcu-mbox-cmds"),
             otp_memory: Some(create_locked_otp_memory()),
             dot_flash_initial_contents: Some(blob.to_flash_contents()),

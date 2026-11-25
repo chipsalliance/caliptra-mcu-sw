@@ -1,7 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, Context, Result};
-use caliptra_auth_man_types::{AuthManifestFlags, AuthManifestPreamble, AuthorizationManifest};
+use caliptra_auth_man_types::{
+    AuthManifestFlags, AuthManifestPreamble, AuthorizationManifest,
+    AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE,
+};
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
 use caliptra_image_types::{
@@ -82,11 +85,9 @@ pub fn create_signing_request(
         .ok_or_else(|| anyhow!("Invalid vendor signed data range"))?;
     let vendor_digest = sha384_hex(vendor_payload);
 
-    let owner_range = AuthManifestPreamble::owner_pub_keys_range();
-    let owner_payload = preamble_bytes
-        .get(owner_range.start as usize..owner_range.end as usize)
-        .ok_or_else(|| anyhow!("Invalid owner pub keys range"))?;
-    let owner_digest = sha384_hex(owner_payload);
+    let mut owner_payload = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+    manifest.preamble.owner_signed_data(&mut owner_payload);
+    let owner_digest = sha384_hex(&owner_payload);
 
     let imc_payload = manifest.image_metadata_col.as_bytes();
     let imc_digest = sha384_hex(imc_payload);
@@ -335,7 +336,8 @@ pub fn attach_auth_manifest_signatures(
         }
     }
 
-    // Owner Pub Keys Signatures (signed by Owner FW Root key over Owner Manifest Public Keys)
+    // Owner Pub Keys Signatures (signed by Owner FW Root key over version, SVN, flags,
+    // and Owner Manifest Public Keys).
     let owner_pub_sigs = sigs_json
         .owner_pub_keys_signatures
         .as_ref()
@@ -358,7 +360,8 @@ pub fn attach_auth_manifest_signatures(
 
     if let Some(owner_fw_pub_path) = owner_fw_pub_key_path {
         let owner_fw_pub = Crypto::ecc_pub_key_from_pem(owner_fw_pub_path)?;
-        let owner_data = manifest.preamble.owner_pub_keys.as_bytes();
+        let mut owner_data = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+        manifest.preamble.owner_signed_data(&mut owner_data);
         let digest: [u8; 48] = sha2::Sha384::digest(owner_data).into();
         verify_ecdsa384_signature(
             &digest,
@@ -564,5 +567,221 @@ mod tests {
 
         let empty_sig = ImagePqcSignature::default();
         assert!(empty_sig.verify().is_err());
+    }
+
+    #[test]
+    fn test_offline_signing_owner_signed_data_and_attach_signatures() {
+        use caliptra_auth_man_gen::{
+            AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
+        };
+        use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
+        use caliptra_image_fake_keys::*;
+        use caliptra_image_types::FwVerificationPqcKeyType;
+        use openssl::{
+            bn::BigNum,
+            ec::{EcGroup, EcKey},
+            nid::Nid,
+        };
+        use tempfile::tempdir;
+
+        const DEFAULT_PQC_KEY_TYPE: FwVerificationPqcKeyType = FwVerificationPqcKeyType::LMS;
+
+        fn ecc_pub_key_to_pem(pub_key: &ImageEccPubKey) -> Vec<u8> {
+            let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
+            let x = BigNum::from_slice(&from_hw_format(&pub_key.x)).unwrap();
+            let y = BigNum::from_slice(&from_hw_format(&pub_key.y)).unwrap();
+            let ec_key = EcKey::from_public_key_affine_coordinates(&group, &x, &y).unwrap();
+            ec_key.public_key_to_pem().unwrap()
+        }
+
+        fn ecc_sig_to_hex(sig: &ImageEccSignature) -> String {
+            let mut raw = [0u8; 96];
+            raw[..48].copy_from_slice(&from_hw_format(&sig.r));
+            raw[48..].copy_from_slice(&from_hw_format(&sig.s));
+            hex::encode(raw)
+        }
+
+        let vendor_fw_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: VENDOR_ECC_KEY_0_PUBLIC,
+                lms_pub_key: VENDOR_LMS_KEY_0_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
+            },
+            priv_keys: Some(AuthManifestPrivKeysConfig {
+                ecc_priv_key: VENDOR_ECC_KEY_0_PRIVATE,
+                lms_priv_key: VENDOR_LMS_KEY_0_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
+            }),
+        };
+        let vendor_man_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: VENDOR_ECC_KEY_1_PUBLIC,
+                lms_pub_key: VENDOR_LMS_KEY_1_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
+            },
+            priv_keys: Some(AuthManifestPrivKeysConfig {
+                ecc_priv_key: VENDOR_ECC_KEY_1_PRIVATE,
+                lms_priv_key: VENDOR_LMS_KEY_1_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
+            }),
+        };
+        let owner_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
+                lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
+            },
+            priv_keys: Some(AuthManifestPrivKeysConfig {
+                ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
+                lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
+            }),
+        };
+
+        let gen = AuthManifestGenerator::new(Crypto::default());
+        let signed_manifest = gen
+            .generate(&AuthManifestGeneratorConfig {
+                vendor_fw_key_info: Some(vendor_fw_key_info.clone()),
+                vendor_man_key_info: Some(vendor_man_key_info.clone()),
+                owner_fw_key_info: Some(owner_key_info.clone()),
+                owner_man_key_info: Some(owner_key_info.clone()),
+                image_metadata_list: Vec::new(),
+                version: 1,
+                flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
+                pqc_key_type: DEFAULT_PQC_KEY_TYPE,
+                svn: 7,
+            })
+            .unwrap();
+
+        let unsigned_manifest = gen
+            .generate(&AuthManifestGeneratorConfig {
+                vendor_fw_key_info: Some(AuthManifestGeneratorKeyConfig {
+                    priv_keys: None,
+                    ..vendor_fw_key_info
+                }),
+                vendor_man_key_info: Some(AuthManifestGeneratorKeyConfig {
+                    priv_keys: None,
+                    ..vendor_man_key_info
+                }),
+                owner_fw_key_info: Some(AuthManifestGeneratorKeyConfig {
+                    priv_keys: None,
+                    ..owner_key_info.clone()
+                }),
+                owner_man_key_info: Some(AuthManifestGeneratorKeyConfig {
+                    priv_keys: None,
+                    ..owner_key_info
+                }),
+                image_metadata_list: Vec::new(),
+                version: 1,
+                flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
+                pqc_key_type: DEFAULT_PQC_KEY_TYPE,
+                svn: 7,
+            })
+            .unwrap();
+
+        let req = create_signing_request(&unsigned_manifest).unwrap();
+        let mut expected_owner_data = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+        unsigned_manifest
+            .preamble
+            .owner_signed_data(&mut expected_owner_data);
+        assert_eq!(
+            req.requests.owner_pub_keys_signatures.payload_hex,
+            hex::encode(expected_owner_data)
+        );
+        assert_eq!(
+            req.requests.owner_pub_keys_signatures.digest_sha384,
+            sha384_hex(&expected_owner_data)
+        );
+
+        let dir = tempdir().unwrap();
+        let unsigned_path = dir.path().join("unsigned.bin");
+        let sigs_path = dir.path().join("sigs.json");
+        let vendor_pub_path = dir.path().join("vendor_fw_pub.pem");
+        let owner_pub_path = dir.path().join("owner_fw_pub.pem");
+        let output_path = dir.path().join("signed.bin");
+
+        std::fs::write(&unsigned_path, unsigned_manifest.as_bytes()).unwrap();
+        std::fs::write(
+            &vendor_pub_path,
+            ecc_pub_key_to_pem(&VENDOR_ECC_KEY_0_PUBLIC),
+        )
+        .unwrap();
+        std::fs::write(&owner_pub_path, ecc_pub_key_to_pem(&OWNER_ECC_KEY_PUBLIC)).unwrap();
+
+        let pqc_dummy_hex = "aa".repeat(2420);
+        let sigs_json = SignaturesJson {
+            vendor_pub_keys_signatures: Some(SignatureEntry {
+                ecc_sig: Some(ecc_sig_to_hex(
+                    &signed_manifest.preamble.vendor_pub_keys_signatures.ecc_sig,
+                )),
+                pqc_sig: Some(pqc_dummy_hex.clone()),
+            }),
+            owner_pub_keys_signatures: Some(SignatureEntry {
+                ecc_sig: Some(ecc_sig_to_hex(
+                    &signed_manifest.preamble.owner_pub_keys_signatures.ecc_sig,
+                )),
+                pqc_sig: Some(pqc_dummy_hex.clone()),
+            }),
+            vendor_imc_signatures: Some(SignatureEntry {
+                ecc_sig: Some(ecc_sig_to_hex(
+                    &signed_manifest
+                        .preamble
+                        .vendor_image_metdata_signatures
+                        .ecc_sig,
+                )),
+                pqc_sig: Some(pqc_dummy_hex.clone()),
+            }),
+            owner_imc_signatures: Some(SignatureEntry {
+                ecc_sig: Some(ecc_sig_to_hex(
+                    &signed_manifest
+                        .preamble
+                        .owner_image_metdata_signatures
+                        .ecc_sig,
+                )),
+                pqc_sig: Some(pqc_dummy_hex.clone()),
+            }),
+        };
+        std::fs::write(&sigs_path, serde_json::to_string(&sigs_json).unwrap()).unwrap();
+
+        attach_auth_manifest_signatures(
+            &unsigned_path,
+            &sigs_path,
+            Some(&vendor_pub_path),
+            Some(&owner_pub_path),
+            &output_path,
+        )
+        .unwrap();
+
+        // A legacy owner signature covering only `owner_pub_keys` (without policy fields) must fail.
+        let crypto = Crypto::default();
+        let legacy_owner_digest = crypto
+            .sha384_digest(unsigned_manifest.preamble.owner_pub_keys.as_bytes())
+            .unwrap();
+        let legacy_owner_sig = crypto
+            .ecdsa384_sign(
+                &legacy_owner_digest,
+                &OWNER_ECC_KEY_PRIVATE,
+                &OWNER_ECC_KEY_PUBLIC,
+            )
+            .unwrap();
+        let mut bad_sigs_json = sigs_json;
+        bad_sigs_json
+            .owner_pub_keys_signatures
+            .as_mut()
+            .unwrap()
+            .ecc_sig = Some(ecc_sig_to_hex(&legacy_owner_sig));
+        std::fs::write(&sigs_path, serde_json::to_string(&bad_sigs_json).unwrap()).unwrap();
+
+        let err = attach_auth_manifest_signatures(
+            &unsigned_path,
+            &sigs_path,
+            Some(&vendor_pub_path),
+            Some(&owner_pub_path),
+            &output_path,
+        )
+        .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("Owner public keys signature verification failed"));
     }
 }

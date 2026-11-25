@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Session crypto abstraction for the SPDM-Lite stack.
+//! Session crypto abstraction for the SPDM stack.
 //!
 //! Defines [`SpdmPalSessionCrypto`], the trait that platform-specific
 //! implementations must satisfy to support SPDM secure sessions

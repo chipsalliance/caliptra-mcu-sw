@@ -24,6 +24,15 @@ pub const ENTRY_HEADER_SIZE: usize = size_of::<usize>();
 /// Byte used to pad the end of a page.
 const PAD_BYTE: u8 = 0xFF;
 
+fn copy_at(destination: &mut [u8], offset: usize, source: &[u8]) -> Option<()> {
+    let end = offset.checked_add(source.len())?;
+    let destination = destination.get_mut(offset..end)?;
+    for (destination, source) in destination.iter_mut().zip(source) {
+        *destination = *source;
+    }
+    Some(())
+}
+
 /// Log state keeps track of any in-progress asynchronous operations.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum State {
@@ -237,8 +246,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
 
     fn write_page_header_at(&self, pagebuffer: &mut F::Page, start_entry_id: EntryID) {
         let id_bytes = start_entry_id.to_ne_bytes();
-        let page = pagebuffer.as_mut();
-        page[..id_bytes.len()].copy_from_slice(&id_bytes[..]);
+        let _ = copy_at(pagebuffer.as_mut(), 0, &id_bytes);
     }
 
     /// Read `num_bytes` bytes starting at volume offset `pos` into `out`.
@@ -253,10 +261,10 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
             let mut got = None;
             self.pagebuffer.map(|pagebuffer| {
                 let page = pagebuffer.as_mut();
-                if offset + num_bytes <= page.len() {
-                    out[..num_bytes].copy_from_slice(&page[offset..offset + num_bytes]);
-                    got = Some(());
-                }
+                got = offset
+                    .checked_add(num_bytes)
+                    .and_then(|end| page.get(offset..end))
+                    .and_then(|source| copy_at(out, 0, source));
             });
             return got;
         }
@@ -266,10 +274,10 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
             let mut got = None;
             self.read_pagebuffer.map(|pagebuffer| {
                 let page = pagebuffer.as_mut();
-                if offset + num_bytes <= page.len() {
-                    out[..num_bytes].copy_from_slice(&page[offset..offset + num_bytes]);
-                    got = Some(());
-                }
+                got = offset
+                    .checked_add(num_bytes)
+                    .and_then(|end| page.get(offset..end))
+                    .and_then(|source| copy_at(out, 0, source));
             });
             return got;
         }
@@ -390,12 +398,20 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
                 let logical_page = next;
                 if success && page_buf.len() >= PAGE_HEADER_SIZE {
                     let mut id_bytes = [0u8; PAGE_HEADER_SIZE];
-                    id_bytes.copy_from_slice(&page_buf[..PAGE_HEADER_SIZE]);
+                    if page_buf
+                        .get(..PAGE_HEADER_SIZE)
+                        .and_then(|source| copy_at(&mut id_bytes, 0, source))
+                        .is_none()
+                    {
+                        self.reset_state_empty();
+                        self.finish_reconstruct();
+                        return;
+                    }
                     let page_id = EntryID::from_ne_bytes(id_bytes);
 
                     // Validate: a real page header has page_id %
                     // volume_len equal to its physical-volume offset.
-                    if page_id % self.volume_len == logical_page * self.page_size {
+                    if page_id.checked_rem(self.volume_len) == Some(logical_page * self.page_size) {
                         if page_id < self.reconstruct_oldest.get() {
                             self.reconstruct_oldest.set(page_id);
                         }
@@ -421,15 +437,22 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
                         if last_page_len + ENTRY_HEADER_SIZE > self.page_size {
                             break;
                         }
-                        let byte = page_buf[last_page_len];
+                        let Some(&byte) = page_buf.get(last_page_len) else {
+                            break;
+                        };
                         if byte == 0 || byte == PAD_BYTE {
                             break;
                         }
                         // Read entry length header.
                         let mut len_bytes = [0u8; ENTRY_HEADER_SIZE];
-                        len_bytes.copy_from_slice(
-                            &page_buf[last_page_len..last_page_len + ENTRY_HEADER_SIZE],
-                        );
+                        let Some(entry_header) =
+                            page_buf.get(last_page_len..last_page_len + ENTRY_HEADER_SIZE)
+                        else {
+                            break;
+                        };
+                        if copy_at(&mut len_bytes, 0, entry_header).is_none() {
+                            break;
+                        }
                         let entry_len = usize::from_ne_bytes(len_bytes);
                         let total = entry_len + ENTRY_HEADER_SIZE;
                         if entry_len == 0 || last_page_len + total > self.page_size {
@@ -454,7 +477,16 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
                         // Mirror the newest page into the writable buffer
                         // so further appends extend it.
                         let dst = pagebuffer.as_mut();
-                        dst[..self.page_size].copy_from_slice(&page_buf[..self.page_size]);
+                        let copied = page_buf
+                            .get(..self.page_size)
+                            .and_then(|source| copy_at(dst, 0, source))
+                            .is_some();
+                        if !copied {
+                            self.pagebuffer.replace(pagebuffer);
+                            self.reset_state_empty();
+                            self.finish_reconstruct();
+                            return;
+                        }
                         let logical = self.logical_page_of_pos(newest_id);
                         self.pagebuffer_logical_page.set(Some(logical));
                     } else {
@@ -526,10 +558,11 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
     /// asynchronously as needed; once the cursor is final, delivers
     /// the entry (or signals end-of-log).
     fn advance_read_pointer_then_deliver(&self) {
+        let page_size = self.page_size;
         loop {
             let entry_id = self.read_entry_id.get();
-            if entry_id >= self.append_entry_id.get() {
-                // End of log.
+            if entry_id >= self.append_entry_id.get() || page_size == 0 || self.volume_len == 0 {
+                // End of log or invalid backing volume.
                 self.error.set(Err(ErrorCode::FAIL));
                 self.length.set(0);
                 self.deferred_call.set();
@@ -537,7 +570,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
             }
 
             // Skip the page header at the very start of a page.
-            if entry_id.is_multiple_of(self.page_size) {
+            if entry_id.is_multiple_of(page_size) {
                 self.read_entry_id.set(entry_id + PAGE_HEADER_SIZE);
                 continue;
             }
@@ -547,9 +580,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
                 Some(byte) => {
                     if byte == PAD_BYTE {
                         // Skip rest of page (and the next page header).
-                        let next = entry_id
-                            + (self.page_size - entry_id % self.page_size)
-                            + PAGE_HEADER_SIZE;
+                        let next = entry_id + (page_size - entry_id % page_size) + PAGE_HEADER_SIZE;
                         self.read_entry_id.set(next);
                         continue;
                     }
@@ -603,7 +634,10 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         }
 
         // Caller's buffer must hold the entire entry.
-        let client_len = self.length.get();
+        let client_len = self
+            .buffer
+            .map(|buffer| self.length.get().min(buffer.len()))
+            .unwrap_or(self.length.get());
         if entry_len > client_len {
             self.error.set(Err(ErrorCode::SIZE));
             self.length.set(0);
@@ -615,10 +649,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         let payload_pos = entry_id + ENTRY_HEADER_SIZE;
         let mut copied = false;
         if let Some(buffer) = self.buffer.take() {
-            if self
-                .try_get_bytes(payload_pos, entry_len, &mut buffer[..entry_len])
-                .is_some()
-            {
+            if self.try_get_bytes(payload_pos, entry_len, buffer).is_some() {
                 copied = true;
             }
             self.buffer.replace(buffer);
@@ -657,8 +688,13 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
     }
 
     fn start_sync(&self) -> Result<(), ErrorCode> {
+        let page_offset = self
+            .append_entry_id
+            .get()
+            .checked_rem(self.page_size)
+            .ok_or(ErrorCode::FAIL)?;
         // Empty pagebuffer (only header) → nothing to flush.
-        if self.append_entry_id.get() % self.page_size == PAGE_HEADER_SIZE {
+        if page_offset == PAGE_HEADER_SIZE {
             self.state.set(State::Syncing);
             self.error.set(Ok(()));
             self.deferred_call.set();
@@ -760,16 +796,30 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         pagebuffer: &'static mut F::Page,
     ) {
         let append_entry_id = self.append_entry_id.get();
-        let mut page_offset = append_entry_id % self.page_size;
-
-        // Write entry header.
         let len_bytes = length.to_ne_bytes();
-        let page = pagebuffer.as_mut();
-        page[page_offset..page_offset + ENTRY_HEADER_SIZE].copy_from_slice(&len_bytes);
-        page_offset += ENTRY_HEADER_SIZE;
-
-        // Write payload.
-        page[page_offset..page_offset + length].copy_from_slice(&buffer[..length]);
+        let copied = buffer.get(..length).is_some_and(|payload| {
+            let Some(mut page_offset) = append_entry_id.checked_rem(self.page_size) else {
+                return false;
+            };
+            if self.volume_len == 0 {
+                return false;
+            }
+            let page = pagebuffer.as_mut();
+            if copy_at(page, page_offset, &len_bytes).is_none() {
+                return false;
+            }
+            page_offset += ENTRY_HEADER_SIZE;
+            copy_at(page, page_offset, payload).is_some()
+        });
+        if !copied {
+            self.pagebuffer.replace(pagebuffer);
+            self.buffer.replace(buffer);
+            self.length.set(0);
+            self.records_lost.set(false);
+            self.error.set(Err(ErrorCode::FAIL));
+            self.deferred_call.set();
+            return;
+        }
 
         let new_append_entry_id = append_entry_id + length + ENTRY_HEADER_SIZE;
         self.append_entry_id.set(new_append_entry_id);
@@ -788,35 +838,41 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
     /// Pad the pagebuffer with `PAD_BYTE`, write it to flash, and
     /// advance bookkeeping for an overwritten oldest page if relevant.
     fn flush_pagebuffer(&self, pagebuffer: &'static mut F::Page) -> Result<(), ErrorCode> {
+        let page_size = self.page_size;
+        if page_size == 0 || self.volume_len == 0 {
+            self.pagebuffer.replace(pagebuffer);
+            return Err(ErrorCode::FAIL);
+        }
         // Pad end of page.
         let mut pad_ptr = self.append_entry_id.get();
-        let page = pagebuffer.as_mut();
-        while !pad_ptr.is_multiple_of(self.page_size) {
-            page[pad_ptr % self.page_size] = PAD_BYTE;
+        while !pad_ptr.is_multiple_of(page_size) {
+            let Some(byte) = pagebuffer.as_mut().get_mut(pad_ptr % page_size) else {
+                self.pagebuffer.replace(pagebuffer);
+                return Err(ErrorCode::FAIL);
+            };
+            *byte = PAD_BYTE;
             pad_ptr += 1;
         }
         // The pagebuffer is now mirrored on flash for the page ending
         // at `pad_ptr`.
-        let logical = self.logical_page_of_pos(pad_ptr - self.page_size);
+        let logical = self.logical_page_of_pos(pad_ptr - page_size);
 
         // Maintain oldest/read cursors when wrapping in a circular log.
         if pad_ptr > self.volume_len {
             let overwritten_logical =
-                self.logical_page_of_pos(pad_ptr - self.volume_len - self.page_size);
+                self.logical_page_of_pos(pad_ptr - self.volume_len - page_size);
             // Reframe overwritten_logical's entries.
             let overwritten_page_start =
-                (pad_ptr - self.volume_len - self.page_size) / self.page_size * self.page_size;
+                (pad_ptr - self.volume_len - page_size) / page_size * page_size;
 
             let read_entry_id = self.read_entry_id.get();
-            if read_entry_id / self.page_size == overwritten_page_start / self.page_size {
-                self.read_entry_id.set(
-                    read_entry_id + self.page_size + PAGE_HEADER_SIZE
-                        - read_entry_id % self.page_size,
-                );
+            if read_entry_id / page_size == overwritten_page_start / page_size {
+                self.read_entry_id
+                    .set(read_entry_id + page_size + PAGE_HEADER_SIZE - read_entry_id % page_size);
             }
             let oldest_entry_id = self.oldest_entry_id.get();
-            if oldest_entry_id / self.page_size == overwritten_page_start / self.page_size {
-                self.oldest_entry_id.set(oldest_entry_id + self.page_size);
+            if oldest_entry_id / page_size == overwritten_page_start / page_size {
+                self.oldest_entry_id.set(oldest_entry_id + page_size);
             }
             // Invalidate read cache if it held the page about to be
             // physically overwritten.
@@ -1167,5 +1223,228 @@ impl<F: Flash + 'static> DeferredCallClient for Log<'_, F> {
 
     fn register(&'static self) {
         self.deferred_call.register(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use std::{boxed::Box, sync::Mutex};
+
+    // Tock's deferred-call state assumes a single thread.
+    static LOG_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[derive(Default)]
+    struct MockFlash<const N: usize> {
+        read_page: Cell<Option<usize>>,
+        written_page: Cell<Option<usize>>,
+    }
+
+    impl<const N: usize> Flash for MockFlash<N>
+    where
+        [u8; N]: Default,
+    {
+        type Page = [u8; N];
+
+        fn read_page(
+            &self,
+            page_number: usize,
+            buffer: &'static mut Self::Page,
+        ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
+            self.read_page.set(Some(page_number));
+            Err((ErrorCode::FAIL, buffer))
+        }
+
+        fn write_page(
+            &self,
+            page_number: usize,
+            buffer: &'static mut Self::Page,
+        ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
+            self.written_page.set(Some(page_number));
+            Err((ErrorCode::FAIL, buffer))
+        }
+
+        fn erase_page(&self, _page_number: usize) -> Result<(), ErrorCode> {
+            Err(ErrorCode::FAIL)
+        }
+    }
+
+    #[test]
+    fn zero_page_errors_preserve_buffers_and_do_not_start_io() {
+        let _lock = LOG_TEST_LOCK.lock().unwrap();
+        let driver = MockFlash::<0>::default();
+        let log = Log::new(
+            5,
+            2,
+            &driver,
+            Box::leak(Box::new([])),
+            Box::leak(Box::new([])),
+            false,
+        );
+        assert_eq!(log.start_sync(), Err(ErrorCode::FAIL));
+        assert_eq!(log.state.get(), State::NotReady);
+        log.init();
+        assert_eq!(log.state.get(), State::Idle);
+        let pagebuffer = log.pagebuffer.take().unwrap();
+        assert_eq!(log.flush_pagebuffer(pagebuffer), Err(ErrorCode::FAIL));
+        assert!(log.pagebuffer.is_some());
+
+        let buffer = Box::leak(Box::new([0x5a]));
+        let buffer_ptr = buffer.as_ptr();
+        let pagebuffer = log.pagebuffer.take().unwrap();
+        log.append_to_pagebuffer(buffer, 1, pagebuffer);
+        assert_eq!(log.error.get(), Err(ErrorCode::FAIL));
+        assert_eq!(log.length.get(), 0);
+        assert!(!log.records_lost.get());
+        assert_eq!(log.append_entry_id.get(), PAGE_HEADER_SIZE);
+        assert!(log.pagebuffer.is_some());
+        assert_eq!(log.buffer.take().unwrap().as_ptr(), buffer_ptr);
+        assert_eq!(driver.read_page.get(), None);
+        assert_eq!(driver.written_page.get(), None);
+    }
+
+    #[test]
+    fn entry_delivery_checks_replaced_buffer_before_copying() {
+        let _lock = LOG_TEST_LOCK.lock().unwrap();
+        let entry_len = 2usize;
+        let end = PAGE_HEADER_SIZE + ENTRY_HEADER_SIZE + entry_len;
+        for buffer_len in [0, 1, 2, 4] {
+            let driver = MockFlash::<32>::default();
+            let log = Log::new(
+                5,
+                2,
+                &driver,
+                Box::leak(Box::new([0; 32])),
+                Box::leak(Box::new([0; 32])),
+                false,
+            );
+            log.pagebuffer.map(|page| {
+                copy_at(page, PAGE_HEADER_SIZE, &entry_len.to_ne_bytes()).unwrap();
+                copy_at(page, PAGE_HEADER_SIZE + ENTRY_HEADER_SIZE, b"hi").unwrap();
+            });
+            log.pagebuffer_logical_page.set(Some(0));
+            log.state.set(State::Reading);
+            log.length.set(entry_len);
+            log.append_entry_id.set(end);
+            log.buffer.replace(Box::leak(Box::new([0; 2])));
+
+            let buffer = Box::leak(std::vec![0xa5; buffer_len].into_boxed_slice());
+            let buffer_ptr = buffer.as_ptr();
+            log.read(buffer, buffer_len).unwrap();
+            log.deliver_current_entry();
+
+            let buffer = log.buffer.take().unwrap();
+            assert_eq!(buffer.as_ptr(), buffer_ptr);
+            if buffer_len < entry_len {
+                assert_eq!(log.error.get(), Err(ErrorCode::SIZE));
+                assert_eq!(log.length.get(), 0);
+                assert_eq!(log.read_entry_id.get(), PAGE_HEADER_SIZE);
+                assert!(buffer.iter().all(|byte| *byte == 0xa5));
+            } else {
+                assert_eq!(log.error.get(), Ok(()));
+                assert_eq!(log.length.get(), entry_len);
+                assert_eq!(log.read_entry_id.get(), end);
+                assert_eq!(&buffer[..entry_len], b"hi");
+                assert!(buffer[entry_len..].iter().all(|byte| *byte == 0xa5));
+            }
+            assert_eq!(driver.read_page.get(), None);
+            assert_eq!(driver.written_page.get(), None);
+        }
+    }
+
+    #[test]
+    fn empty_volume_reuses_read_and_append_error_completion() {
+        let _lock = LOG_TEST_LOCK.lock().unwrap();
+        let driver = MockFlash::<32>::default();
+        let log = Log::new(
+            5,
+            0,
+            &driver,
+            Box::leak(Box::new([0; 32])),
+            Box::leak(Box::new([0; 32])),
+            true,
+        );
+        log.init();
+        log.append_entry_id
+            .set(PAGE_HEADER_SIZE + ENTRY_HEADER_SIZE + 1);
+        log.length.set(1);
+        log.advance_read_pointer_then_deliver();
+        assert_eq!(log.error.get(), Err(ErrorCode::FAIL));
+        assert_eq!(log.length.get(), 0);
+        assert_eq!(log.read_entry_id.get(), PAGE_HEADER_SIZE);
+
+        let buffer = Box::leak(Box::new([0x5a]));
+        let buffer_ptr = buffer.as_ptr();
+        let pagebuffer = log.pagebuffer.take().unwrap();
+        assert_eq!(log.flush_pagebuffer(pagebuffer), Err(ErrorCode::FAIL));
+        let pagebuffer = log.pagebuffer.take().unwrap();
+        let append_entry_id = log.append_entry_id.get();
+        log.error.set(Ok(()));
+        log.append_to_pagebuffer(buffer, 1, pagebuffer);
+        assert_eq!(log.error.get(), Err(ErrorCode::FAIL));
+        assert_eq!(log.length.get(), 0);
+        assert_eq!(log.append_entry_id.get(), append_entry_id);
+        assert!(log.pagebuffer.is_some());
+        assert_eq!(log.buffer.take().unwrap().as_ptr(), buffer_ptr);
+        assert_eq!(driver.read_page.get(), None);
+        assert_eq!(driver.written_page.get(), None);
+    }
+
+    #[test]
+    fn reconstruction_rejects_headers_without_a_volume() {
+        let _lock = LOG_TEST_LOCK.lock().unwrap();
+        let driver = MockFlash::<32>::default();
+        for num_pages in [0, 2] {
+            let log = Log::new(
+                5,
+                num_pages,
+                &driver,
+                Box::leak(Box::new([0; 32])),
+                Box::leak(Box::new([0; 32])),
+                false,
+            );
+            log.reconstruct_phase
+                .set(ReconstructPhase::ScanPages { next: 0 });
+            log.handle_reconstruct_read(&[0; 32], true);
+            assert_eq!(
+                log.reconstruct_oldest.get(),
+                if num_pages == 0 { usize::MAX } else { 0 }
+            );
+            assert_eq!(
+                log.reconstruct_phase.get(),
+                ReconstructPhase::ScanPages { next: 1 }
+            );
+        }
+    }
+
+    #[test]
+    fn valid_pages_preserve_empty_sync_padding_and_driver_error() {
+        let _lock = LOG_TEST_LOCK.lock().unwrap();
+        let driver = MockFlash::<32>::default();
+        for num_pages in [0, 2] {
+            let log = Log::new(
+                5,
+                num_pages,
+                &driver,
+                Box::leak(Box::new([0; 32])),
+                Box::leak(Box::new([0; 32])),
+                false,
+            );
+            log.init();
+            assert_eq!(log.start_sync(), Ok(()));
+            assert_eq!(log.state.get(), State::Syncing);
+            assert_eq!(driver.written_page.get(), None);
+            if num_pages != 0 {
+                let pagebuffer = log.pagebuffer.take().unwrap();
+                assert_eq!(log.flush_pagebuffer(pagebuffer), Err(ErrorCode::FAIL));
+                assert_eq!(driver.written_page.get(), Some(5));
+                let pagebuffer = log.pagebuffer.take().unwrap();
+                assert!(pagebuffer[PAGE_HEADER_SIZE..]
+                    .iter()
+                    .all(|b| *b == PAD_BYTE));
+            }
+        }
     }
 }

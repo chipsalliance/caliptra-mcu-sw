@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM common message header (DSP0274 §10.6) — wire-format
+//! SPDM common message header — wire-format
 //! [`SpdmMsgHdrPdu`] (2 bytes) plus the [`ReqRespCode`] map.
 //!
-//! Per DSP0274 §10.6 every SPDM PDU begins with the same two bytes
+//! Every SPDM PDU begins with the same two bytes
 //! `(SPDMVersion, RequestResponseCode)`. The next two bytes (`Param1`,
 //! `Param2`) are command-specific and belong to each command's body
 //! type, not to the common header — see how individual response body
@@ -16,7 +16,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 /// Size of [`SpdmMsgHdrPdu`] in bytes.
 pub const SPDM_MSG_HDR_SIZE: usize = 2;
 
-/// SPDM RequestResponseCode (DSP0274 §10.6, §10.7, §10.8).
+/// SPDM RequestResponseCode.
 #[derive(
     FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug, PartialEq, Eq, Hash,
 )]
@@ -24,7 +24,7 @@ pub const SPDM_MSG_HDR_SIZE: usize = 2;
 pub struct ReqRespCode(pub u8);
 
 impl ReqRespCode {
-    // ----- Request codes (DSP0274 Table 4) -----
+    // ----- Request codes -----
     pub const GET_DIGESTS: Self = Self(0x81);
     pub const GET_CERTIFICATE: Self = Self(0x82);
     pub const CHALLENGE: Self = Self(0x83);
@@ -47,7 +47,7 @@ impl ReqRespCode {
     pub const SET_CERTIFICATE: Self = Self(0xEE);
     pub const VENDOR_DEFINED_REQUEST: Self = Self(0xFE);
 
-    // ----- Response codes (DSP0274 Table 4) -----
+    // ----- Response codes -----
     pub const DIGESTS: Self = Self(0x01);
     pub const CERTIFICATE: Self = Self(0x02);
     pub const CHALLENGE_AUTH: Self = Self(0x03);
@@ -72,7 +72,7 @@ impl ReqRespCode {
     pub const ERROR: Self = Self(0x7F);
 }
 
-/// 2-byte SPDM common header (DSP0274 §10.6 SPDMHeader).
+/// 2-byte SPDM common header (`SPDMHeader`).
 ///
 /// `version` is a raw `u8` because not every byte is a valid
 /// [`SpdmVersion`]; the dispatcher validates once via

@@ -12,6 +12,7 @@ caliptra-api = { workspace = true, optional = true }
 caliptra-auth-man-types = { workspace = true, optional = true }
 caliptra-image-types = { workspace = true, default-features = false, optional = true }
 caliptra-mcu-flash-image = { workspace = true, optional = true }
+caliptra-mcu-libtock_alarm = { workspace = true, optional = true }
 caliptra-mcu-libtock_console = { workspace = true, optional = true }
 caliptra-mcu-libtockasync = { workspace = true, optional = true }
 caliptra-mcu-pldm-common = { workspace = true, optional = true }
@@ -21,7 +22,6 @@ caliptra-mcu-userlog = { workspace = true, optional = true }
 caliptra-ocp-eat = { workspace = true, optional = true }
 const-oid = { workspace = true, optional = true }
 der = { workspace = true, optional = true }
-dpe = { workspace = true, optional = true }
 embassy-executor = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 mcu-error = { workspace = true, optional = true }
@@ -39,6 +39,7 @@ mailbox-io = [
     "dep:caliptra-auth-man-types",
     "dep:caliptra-image-types",
     "dep:caliptra-mcu-flash-image",
+    "dep:caliptra-mcu-libtock_alarm",
     "dep:caliptra-mcu-libtock_console",
     "dep:caliptra-mcu-libtockasync",
     "dep:caliptra-mcu-pldm-common",
@@ -56,10 +57,10 @@ ocp-lock = [
     "dep:caliptra-ocp-eat",
     "dep:const-oid",
     "dep:der",
-    "dep:dpe",
     "dep:sha2",
     "dep:spki",
 ]
 
 [dev-dependencies]
 caliptra-mcu-libtock_unittest = { workspace = true }
+caliptra-mcu-registers-generated = { workspace = true }

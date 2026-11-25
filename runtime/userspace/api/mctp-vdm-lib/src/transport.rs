@@ -59,7 +59,10 @@ impl MctpVdmTransport {
         }
 
         // Check common header
-        let mctp_hdr = MctpCommonHeader(req[MCTP_COMMON_HEADER_OFFSET]);
+        let mctp_hdr = MctpCommonHeader(
+            *req.get(MCTP_COMMON_HEADER_OFFSET)
+                .ok_or(TransportError::BufferTooSmall)?,
+        );
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_VDM_MSG_TYPE {
             return Err(TransportError::UnexpectedMessageType);
         }
@@ -72,11 +75,11 @@ impl MctpVdmTransport {
     /// Send a VDM response.
     pub async fn send_response(&mut self, resp: &[u8]) -> Result<(), TransportError> {
         // Ensure the response buffer is large enough to contain the MCTP common header.
-        if resp.is_empty() {
-            return Err(TransportError::BufferTooSmall);
-        }
-
-        let mctp_hdr = MctpCommonHeader(resp[MCTP_COMMON_HEADER_OFFSET]);
+        let mctp_hdr = MctpCommonHeader(
+            *resp
+                .get(MCTP_COMMON_HEADER_OFFSET)
+                .ok_or(TransportError::BufferTooSmall)?,
+        );
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_VDM_MSG_TYPE {
             return Err(TransportError::UnexpectedMessageType);
         }

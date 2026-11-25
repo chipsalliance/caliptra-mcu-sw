@@ -28,21 +28,28 @@ use core::marker::PhantomData;
 use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_certify_key_cert_size,
     dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey,
-    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams,
-    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
+    dpe_derive_context_exported_cdi, dpe_revoke_exported_cdi_handle, dpe_rotate_context_default,
+    dpe_sign, dpe_sign_with_exported_cdi, dpe_tag_tci, sha_finish, sha_init, sha_update,
+    AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle,
+    DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, ExportedCdiSigningInput, HashAlgo,
     ScratchAlloc, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
     MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{
     parse_and_validate, parse_and_validate_owner_measurement_policy, AttestationManifest,
-    AttestationManifestEntry, OwnerMeasurementPolicy, MCU_RT_FW_ID,
+    AttestationManifestEntry, OwnerMeasurementPolicy, ATTESTATION_FLAG_SOC_TCB_DPE, MCU_RT_FW_ID,
     OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
 };
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::{
     AttestationState, BootKind, EvidenceReadinessPolicy, ImageMetadata, MeasurementOperation,
+};
+
+// OWSM is a measured control component, not an authorization manifest entry.
+const OWSM_ENTRY: AttestationManifestEntry = AttestationManifestEntry {
+    fw_id: OWSM_FW_ID,
+    attestation_flags: ATTESTATION_FLAG_SOC_TCB_DPE,
 };
 
 /// Owns the attestation configuration and attestation boot/error state.
@@ -56,6 +63,8 @@ pub(crate) struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
     manifest: AttestationManifest<'a>,
     soc_image_load_fw_ids: &'a [u32],
     owner_policy: Option<OwnerMeasurementPolicy<'a>>,
+    vendor_owner_leaf_fw_id: u32,
+    owner_leaf_fw_id: u32,
     state: AttestationState,
     _syscalls: PhantomData<S>,
 }
@@ -72,10 +81,17 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     ) -> MeasurementApiResult<Self> {
         let manifest = parse_and_validate(manifest_bytes)?;
         validate_soc_image_load_fw_ids(&manifest, soc_image_load_fw_ids)?;
+        let vendor_owner_leaf_fw_id = if manifest.lookup(V_AUTH_KEY_ID).is_ok() {
+            V_AUTH_KEY_ID
+        } else {
+            MCU_RT_FW_ID
+        };
         Ok(Self {
             manifest,
             soc_image_load_fw_ids,
             owner_policy: None,
+            vendor_owner_leaf_fw_id,
+            owner_leaf_fw_id: O_AUTH_KEY_ID,
             state: AttestationState::Uninitialized,
             _syscalls: PhantomData,
         })
@@ -180,7 +196,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Cold-boot sequence: compute the policy digest, initialize both stores,
     /// rotate and tag the MCU Runtime DPE context, write the MCU Runtime root
     /// record, and mark it as the initial attestation target.
-    async fn cold_boot_init<A: ScratchAlloc>(&self, alloc: &A) -> MeasurementApiResult {
+    async fn cold_boot_init<A: ScratchAlloc>(&mut self, alloc: &A) -> MeasurementApiResult {
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
@@ -214,6 +230,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         dpe_store
             .mark_attestation_target(MCU_RT_FW_ID)
             .map_err(|_| MeasurementApiError::StoreFailed)?;
+        self.vendor_owner_leaf_fw_id = if self.manifest.lookup(V_AUTH_KEY_ID).is_ok() {
+            V_AUTH_KEY_ID
+        } else {
+            MCU_RT_FW_ID
+        };
+        self.owner_leaf_fw_id = O_AUTH_KEY_ID;
         Ok(())
     }
 
@@ -295,7 +317,8 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
         match metadata.operation {
             MeasurementOperation::InitialLoad => {
-                initial_load::record_authorized_image(self, alloc, entry, metadata).await
+                initial_load::record_authorized_image(self, alloc, entry, manifest_source, metadata)
+                    .await
             }
             MeasurementOperation::ComponentUpdate => {
                 component_update::record_authorized_image(self, alloc, entry, metadata).await
@@ -324,11 +347,14 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     V_AUTH_KEY_ID,
+                    MCU_RT_FW_ID,
                     vendor_auth_key_digest,
                     0,
                     false,
                 )
-                .await
+                .await?;
+                self.vendor_owner_leaf_fw_id = V_AUTH_KEY_ID;
+                Ok(())
             }
             BootKind::HitlessUpdate => {
                 component_update::update_dpe_context(
@@ -343,7 +369,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         }
     }
 
-    /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
+    /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the `MCU_RT` DPE context.
     pub async fn measure_owsm<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
@@ -357,6 +383,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     OWSM_FW_ID,
+                    MCU_RT_FW_ID,
                     preamble_digest,
                     svn,
                     false,
@@ -389,6 +416,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                    OWSM_FW_ID,
                     policy_digest,
                     0,
                     false,
@@ -421,11 +449,14 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     O_AUTH_KEY_ID,
+                    OWNER_MEASUREMENT_POLICY_IDENTIFIER,
                     owner_auth_key_digest,
                     0,
                     false,
                 )
-                .await
+                .await?;
+                self.owner_leaf_fw_id = O_AUTH_KEY_ID;
+                Ok(())
             }
             BootKind::HitlessUpdate => {
                 component_update::update_dpe_context(
@@ -582,26 +613,48 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(signature_len)
     }
 
-    /// Derive an exported CDI context from the active attestation target, persist the
+    /// Derive an exported CDI context from the configured `EXPORT_CDI_TARGET`, persist the
     /// 32-byte exported CDI handle in DPE handle storage, persist the rotated target handle
     /// returned by DPE, and write the emitted leaf certificate into `cert_out`.
+    ///
+    /// Derive an exported CDI context from `target_fw_id`, persist the 32-byte exported CDI
+    /// handle in DPE handle storage, persist the rotated target handle returned by DPE, and
+    /// write the emitted leaf certificate into `cert_out`.
+    ///
+    /// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+    /// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node (for multi-CDI use).
+    ///
+    /// If an exported CDI is already stored for the target, it is automatically revoked in
+    /// Caliptra and cleared in DPE handle storage before deriving the new context.
     pub async fn export_cdi_and_stash<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
+        target_fw_id: Option<u32>,
         profile: DpeProfile,
         cert_out: &mut [u8],
     ) -> MeasurementApiResult<usize> {
-        self.attestation_state_active()?;
-
+        let target = self.read_export_cdi_target_record(target_fw_id)?;
+        let in_place_len = mcu_caliptra_api::DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN
+            + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE;
+        if cert_out.len() < in_place_len
+            || !(cert_out.as_ptr() as usize).is_multiple_of(core::mem::align_of::<u32>())
+        {
+            return Err(MeasurementApiError::DpeCommandFailed);
+        }
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
-        if dpe_store.read_exported_cdi(&mut existing_cdi).is_ok()
-            && existing_cdi != [0u8; EXPORTED_CDI_SIZE]
+        if dpe_store
+            .read_exported_cdi(target.fw_id, &mut existing_cdi)
+            .is_ok()
         {
-            return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
+            dpe_revoke_exported_cdi_handle(alloc, &existing_cdi)
+                .await
+                .map_err(|_| self.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
+            dpe_store
+                .clear_exported_cdi(target.fw_id)
+                .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
         }
 
-        let target = self.read_attestation_target_record()?;
         let params = DpeDeriveContextParams {
             parent_handle: target.context_handle,
             measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
@@ -617,7 +670,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
 
         dpe_store
-            .write_exported_cdi(&derived.exported_cdi)
+            .write_exported_cdi(target.fw_id, &derived.exported_cdi)
             .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
 
         self.write_attestation_target_handle(target, derived.parent_handle)?;
@@ -625,16 +678,60 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     }
 
     /// Read the stored 32-byte exported CDI handle from DPE handle storage into `cdi_out`.
-    pub fn read_exported_cdi(&self, cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+    ///
+    /// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+    /// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node.
+    pub fn read_exported_cdi(
+        &self,
+        target_fw_id: Option<u32>,
+        cdi_out: &mut [u8; EXPORTED_CDI_SIZE],
+    ) -> MeasurementApiResult {
         self.attestation_state_active()?;
+        let fw_id = self.resolve_export_cdi_target_fw_id(target_fw_id)?;
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         dpe_store
-            .read_exported_cdi(cdi_out)
-            .map_err(|_| MeasurementApiError::StoreFailed)?;
-        if *cdi_out == [0u8; EXPORTED_CDI_SIZE] {
-            return Err(MeasurementApiError::ExportedCdiNotDerived);
-        }
-        Ok(())
+            .read_exported_cdi(fw_id, cdi_out)
+            .map_err(|_| MeasurementApiError::ExportedCdiNotDerived)
+    }
+
+    /// Revoke the stored exported CDI handle in Caliptra and clear its slot in
+    /// DPE handle storage.
+    ///
+    /// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+    /// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node.
+    pub async fn revoke_exported_cdi<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        target_fw_id: Option<u32>,
+    ) -> MeasurementApiResult {
+        let mut cdi = [0u8; EXPORTED_CDI_SIZE];
+        self.read_exported_cdi(target_fw_id, &mut cdi)?;
+        let fw_id = self.resolve_export_cdi_target_fw_id(target_fw_id)?;
+        dpe_revoke_exported_cdi_handle(alloc, &cdi)
+            .await
+            .map_err(|_| self.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        dpe_store
+            .clear_exported_cdi(fw_id)
+            .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))
+    }
+
+    /// Sign a typed input with the stored exported CDI handle for `target_fw_id`.
+    ///
+    /// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+    /// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node.
+    pub async fn sign_with_exported_cdi<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        target_fw_id: Option<u32>,
+        signing_input: ExportedCdiSigningInput<'_>,
+        signature: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        let mut cdi = [0u8; EXPORTED_CDI_SIZE];
+        self.read_exported_cdi(target_fw_id, &mut cdi)?;
+        dpe_sign_with_exported_cdi(alloc, &cdi, signing_input, signature)
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)
     }
 
     /// Read stored measurement state for one manifest `fw_id`.
@@ -663,24 +760,29 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Encode concise measurement evidence for all eligible manifest entries.
     ///
     /// Measurement API owns manifest iteration and selected-AK lineage policy;
-    /// callers provide only the output buffer. On success the returned length is
-    /// the complete encoded evidence size. A too-small buffer returns
+    /// callers may append request-scoped raw evidence in separate classes.
+    /// On success the returned length is the complete encoded evidence size.
+    /// A too-small buffer returns
     /// [`MeasurementApiError::EvidenceBufferTooSmall`] without returning a
     /// partial length.
     pub async fn encode_measurement_evidence<A: ScratchAlloc>(
         &self,
         alloc: &A,
         buffer: &mut [u8],
+        additional_evidence: &[crate::RawValueEvidence<'_>],
     ) -> MeasurementApiResult<usize> {
         self.attestation_state_active()?;
-        let measurement_count = self.evidence_measurement_count()?;
+        let measurement_count = self
+            .evidence_measurement_count()?
+            .checked_add(additional_evidence.len())
+            .ok_or(MeasurementApiError::EvidenceBufferTooSmall)?;
         let mut encoder = evidence::MeasurementEvidenceEncoder::new(
             buffer,
             self.manifest.vendor(),
             self.manifest.model(),
             measurement_count,
         )?;
-        for entry in self.manifest.entries() {
+        for entry in self.evidence_entries() {
             if !evidence::inventory_evidence_eligible(entry) {
                 continue;
             }
@@ -689,6 +791,9 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             }
             let measurement = self.read_measurement(alloc, entry.fw_id).await?;
             encoder.encode_measurement(&measurement)?;
+        }
+        for measurement in additional_evidence {
+            encoder.encode_raw_value(measurement)?;
         }
         encoder.finish()
     }
@@ -760,6 +865,40 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(target)
     }
 
+    fn resolve_export_cdi_target_fw_id(
+        &self,
+        target_fw_id: Option<u32>,
+    ) -> MeasurementApiResult<u32> {
+        match target_fw_id {
+            None => Ok(self.manifest.export_cdi_target_fw_id()),
+            Some(MCU_RT_FW_ID) => Ok(MCU_RT_FW_ID),
+            Some(fw_id) => {
+                let (entry, _) = self
+                    .manifest_lookup(fw_id)
+                    .map_err(|_| MeasurementApiError::UnknownFwId)?;
+                if !entry.is_export_cdi_target() {
+                    return Err(MeasurementApiError::InvalidManifest);
+                }
+                Ok(fw_id)
+            }
+        }
+    }
+
+    pub(crate) fn read_export_cdi_target_record(
+        &self,
+        target_fw_id: Option<u32>,
+    ) -> MeasurementApiResult<DpeHandleRecord> {
+        self.attestation_state_active()?;
+        let target_fw_id = self.resolve_export_cdi_target_fw_id(target_fw_id)?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut target = DpeHandleRecord::default();
+        dpe_store
+            .read_record(target_fw_id, &mut target)
+            .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+        read::validate_tcb_handle_record(&target, target_fw_id)?;
+        Ok(target)
+    }
+
     fn write_attestation_target_handle(
         &mut self,
         mut target: DpeHandleRecord,
@@ -778,9 +917,20 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         error
     }
 
+    fn evidence_entries(&self) -> impl Iterator<Item = AttestationManifestEntry> + '_ {
+        self.manifest
+            .entries()
+            .chain(self.owner_policy.as_ref().map(|_| OWSM_ENTRY))
+            .chain(
+                self.owner_policy
+                    .iter()
+                    .flat_map(|owner| owner.manifest().entries()),
+            )
+    }
+
     fn evidence_measurement_count(&self) -> MeasurementApiResult<usize> {
         let mut count = 0usize;
-        for entry in self.manifest.entries() {
+        for entry in self.evidence_entries() {
             if !evidence::inventory_evidence_eligible(entry) {
                 continue;
             }
@@ -922,14 +1072,278 @@ pub(super) async fn software_pcr_extend_digest<A: ScratchAlloc>(
 mod tests {
     extern crate std;
 
+    use core::cell::RefCell;
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+    use std::rc::Rc;
+    use std::sync::Mutex;
     use std::vec::Vec;
 
     use super::*;
     use crate::attestation_manifest::{
-        ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
+        ATTESTATION_FLAG_AK_TARGET, ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
         ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, ATTESTATION_MANIFEST_MARKER,
-        ATTESTATION_MANIFEST_VERSION, MCU_RT_FW_ID,
+        ATTESTATION_MANIFEST_VERSION, MCU_RT_FW_ID, OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE,
+        OWNER_ATTESTATION_MANIFEST_MARKER, OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE,
+        OWNER_FW_LOAD_LIST_MARKER, OWNER_FW_LOAD_LIST_VERSION,
     };
+    use caliptra_mcu_attestation_evidence::ocp_eat::{
+        CONCISE_EVIDENCE_MAX_SIZE, CONCISE_EVIDENCE_MEASUREMENT_COUNT,
+    };
+    use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
+    use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::MeasurementRecord;
+    use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
+    use caliptra_mcu_libtock_unittest::{
+        command_return, fake, DriverInfo, RoAllowBuffer, RwAllowBuffer,
+    };
+
+    static EVIDENCE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct TestAlloc;
+
+    impl ScratchAlloc for TestAlloc {
+        type Buf<'a> = Vec<u8>;
+
+        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len])
+        }
+    }
+
+    struct TestMeasurementStore {
+        driver_num: u32,
+        target_fw_id: u32,
+        records: RefCell<Vec<(u32, Vec<u8>)>>,
+        input: RefCell<RoAllowBuffer>,
+        output: RefCell<RwAllowBuffer>,
+    }
+
+    impl fake::SyscallDriver for TestMeasurementStore {
+        fn info(&self) -> DriverInfo {
+            DriverInfo::new(self.driver_num)
+        }
+
+        fn command(&self, command: u32, fw_id: u32, _: u32) -> CommandReturn {
+            if command == 2 && self.driver_num == DPE_HANDLE_STORE_DRIVER_NUM {
+                let data = self.input.borrow().to_vec();
+                let mut records = self.records.borrow_mut();
+                if let Some((_, existing)) = records.iter_mut().find(|(id, _)| *id == fw_id) {
+                    *existing = data;
+                } else {
+                    records.push((fw_id, data));
+                }
+                return command_return::success();
+            }
+            let fw_id = match command {
+                1 => fw_id,
+                6 if self.driver_num == DPE_HANDLE_STORE_DRIVER_NUM => self.target_fw_id,
+                _ => return command_return::failure(ErrorCode::NoSupport),
+            };
+            let records = self.records.borrow();
+            let Some((_, record)) = records.iter().find(|(id, _)| *id == fw_id) else {
+                return command_return::failure(ErrorCode::Fail);
+            };
+            self.output.borrow_mut().copy_from_slice(record);
+            command_return::success()
+        }
+
+        fn allow_readonly(
+            &self,
+            buffer_num: u32,
+            buffer: RoAllowBuffer,
+        ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
+            if buffer_num == 0 {
+                Ok(self.input.replace(buffer))
+            } else {
+                Err((buffer, ErrorCode::Invalid))
+            }
+        }
+
+        fn allow_readwrite(
+            &self,
+            buffer_num: u32,
+            buffer: RwAllowBuffer,
+        ) -> Result<RwAllowBuffer, (RwAllowBuffer, ErrorCode)> {
+            if buffer_num == 0 {
+                Ok(self.output.replace(buffer))
+            } else {
+                Err((buffer, ErrorCode::Invalid))
+            }
+        }
+    }
+
+    fn run<T>(future: impl Future<Output = T>) -> T {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        for _ in 0..32 {
+            if let Poll::Ready(value) = future.as_mut().poll(&mut context) {
+                return value;
+            }
+            DefaultSyscalls::yield_no_wait();
+            // The fake mailbox retains completed-command buffers.
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+        }
+        panic!("Measurement evidence did not complete");
+    }
+
+    fn owner_evidence_policy() -> Vec<u8> {
+        let entries = [
+            (
+                OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                ATTESTATION_FLAG_SOC_TCB_DPE,
+            ),
+            (O_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (0x10000, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (0x10001, 0),
+        ];
+        let header_size = OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE;
+        let size = header_size + entries.len() * ATTESTATION_MANIFEST_ENTRY_SIZE;
+        let mut bytes = Vec::new();
+        for value in [
+            OWNER_ATTESTATION_MANIFEST_MARKER,
+            size as u32,
+            ATTESTATION_MANIFEST_VERSION,
+            header_size as u32,
+            entries.len() as u32,
+            3,
+        ] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend_from_slice(&[0; 4]);
+        for (fw_id, flags) in entries {
+            bytes.extend_from_slice(&fw_id.to_le_bytes());
+            bytes.extend_from_slice(&flags.to_le_bytes());
+        }
+        for value in [
+            OWNER_FW_LOAD_LIST_MARKER,
+            (OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE + 8) as u32,
+            OWNER_FW_LOAD_LIST_VERSION,
+            2,
+            0x10000,
+            0x10001,
+        ] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn evidence_measurements() -> Vec<read::MeasurementValue> {
+        [
+            V_AUTH_KEY_ID,
+            0x1000,
+            0x2000,
+            OWSM_FW_ID,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            O_AUTH_KEY_ID,
+            0x10000,
+            0x10001,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, fw_id)| read::MeasurementValue {
+            target_env_id: fw_id,
+            current_digest: [index as u8 + 1; DPE_TCI_MEASUREMENT_SIZE],
+            journey_digest: [index as u8 + 0x81; DPE_TCI_MEASUREMENT_SIZE],
+            svn: match fw_id {
+                0x2000 | 0x10001 => u64::from(u32::MAX),
+                _ => 0,
+            },
+        })
+        .collect()
+    }
+
+    fn evidence_stores(
+        kernel: &fake::Kernel,
+        target_fw_id: u32,
+        measurements: &[read::MeasurementValue],
+    ) -> (Rc<TestMeasurementStore>, Rc<TestMeasurementStore>) {
+        let topology = [
+            (MCU_RT_FW_ID, None),
+            (V_AUTH_KEY_ID, Some(MCU_RT_FW_ID)),
+            (OWSM_FW_ID, Some(MCU_RT_FW_ID)),
+            (OWNER_MEASUREMENT_POLICY_IDENTIFIER, Some(OWSM_FW_ID)),
+            (O_AUTH_KEY_ID, Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)),
+            (0x1000, Some(V_AUTH_KEY_ID)),
+            (0x10000, Some(O_AUTH_KEY_ID)),
+        ];
+        let dpe_store = Rc::new(TestMeasurementStore {
+            driver_num: DPE_HANDLE_STORE_DRIVER_NUM,
+            target_fw_id,
+            records: RefCell::new(
+                topology
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (fw_id, parent_fw_id))| {
+                        let record = DpeHandleRecord {
+                            fw_id: *fw_id,
+                            parent_fw_id: *parent_fw_id,
+                            context_handle: [index as u8 + 1; DPE_CONTEXT_HANDLE_SIZE],
+                            tci_tag: *fw_id,
+                            ..Default::default()
+                        };
+                        (*fw_id, record.to_bytes().to_vec())
+                    })
+                    .collect(),
+            ),
+            input: RefCell::default(),
+            output: RefCell::default(),
+        });
+        let pcr_store = Rc::new(TestMeasurementStore {
+            driver_num: SOFT_PCR_STORE_DRIVER_NUM,
+            target_fw_id,
+            records: RefCell::new(
+                evidence_measurements()
+                    .iter()
+                    .filter(|value| matches!(value.target_env_id, 0x2000 | 0x10001))
+                    .map(|value| {
+                        let record = MeasurementRecord {
+                            fw_id: value.target_env_id,
+                            current_digest: value.current_digest,
+                            journey_digest: value.journey_digest,
+                            svn: value.svn as u32,
+                            ..Default::default()
+                        };
+                        (record.fw_id, record.serialize().to_vec())
+                    })
+                    .collect(),
+            ),
+            input: RefCell::default(),
+            output: RefCell::default(),
+        });
+        let dpe_bytes = 104
+            + dpe_store
+                .records
+                .borrow()
+                .iter()
+                .map(|(_, record)| record.len())
+                .sum::<usize>();
+        let pcr_bytes = 16
+            + pcr_store
+                .records
+                .borrow()
+                .iter()
+                .map(|(_, record)| record.len())
+                .sum::<usize>();
+        // Reference boards split the 4 KiB measurement-store SRAM into 1 KiB / 3 KiB.
+        assert!(dpe_bytes <= 0x400, "DPE fixture exceeds reference SRAM");
+        assert!(pcr_bytes <= 0xc00, "PCR fixture exceeds reference SRAM");
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        for value in measurements
+            .iter()
+            .filter(|value| !matches!(value.target_env_id, 0x2000 | 0x10001))
+        {
+            let mut response = std::vec![0; 8];
+            response.extend_from_slice(&value.journey_digest);
+            response.extend_from_slice(&value.current_digest);
+            let checksum = mcu_caliptra_api::raw::mailbox_checksum(0, &response);
+            response[..4].copy_from_slice(&checksum.to_le_bytes());
+            mailbox.add_ready_response(u32::from_be_bytes(*b"GTGD"), &response);
+        }
+        kernel.add_driver(&dpe_store);
+        kernel.add_driver(&pcr_store);
+        kernel.add_driver(&mailbox);
+        (dpe_store, pcr_store)
+    }
 
     /// Build a minimal valid manifest: no component entries, empty
     /// vendor/model platform-information strings.
@@ -1136,9 +1550,120 @@ mod tests {
         let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000]).unwrap();
         let mut cdi = [0u8; EXPORTED_CDI_SIZE];
         assert_eq!(
-            api.read_exported_cdi(&mut cdi),
+            api.read_exported_cdi(None, &mut cdi),
             Err(MeasurementApiError::AttestationDisabled)
         );
+    }
+
+    #[test]
+    fn read_export_cdi_target_record_fails_when_uninitialized_or_error() {
+        use crate::attestation_manifest::ATTESTATION_FLAG_EXPORT_CDI_TARGET;
+
+        let bytes = valid_manifest_with_entries(&[(
+            0x1000,
+            ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_EXPORT_CDI_TARGET,
+        )]);
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000]).unwrap();
+        assert_eq!(api.manifest.export_cdi_target_fw_id(), 0x1000);
+        assert_eq!(api.manifest.attestation_target_fw_id(), MCU_RT_FW_ID);
+        assert_eq!(
+            api.read_export_cdi_target_record(None),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
+
+        api.state = AttestationState::Error;
+        assert_eq!(
+            api.read_export_cdi_target_record(None),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
+
+        api.state = AttestationState::Active;
+        assert_eq!(api.resolve_export_cdi_target_fw_id(None), Ok(0x1000));
+        assert_eq!(
+            api.resolve_export_cdi_target_fw_id(Some(0x1000)),
+            Ok(0x1000)
+        );
+        assert_eq!(
+            api.resolve_export_cdi_target_fw_id(Some(MCU_RT_FW_ID)),
+            Ok(MCU_RT_FW_ID)
+        );
+        assert_eq!(
+            api.resolve_export_cdi_target_fw_id(Some(0x9999)),
+            Err(MeasurementApiError::UnknownFwId)
+        );
+    }
+
+    #[test]
+    fn export_cdi_and_stash_rejects_small_cert_buffer_before_revoking_existing_cdi() {
+        use crate::attestation_manifest::ATTESTATION_FLAG_EXPORT_CDI_TARGET;
+
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let kernel = fake::Kernel::new();
+        let bytes = valid_manifest_with_entries(&[
+            (V_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (
+                0x1000,
+                ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_EXPORT_CDI_TARGET,
+            ),
+            (0x2000, 0),
+        ]);
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000, 0x2000]).unwrap();
+        api.state = AttestationState::Active;
+        let _stores = evidence_stores(&kernel, MCU_RT_FW_ID, &[]);
+
+        // Verify export_cdi_target_lineage_contains isolates the Vendor+Owner and Owner
+        // branches rooted at MCU_RT_FW_ID, both before and after owner policy attachment.
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, MCU_RT_FW_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, V_AUTH_KEY_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, OWSM_FW_ID),
+            Ok(false)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, O_AUTH_KEY_ID),
+            Ok(false)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, 0x10000),
+            Ok(false)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x10000, MCU_RT_FW_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x10000, OWSM_FW_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x10000, V_AUTH_KEY_ID),
+            Ok(false)
+        );
+        let policy = owner_evidence_policy();
+        api.validate_and_set_owner_policy(&policy).unwrap();
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, V_AUTH_KEY_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, OWSM_FW_ID),
+            Ok(false)
+        );
+
+        // Even with an active target record, an undersized cert_out fails fast before
+        // reading/revoking any existing CDI or entering the error state.
+        let mut small_buf = [0u8; 64];
+        assert_eq!(
+            run(api.export_cdi_and_stash(&TestAlloc, None, DpeProfile::P384Sha384, &mut small_buf)),
+            Err(MeasurementApiError::DpeCommandFailed)
+        );
+        assert_eq!(api.attestation_state(), AttestationState::Active);
     }
 
     #[test]
@@ -1204,5 +1729,307 @@ mod tests {
         }
         // Unknown component fails
         assert!(api.manifest_lookup(0x9999).is_err());
+    }
+
+    #[test]
+    fn evidence_inventory_covers_base_and_owner_for_selected_ak() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let vendor = "V".repeat(100);
+        let model = "M".repeat(100);
+        for (with_owner, target_fw_id) in
+            [(false, MCU_RT_FW_ID), (true, MCU_RT_FW_ID), (true, 0x1000)]
+        {
+            let kernel = fake::Kernel::new();
+            let mut base = valid_manifest_with_entries(&[
+                (V_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+                (
+                    0x1000,
+                    ATTESTATION_FLAG_SOC_TCB_DPE
+                        | if target_fw_id == 0x1000 {
+                            ATTESTATION_FLAG_AK_TARGET
+                        } else {
+                            0
+                        },
+                ),
+                (0x2000, 0),
+            ]);
+            base[24..26].copy_from_slice(&(vendor.len() as u16).to_le_bytes());
+            base[26..28].copy_from_slice(&(model.len() as u16).to_le_bytes());
+            base[28..128].copy_from_slice(vendor.as_bytes());
+            base[128..228].copy_from_slice(model.as_bytes());
+            let policy = owner_evidence_policy();
+            let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[0x1000, 0x2000]).unwrap();
+            if with_owner {
+                api.validate_and_set_owner_policy(&policy).unwrap();
+            }
+            api.state = AttestationState::Active;
+            let expected: Vec<_> = evidence_measurements()
+                .into_iter()
+                .filter(|value| {
+                    if !with_owner {
+                        matches!(value.target_env_id, V_AUTH_KEY_ID | 0x1000 | 0x2000)
+                    } else if target_fw_id != MCU_RT_FW_ID {
+                        !matches!(value.target_env_id, V_AUTH_KEY_ID | 0x1000)
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+            let _stores = evidence_stores(&kernel, target_fw_id, &expected);
+
+            assert!(api.manifest_lookup(OWSM_FW_ID).is_err());
+            if !with_owner {
+                assert_eq!(
+                    run(api.read_measurement(&TestAlloc, OWSM_FW_ID)),
+                    Err(MeasurementApiError::UnknownFwId)
+                );
+            }
+            assert_eq!(api.evidence_measurement_count().unwrap(), expected.len());
+            let mut reference = std::vec![0; CONCISE_EVIDENCE_MAX_SIZE];
+            let reference_result = (|| {
+                let mut encoder = evidence::MeasurementEvidenceEncoder::new(
+                    &mut reference,
+                    &vendor,
+                    &model,
+                    expected.len(),
+                )?;
+                for value in &expected {
+                    encoder.encode_measurement(value)?;
+                }
+                encoder.finish()
+            })();
+            let mut actual = std::vec![0; CONCISE_EVIDENCE_MAX_SIZE];
+            let actual_result = run(api.encode_measurement_evidence(&TestAlloc, &mut actual, &[]));
+            let reference_len = match reference_result {
+                Ok(len) => len,
+                Err(error) => {
+                    assert_eq!(error, MeasurementApiError::EvidenceBufferTooSmall);
+                    assert!(expected.len() > CONCISE_EVIDENCE_MEASUREMENT_COUNT);
+                    assert_eq!(actual_result, Err(error));
+                    continue;
+                }
+            };
+            let actual_len = actual_result.unwrap();
+            assert_eq!(&actual[..actual_len], &reference[..reference_len]);
+            corim_rs::coev::TaggedConciseEvidence::from_cbor(&actual[..actual_len]).unwrap();
+        }
+    }
+
+    #[test]
+    fn additional_evidence_is_counted_without_becoming_firmware_inventory() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let kernel = fake::Kernel::new();
+        let base = valid_manifest_with_entries(&[(0x2000, 0)]);
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[0x2000]).unwrap();
+        api.state = AttestationState::Active;
+        let expected: Vec<_> = evidence_measurements()
+            .into_iter()
+            .filter(|value| value.target_env_id == 0x2000)
+            .collect();
+        let _stores = evidence_stores(&kernel, MCU_RT_FW_ID, &expected);
+        let additional = [crate::RawValueEvidence {
+            class_id: b"hardware",
+            raw_value: &[1, 1, 0, 1, 2, 3],
+        }];
+        for extra in [&additional[..], &[]] {
+            let mut reference = [0; 1024];
+            let mut encoder = evidence::MeasurementEvidenceEncoder::new(
+                &mut reference,
+                api.manifest.vendor(),
+                api.manifest.model(),
+                expected.len() + extra.len(),
+            )
+            .unwrap();
+            for value in &expected {
+                encoder.encode_measurement(value).unwrap();
+            }
+            for value in extra {
+                encoder.encode_raw_value(value).unwrap();
+            }
+            let reference_len = encoder.finish().unwrap();
+            let mut actual = [0; 1024];
+            let len = run(api.encode_measurement_evidence(&TestAlloc, &mut actual, extra)).unwrap();
+            assert_eq!(&actual[..len], &reference[..reference_len]);
+            let evidence =
+                corim_rs::coev::TaggedConciseEvidence::from_cbor(&actual[..len]).unwrap();
+            for triple in evidence.ev_triples.evidence_triples.as_ref().unwrap() {
+                assert!(triple
+                    .ref_claims
+                    .iter()
+                    .all(|measurement| measurement.mkey.is_none()));
+            }
+            assert_eq!(api.evidence_measurement_count().unwrap(), expected.len());
+        }
+    }
+
+    #[test]
+    fn owner_evidence_rejects_missing_or_invalid_measurement_records() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for fw_id in [
+            OWSM_FW_ID,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            O_AUTH_KEY_ID,
+            0x10000,
+            0x10001,
+        ] {
+            for corrupt in [false, true] {
+                let kernel = fake::Kernel::new();
+                let base = valid_manifest_with_entries(&[]);
+                let policy = owner_evidence_policy();
+                let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[]).unwrap();
+                api.validate_and_set_owner_policy(&policy).unwrap();
+                api.state = AttestationState::Active;
+                let expected: Vec<_> = evidence_measurements().into_iter().skip(3).collect();
+                let (dpe_store, pcr_store) = evidence_stores(&kernel, MCU_RT_FW_ID, &expected);
+                let store = if fw_id == 0x10001 {
+                    &pcr_store
+                } else {
+                    &dpe_store
+                };
+                let mut records = store.records.borrow_mut();
+                if corrupt {
+                    let (_, record) = records.iter_mut().find(|(id, _)| *id == fw_id).unwrap();
+                    let offset = if fw_id == 0x10001 { 0 } else { 24 };
+                    record[offset..offset + 4].copy_from_slice(&(fw_id + 1).to_le_bytes());
+                } else {
+                    records.retain(|(id, _)| *id != fw_id);
+                }
+                drop(records);
+                let mut buffer = std::vec![0; CONCISE_EVIDENCE_MAX_SIZE];
+                assert_eq!(
+                    run(api.encode_measurement_evidence(&TestAlloc, &mut buffer, &[])),
+                    Err(if fw_id == 0x10001 {
+                        MeasurementApiError::InvalidSoftwarePcrStoreState
+                    } else {
+                        MeasurementApiError::InvalidDpeHandleStoreState
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn owner_evidence_rejects_small_buffers_and_inactive_state() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let kernel = fake::Kernel::new();
+        let base = valid_manifest_with_entries(&[(0x2000, 0)]);
+        let policy = owner_evidence_policy();
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[0x2000]).unwrap();
+        api.validate_and_set_owner_policy(&policy).unwrap();
+        let expected: Vec<_> = evidence_measurements().into_iter().skip(2).collect();
+        let _stores = evidence_stores(&kernel, MCU_RT_FW_ID, &expected);
+        let mut buffer = [0; 256];
+        assert_eq!(
+            run(api.encode_measurement_evidence(&TestAlloc, &mut buffer, &[])),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
+        api.state = AttestationState::Active;
+        assert_eq!(
+            run(api.encode_measurement_evidence(&TestAlloc, &mut buffer, &[])),
+            Err(MeasurementApiError::EvidenceBufferTooSmall)
+        );
+    }
+
+    #[test]
+    fn cold_boot_branches_vendor_owner_and_owner_dpe_contexts_from_mcu_rt() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let kernel = fake::Kernel::new();
+        let base = valid_manifest_with_entries(&[
+            (V_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (0x1000, ATTESTATION_FLAG_SOC_TCB_DPE),
+        ]);
+        let policy = owner_evidence_policy();
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[0x1000]).unwrap();
+        api.validate_and_set_owner_policy(&policy).unwrap();
+        api.state = AttestationState::InitialMeasurementsPending;
+
+        let root = DpeHandleRecord {
+            fw_id: MCU_RT_FW_ID,
+            parent_fw_id: None,
+            context_handle: [0x01; DPE_CONTEXT_HANDLE_SIZE],
+            tci_tag: MCU_RT_FW_ID,
+            ..Default::default()
+        };
+        let dpe_store = Rc::new(TestMeasurementStore {
+            driver_num: DPE_HANDLE_STORE_DRIVER_NUM,
+            target_fw_id: MCU_RT_FW_ID,
+            records: RefCell::new(std::vec![(MCU_RT_FW_ID, root.to_bytes().to_vec())]),
+            input: RefCell::default(),
+            output: RefCell::default(),
+        });
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        let add_ok_resp = |cmd: [u8; 4], payload: &[u8]| {
+            let mut resp = std::vec![0u8; 8];
+            resp.extend_from_slice(payload);
+            let csum = mcu_caliptra_api::raw::mailbox_checksum(0, &resp);
+            resp[..4].copy_from_slice(&csum.to_le_bytes());
+            mailbox.add_ready_response(u32::from_be_bytes(cmd), &resp);
+        };
+        let queue_derive_tag_extend = |step: u8| {
+            let mut dpe_payload = std::vec![0u8; 4]; // data_size
+            dpe_payload.extend_from_slice(&0x4450_4552u32.to_le_bytes()); // DPE_RESPONSE_MAGIC
+            dpe_payload.extend_from_slice(&0u32.to_le_bytes()); // status
+            dpe_payload.extend_from_slice(&0u32.to_le_bytes()); // profile
+            dpe_payload.extend_from_slice(&[step; DPE_CONTEXT_HANDLE_SIZE]);
+            dpe_payload.extend_from_slice(&[step | 0x80; DPE_CONTEXT_HANDLE_SIZE]);
+            add_ok_resp(*b"DPEC", &dpe_payload);
+            add_ok_resp(*b"TQGT", &[]);
+            add_ok_resp(*b"PCRE", &[]);
+        };
+        let queue_authorize = |status: u32| {
+            add_ok_resp(*b"ATSH", &status.to_le_bytes());
+        };
+
+        for step in 1..=4 {
+            queue_derive_tag_extend(step);
+        }
+        queue_authorize(0xDEAD_C0DE);
+        queue_derive_tag_extend(5);
+        queue_authorize(0xC0DE_DEAD);
+        queue_derive_tag_extend(6);
+
+        kernel.add_driver(&dpe_store);
+        kernel.add_driver(&mailbox);
+
+        let digest = [0xAA; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
+        run(api.measure_vendor_auth_key(&TestAlloc, &digest, BootKind::ColdBoot)).unwrap();
+        run(api.measure_owsm(&TestAlloc, &digest, 1, BootKind::ColdBoot)).unwrap();
+        run(api.measure_owner_measurement_policy(&TestAlloc, &digest, BootKind::ColdBoot)).unwrap();
+        run(api.measure_owner_auth_key(&TestAlloc, &digest, BootKind::ColdBoot)).unwrap();
+        run(api.authorize_and_stash(
+            &TestAlloc,
+            0x1000,
+            ImageMetadata::initial_load_from_load_address(0x100, digest),
+        ))
+        .unwrap();
+        run(api.authorize_and_stash(
+            &TestAlloc,
+            0x10000,
+            ImageMetadata::initial_load_from_load_address(0x100, digest),
+        ))
+        .unwrap();
+
+        let parent_of = |fw_id: u32| -> Option<u32> {
+            let records = dpe_store.records.borrow();
+            let (_, bytes) = records.iter().find(|(id, _)| *id == fw_id).unwrap();
+            let arr: [u8;
+                caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DPE_HANDLE_RECORD_SIZE] =
+                bytes.as_slice().try_into().unwrap();
+            DpeHandleRecord::from_bytes(&arr).parent_fw_id
+        };
+
+        assert_eq!(parent_of(MCU_RT_FW_ID), None);
+        assert_eq!(parent_of(V_AUTH_KEY_ID), Some(MCU_RT_FW_ID));
+        assert_eq!(parent_of(0x1000), Some(V_AUTH_KEY_ID));
+        assert_eq!(parent_of(OWSM_FW_ID), Some(MCU_RT_FW_ID));
+        assert_eq!(
+            parent_of(OWNER_MEASUREMENT_POLICY_IDENTIFIER),
+            Some(OWSM_FW_ID)
+        );
+        assert_eq!(
+            parent_of(O_AUTH_KEY_ID),
+            Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        );
+        assert_eq!(parent_of(0x10000), Some(O_AUTH_KEY_ID));
     }
 }

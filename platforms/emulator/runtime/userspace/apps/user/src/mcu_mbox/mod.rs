@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(feature = "mcu-mbox-service")]
-pub(crate) mod cmd_auth_mock;
+#[cfg(any(feature = "mcu-mbox-service", feature = "spdm"))]
+pub(crate) mod cmd_auth;
 
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -43,16 +43,17 @@ const fn slot_bytes(len: usize) -> usize {
 ///   `DPE_MAX_LEAF_CERT_SIZE` leaf certificate staged in place, and the DPE
 ///   `DeriveContext` request (≈10.6 KiB). Included so a change to the leaf
 ///   certificate bound is caught by the asserts below.
+/// * `MC_DPE_SIGNER_CONTEXT_SIGN`: the shrunk request (up to 4,108 B) and a
+///   response sized for `SignWithExportedMldsaResp` staged in place (≈11.3 KiB).
 ///
 /// All remaining commands peak below these.
 #[cfg(feature = "mcu-mbox-service")]
 const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
     use caliptra_mcu_common_commands::CaliptraCmdHandler;
     use caliptra_mcu_mbox_common::messages::{
-        DpeSignerContextCertReq, GetAttestationReq, MailboxRespHeaderVarSize, McuMailboxReq,
-        McuMailboxResp, GET_ATTESTATION_RESP_PREFIX_LEN,
+        GetAttestationReq, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
+        GET_ATTESTATION_RESP_PREFIX_LEN,
     };
-    use caliptra_mcu_mbox_lib::cmd_interface::DPE_SIGNER_CONTEXT_CERT_RESP_SIZE;
 
     const fn max_usize(a: usize, b: usize) -> usize {
         if a > b {
@@ -72,14 +73,28 @@ const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
                 + <crate::caliptra_cmd_handler::CaliptraCmdBackend as CaliptraCmdHandler>::MAX_ATTESTATION_EVIDENCE_LEN,
         ))
         + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK);
-    let dpe_signer_context_cert = BITMAP_SLOT_SIZE
-        + slot_bytes(core::mem::size_of::<DpeSignerContextCertReq>())
-        + slot_bytes(DPE_SIGNER_CONTEXT_CERT_RESP_SIZE)
-        + slot_bytes(mcu_caliptra_api::DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK);
-    let required = max_usize(
-        initial_req,
-        max_usize(get_attestation, dpe_signer_context_cert),
-    );
+    let required = max_usize(initial_req, get_attestation);
+
+    #[cfg(feature = "allow-mcu-signer-cert")]
+    let required = {
+        use caliptra_mcu_mbox_common::messages::DpeSignerContextCertReq;
+        use caliptra_mcu_mbox_lib::cmd_interface::DPE_SIGNER_CONTEXT_CERT_RESP_SIZE;
+        let dpe_signer_context_cert = BITMAP_SLOT_SIZE
+            + slot_bytes(core::mem::size_of::<DpeSignerContextCertReq>())
+            + slot_bytes(DPE_SIGNER_CONTEXT_CERT_RESP_SIZE)
+            + slot_bytes(mcu_caliptra_api::DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK);
+        max_usize(required, dpe_signer_context_cert)
+    };
+
+    #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+    let required = {
+        use caliptra_mcu_mbox_common::messages::DpeSignerContextSignReq;
+        use caliptra_mcu_mbox_lib::cmd_interface::DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE;
+        let dpe_signer_context_sign = BITMAP_SLOT_SIZE
+            + slot_bytes(core::mem::size_of::<DpeSignerContextSignReq>())
+            + slot_bytes(DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE);
+        max_usize(required, dpe_signer_context_sign)
+    };
 
     #[cfg(feature = "ocp-lock")]
     let required = {
@@ -140,6 +155,33 @@ const MCU_MBOX_SCRATCH_SIZE: usize = {
     declared
 };
 
+#[cfg(feature = "mcu-mbox-service")]
+#[repr(C, align(64))]
+struct ScratchBuf([u8; MCU_MBOX_SCRATCH_SIZE]);
+
+#[cfg(feature = "mcu-mbox-service")]
+static mut MCU_MBOX_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCU_MBOX_SCRATCH_SIZE]);
+
+#[cfg(all(feature = "mcu-mbox-service", not(feature = "spdm")))]
+const _: () = assert!(
+    MCU_MBOX_SCRATCH_SIZE >= crate::cert_store::BOOT_SCRATCH_SIZE,
+    "MCU_MBOX scratch pool is too small for certificate-store boot"
+);
+
+/// Borrows the idle MCU mailbox task pool for boot initialization when SPDM is disabled.
+///
+/// # Safety
+///
+/// Call only before `mcu_mbox_task` is spawned, and drop the returned `BootScratch`
+/// before spawning `mcu_mbox_task`.
+#[cfg(all(feature = "mcu-mbox-service", not(feature = "spdm")))]
+pub(crate) unsafe fn borrow_boot_scratch() -> crate::boot_scratch::BootScratch {
+    crate::boot_scratch::BootScratch::new(
+        NonNull::new_unchecked(core::ptr::addr_of_mut!(MCU_MBOX_SCRATCH).cast::<u8>()),
+        MCU_MBOX_SCRATCH_SIZE,
+    )
+}
+
 #[embassy_executor::task]
 pub async fn mcu_mbox_task() {
     match start_mcu_mbox_service().await {
@@ -156,9 +198,6 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
 
     #[cfg(feature = "mcu-mbox-service")]
     {
-        #[repr(C, align(64))]
-        struct ScratchBuf([u8; MCU_MBOX_SCRATCH_SIZE]);
-        static mut MCU_MBOX_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCU_MBOX_SCRATCH_SIZE]);
         // SAFETY: this task is the sole owner of `MCU_MBOX_SCRATCH`.
         let scratch_ptr: NonNull<u8> =
             unsafe { NonNull::new_unchecked(MCU_MBOX_SCRATCH.0.as_mut_ptr()) };
@@ -172,10 +211,8 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
 
         // Command handler shared with the MCTP and SPDM VDM backends.
         let handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
-        // Authorizer: HMAC-based command authorization stays wired in production
-        // (uses a placeholder test key for now; to be replaced with real
-        // provisioned key material later).
-        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        // Shares challenge state with the SPDM VDM command authorizer.
+        let mut cmd_authorizer = cmd_auth::RuntimeCommandAuthorizer;
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );

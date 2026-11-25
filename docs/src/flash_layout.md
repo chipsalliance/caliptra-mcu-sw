@@ -6,6 +6,9 @@ The specific images of the flash consists of the Caliptra FW, MCU RT, SoC Manife
 
 ## Layout
 
+The main layout below describes v3. Legacy v1 and v2 layouts are available in
+the collapsible [Legacy Formats](#legacy-formats) sections at the end.
+
 *Note: All fields are little-endian byte-ordered unless specified otherwise.*
 
 A typical overall flash layout is:
@@ -89,3 +92,77 @@ The images (raw binary data) are appended after the Image Information section, a
 |       |              | If the size of a firmware image is not a multiple of 4 bytes,         |
 |       |              | `0x00` padding bytes will be added to meet the alignment requirement. |
 |       |              | Only used in flash-based boot|
+
+## Legacy Formats
+
+These formats use the same image identifiers and payload alignment rules
+described above. The `Payload Offset` and `ImageLocationOffset` fields are
+relative to the start of the flash image, not the start of the backing flash
+device.
+
+Each checksum is the wrapping 32-bit negation of the sum of its covered bytes.
+Checksums do not replace firmware authentication.
+
+<details>
+<summary>Version 1 (v1)</summary>
+
+v1 has a 16-byte flash header beginning with the literal ASCII magic `FLSH`.
+Each image information entry is 20 bytes and has no filename field.
+
+### v1 Header
+
+| Field | Offset (bytes) | Size (bytes) | Description |
+| ----- | -------------- | ------------ | ----------- |
+| Magic | 0 | 4 | ASCII `FLSH`, stored as bytes `46 4c 53 48`. |
+| Header Version | 4 | 2 | `0x0001`. |
+| Image Count | 6 | 2 | Number of image information entries. |
+| Payload Offset | 8 | 4 | Offset to the first image information entry. |
+| Header Checksum | 12 | 4 | Checksum of bytes 0 through 11, including the magic. |
+| **Total** | | **16** | |
+
+### v1 Image Information
+
+Offsets in this table are relative to the start of each entry.
+
+| Field | Offset (bytes) | Size (bytes) | Description |
+| ----- | -------------- | ------------ | ----------- |
+| Identifier | 0 | 4 | Image identifier, as described above. |
+| ImageLocationOffset | 4 | 4 | Offset from the start of the flash image to the image content. |
+| Size | 8 | 4 | Image size in bytes. |
+| Image Checksum | 12 | 4 | Checksum of the image content. |
+| Image Info Checksum | 16 | 4 | Checksum of entry bytes 0 through 15. |
+| **Total** | | **20** | |
+
+</details>
+
+<details>
+<summary>Version 2 (v2)</summary>
+
+v2 removes the `FLSH` magic, reducing the flash header to 12 bytes.
+It retains the same 20-byte image information entries as v1.
+There is no filename field; filenames were introduced in v3.
+
+### v2 Header
+
+| Field | Offset (bytes) | Size (bytes) | Description |
+| ----- | -------------- | ------------ | ----------- |
+| Header Version | 0 | 2 | `0x0002`. |
+| Image Count | 2 | 2 | Number of image information entries. |
+| Payload Offset | 4 | 4 | Offset to the first image information entry. |
+| Header Checksum | 8 | 4 | Checksum of bytes 0 through 7. |
+| **Total** | | **12** | |
+
+### v2 Image Information
+
+Offsets in this table are relative to the start of each entry.
+
+| Field | Offset (bytes) | Size (bytes) | Description |
+| ----- | -------------- | ------------ | ----------- |
+| Identifier | 0 | 4 | Image identifier, as described above. |
+| ImageLocationOffset | 4 | 4 | Offset from the start of the flash image to the image content. |
+| Size | 8 | 4 | Image size in bytes. |
+| Image Checksum | 12 | 4 | Checksum of the image content. |
+| Image Info Checksum | 16 | 4 | Checksum of entry bytes 0 through 15. |
+| **Total** | | **20** | |
+
+</details>

@@ -35,7 +35,7 @@ certificate store:
 | Configuration | Platform selection | Behavior |
 | --- | --- | --- |
 | Algorithm profile | ECC P-384 only, or ECC P-384 plus ML-DSA-87 | ECC P-384 is always enabled; ML-DSA-87 is enabled when post-quantum support is configured. |
-| Slot enablement | Enablement of Owner and Tenant slots | Vendor is always enabled and read-only. Owner and Tenant are optional managed slots. |
+| Slot enablement | Enablement of Vendor, Owner, and Tenant slots | Vendor is always enabled (read-only by default, or optionally configured as a managed endorsement slot). Owner and Tenant are optional managed slots. |
 | PKI anchor points | Caliptra identity key certified by endorsements | Vendor binds to IDevID. Owner and Tenant can each be configured with a fixed key anchor point or left without a fixed key anchor point (in the default configuration, Owner uses LDevID and Tenant has no fixed key anchor point). |
 | Endorsement backing | Storage allocation and size limits per managed role | Independent backing and size limits for each algorithm in Owner and Tenant. |
 
@@ -78,40 +78,142 @@ persistent storage (such as dedicated flash partitions) and configure size limit
 - **Role independence**: Owner and Tenant must use disjoint storage regions.
 - **Sizing**: Allocate sufficient space for the configured maximum endorsement
   size plus storage metadata and double-buffering.
-- **Persistence guarantees**: Storage must ensure atomic commits, power-loss
-  safety, and durable removal.
+- **Persistence guarantees**: Storage must ensure atomic commits while keeping
+  the active endorsement readable during updates, power-loss safety,
+  deterministic recovery of the newest valid endorsement, and durable removal.
+
+#### SDK reference implementation
+
+`caliptra-mcu-cert-store` owns the managed endorsement record format, A/B
+ping-pong staging, checksum verification, and startup recovery
+(`ManagedEndorsementChain<S>`) over the platform-agnostic `EndorsementStorage`
+trait (`is_available`, `read`, `write`, `erase`), while the reference
+implementation provides `SpiFlashEndorsementStorage` (`user/src/cert_store/mod.rs`):
+
+- **Partition and A/B region layout**: In the reference implementation, the
+  `512 KiB` certificate-store partition is divided into four disjoint `128 KiB`
+  `(role, algorithm)` allocations (`Owner/Tenant` × `ECC P-384/ML-DSA-87`). Each
+  allocation is split into two equal `64 KiB` A/B flash regions (`active_region`
+  and `staging_region`, `MANAGED_REGION_COUNT = 2`).
+- **Active-chain continuity**: Single-shot and multi-chunk `SET_CERTIFICATE`
+  writes erase and program the `staging_region` while concurrent readers continue
+  reading the `active_region` (`RegionReadGuard` prevents erasing a region while
+  a reader is in flight).
+- **Record metadata and recovery**: Each A/B region stores a DER endorsement
+  chain preceded by an 80-byte `ManagedRecord` header (format version 2). The
+  header identifies the chain and contains certificate metadata, integrity
+  checks, and an update sequence number. Recovery verifies the header CRC and
+  payload checksum, then selects the valid region with the highest sequence
+  number. The DER payload is written and checksum-verified before the header is
+  written and read-back verified.
+- **Durable removal**: `erase` clears the older `staging_region` before the
+  `active_region` so an interrupted erase cannot resurrect a superseded chain
+  after reset. A failed erase recovers any surviving valid record before
+  allowing another update. If recovery also fails, the slot remains
+  unprovisioned and locked against updates until startup recovery after reset.
 
 ## Provide Vendor certificates
 
-The Vendor slot is established during manufacturing and is strictly read-only:
+The Vendor slot (`EndorsementRole::Vendor`, Slot 0) binds to `IDevID` (`key_pair_id = 0`) and supports three configuration modes:
 
-- **Root and Intermediate CAs**: Embed the Vendor CA certificates in the
-  application image.
-- **IDevID certificates**: Supply the manufacturing-signed IDevID certificates
-  for each enabled algorithm (e.g., from OTP or secure platform storage).
-- Do not allocate writable persistent backing for the Vendor slot.
+- **Default read-only (in-band Root/Int CA + OTP `IDevID`)**:
+  - **In-band CA chain**: Embed the Vendor Root and Intermediate CA certificates
+    in the application image and register them with `init_readonly_endorsement`.
+  - **Boot-time `IDevID` population (normal flow)**: Read the
+    manufacturing-signed `IDevID` certificates from OTP and pass them to
+    Caliptra Core via `populate_idev_ecc384_cert` / `populate_idev_mldsa87_cert`
+    before calling `init_readonly_endorsement`.
+  - **Manufacturing-time `IDevID` provisioning (`cert-provisioning`)**: When OTP
+    is unpopulated at boot during manufacturing, `ProvisionIdevCert`
+    (`MC_PROVISION_IDEV_CERT` / SPDM VDM `0x09`) can either:
+    - `PopulateOnly`: Populate `IDevID` into Caliptra Core for the current boot
+      without modifying OTP.
+    - `WriteOtp`: Burn, readback-verify, and lock the OTP partition first, then
+      populate `IDevID` into Caliptra Core.
+- **Managed Vendor CA chain (flash-backed Root/Int CA + OTP `IDevID`)**: For
+  platforms that store the Vendor Root and Intermediate CA chain in persistent
+  storage rather than embedding it in the runtime image, allocate an
+  `EndorsementStorage` region and register `EndorsementRole::Vendor` with
+  `init_managed_endorsement` (`vendor_auth_required` defaults to `true`, requiring a
+  `VendorOwner`- or `Owner`-signed `MC_AUTH_SET_CERT_CHAIN` before `MC_SET_CERT_CHAIN` or
+  SPDM `SET_CERTIFICATE`).
+- **All Vendor certificates out-of-band (`vendor-certs-oob`)**: For deployments
+  where the verifier holds the Vendor CA chain and `IDevID` out-of-band, skip
+  `POPULATE_IDEV_*` and call `init_oob_endorsement`. Slot 0 serves `LDevID ->
+  FMC -> RT -> DPE Leaf` with `RootHash = SHA-384(LDevID)` (enabled in the
+  reference user app via the `vendor-certs-oob` Cargo feature).
 
 ## Configure transport exposure
 
-All enabled transports share the single initialized `CertStore` instance:
+All enabled transports share the single initialized `SharedCertStore<S>` instance
+via per-task `TaskCertStore<S>` handles:
 
-- **SPDM**: Uses `SpdmPalCertStore` to map negotiated algorithms and SlotIDs
-  (default: Slot 0 Vendor, Slot 2 Owner, Slot 3 Tenant), advertising only
+- **SPDM responder**: Pass `TaskCertStore<S>` into `McuSpdmPal<M, S>`
+  (`SpdmPalCertStore`), mapping negotiated algorithms and SPDM SlotIDs
+  (default: Slot 0 Vendor, Slot 2 Owner, Slot 3 Tenant) and advertising only
   available provisioned chains.
-- **MCI mailbox**: Queries the store directly by algorithm and endorsement role
-  (`Vendor`, `Owner`, `Tenant`). Command formats are defined in [External
-  Mailbox Commands](./external_mailbox_cmds.md).
+- **MCI mailbox responder**: Use a dedicated `TaskCertStore<S>` to service
+  `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN` by
+  `(EndorsementRole, CertificateAlgorithm)`. Command formats are defined in
+  [External Mailbox Commands](./external_mailbox_cmds.md).
 
 ## Configure authorization
 
-Vendor endorsements are read-only and cannot be modified.
+Read-only Vendor slots (`init_readonly_endorsement` / `init_oob_endorsement`)
+reject all write and erase requests.
 
-For Owner and Tenant endorsements, platforms must enforce authorization before
-passing updates to the certificate store:
+For managed endorsement slots (`Vendor` when initialized with
+`init_managed_endorsement`, `Owner`, and `Tenant`), platforms control write
+authorization via `CertificateProvisioningPolicy` (`vendor_auth_required = true`,
+`owner.auth_required = true`, and `tenant.auth_required = false` by default) and
+`SharedCertStore::set_auth_required(role, required)`. Owner and Tenant each use
+`RoleProvisioningPolicy` to group `anchor_point` and `auth_required`; Vendor's
+IDevID anchor is fixed, so only its authorization flag is configurable:
 
-- Validate requester identity and credentials.
-- Verify permissions for the targeted slot, algorithm, and operation (write or erase).
-- Ensure authorization requirements are consistent across all access transports.
+- **Manifest-backed pre-authorization (`MC_AUTH_SET_CERT_CHAIN`, `0x4D41_5343` / `"MASC"`)**:
+  Submitted via `AuthorizedCommand` (`0x12`) over MCI mailbox or SPDM VDM.
+  - `Vendor` (`Slot 0`) accepts `CommandAuthority::VendorOwner` (`1`, base SoC
+    Manifest key `V_AUTH_KEY_ID`, IME `0x4`) or `CommandAuthority::Owner` (`2`,
+    Owner SoC Manifest key `O_AUTH_KEY_ID`, IME `0x6`).
+  - `Owner` (`Slot 1`) requires `CommandAuthority::Owner` (`2`), verified
+    against the Owner SoC Manifest key (`O_AUTH_KEY_ID`, IME `0x6`).
+  - `Tenant` (`Slot 2`) has no manifest-backed authority and is allowed without
+    `MC_AUTH_SET_CERT_CHAIN` by default (`tenant.auth_required = false`).
+- **Armed-write binding (`arm_endorsement_write`)**: A valid
+  `MC_AUTH_SET_CERT_CHAIN` arms a single write or erase for `(role, algorithm)`
+  bound to `total_size` and `expected_sha384`.
+- **Transport-consistent enforcement**: Both `MC_SET_CERT_CHAIN` (MCI mailbox)
+  and `SET_CERTIFICATE` (SPDM) require a matching armed state when
+  `auth_required` is enabled, claim that grant at admission,
+  keep the claimed authorization across multi-chunk streams,
+  verify the staged DER SHA-384 digest against `expected_sha384` before
+  switching the active region. Claimed grants are never returned for reuse.
+
+### Update ownership and restart
+
+The store separates an executing operation from an open multi-chunk stream:
+
+- A per-`(role, algorithm)` operation guard covers validation, hashing, storage
+  I/O, and shared-state publication. Concurrent mutations, aborts, and re-arms
+  return `STORAGE_BUSY` before changing state. If an executing future is
+  cancelled, the slot remains locked until reset because I/O may still be
+  outstanding.
+- Between chunks the guard is released, but the stream retains its expected
+  key, size, next offset, and claimed grant. A valid re-arm can abandon this idle
+  stream uniformly for MCI and SPDM. Other writes cannot displace it, except an
+  MCI offset-zero restart through its owning task view; authorization-required
+  restarts need a fresh grant.
+- Each task view retains the generation of its admitted stream. A stale
+  continuation, finish, or abort from another task cannot mutate a replacement
+  stream or consume a newly pending grant. Use a dedicated, sequential
+  `TaskCertStore` per responder; do not share one view between independent
+  transfer contexts.
+
+Protocol identity remains outside the store: SPDM checks chunk handles and
+sequences; MCTP checks packet assembly identity. Neither supplies a transfer ID
+for raw MCI certificate chunks. MCI callers must serialize updates and retire
+old requests before restarting; see
+[MC_SET_CERT_CHAIN](./external_mailbox_cmds.md#mc_set_cert_chain).
 
 ## Initialize the certificate store
 
@@ -131,9 +233,10 @@ P-384 chain fails, startup must halt.
 Verify the integrated certificate store:
 
 1. **Chain retrieval**: Retrieve complete chains across all enabled transports
-   (SPDM, MCI) and verify they match expectations from Root CA to DPE leaf.
-2. **Attestation**: Verify attestation challenges against the retrieved leaf
-   certificate.
+   (`GET_CERTIFICATE` on SPDM, `MC_GET_CERT_CHAIN_INFO` / `MC_GET_CERT_CHAIN`
+   on MCI) and verify they match expectations from Root CA to DPE leaf.
+2. **Attestation**: Verify attestation challenges (`CHALLENGE` on SPDM,
+   `MC_GET_ATTESTATION` on MCI) against the retrieved leaf certificate.
 3. **Availability**: Confirm that unprovisioned or failed chains are not
    advertised.
 4. **Independent updates**: Verify that updating an Owner endorsement does not
@@ -141,6 +244,8 @@ Verify the integrated certificate store:
 5. **Atomic updates**: Verify that a failed or interrupted update leaves the
    previous valid endorsement intact.
 6. **Cross-transport consistency**: Confirm that an update made via one transport
-   is immediately visible on all other transports.
+   (`SET_CERTIFICATE` or `MC_SET_CERT_CHAIN`) is immediately visible on all
+   other transports.
 7. **Authorization enforcement**: Verify that unauthorized update attempts
-   and writes to the Vendor slot are rejected without altering stored state.
+   and writes to the Vendor slot (`role = 0`) are rejected without altering
+   stored state.

@@ -22,7 +22,7 @@ mod test {
     use caliptra_mcu_emulator_periph::LinuxTapDevice;
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_flash_image::{
-        ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+        ImageHeaderV3, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
     };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_romtime::McuRomBootStatus;
@@ -88,7 +88,7 @@ mod test {
                 .expect("MCU runtime TOC entry not found");
             header.size = u32::MAX;
             header.image_header_checksum = calculate_checksum(
-                &header.as_bytes()[..offset_of!(ImageHeader, image_header_checksum)],
+                &header.as_bytes()[..offset_of!(ImageHeaderV3, image_header_checksum)],
             );
         }
         let flash_image = FlashImage::new(&images, &image_info);
@@ -192,7 +192,7 @@ mod test {
                 )
             });
             write_valid_partition_table_for_runtime_flash_load(&mut flash);
-            let header_size = core::mem::size_of::<caliptra_mcu_flash_image::FlashHeader>();
+            let header_size = core::mem::size_of::<caliptra_mcu_flash_image::FlashHeaderV3>();
             flash[IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + header_size].fill(0);
             Some(flash)
         } else {

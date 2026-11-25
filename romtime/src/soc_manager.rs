@@ -4,14 +4,16 @@ use core::mem;
 
 use caliptra_api::{
     calc_checksum,
-    mailbox::{ExternalMailboxCmdReq, MailboxReqHeader, MailboxRespHeader, Request},
+    mailbox::{
+        ExternalMailboxCmdReq, MailboxReqHeader, MailboxRespHeader, Request,
+        SUBSYSTEM_MAILBOX_SIZE_LIMIT,
+    },
     CaliptraApiError, SocManager,
 };
 use caliptra_mcu_registers_generated::{mbox, soc};
 use caliptra_ureg::RealMmioMut;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
-const MAILBOX_SIZE: usize = 256 * 1024;
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
     soc_ifc_addr: *mut u32,
@@ -100,7 +102,7 @@ impl CaliptraSoC {
         len_bytes: usize,
         buf: impl Iterator<Item = u32>,
     ) -> core::result::Result<(), CaliptraApiError> {
-        if len_bytes > MAILBOX_SIZE {
+        if len_bytes > SUBSYSTEM_MAILBOX_SIZE_LIMIT {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 
@@ -186,7 +188,7 @@ impl CaliptraSoC {
         cmd: u32,
         len_bytes: usize,
     ) -> core::result::Result<(), CaliptraApiError> {
-        if len_bytes > MAILBOX_SIZE {
+        if len_bytes > SUBSYSTEM_MAILBOX_SIZE_LIMIT {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 

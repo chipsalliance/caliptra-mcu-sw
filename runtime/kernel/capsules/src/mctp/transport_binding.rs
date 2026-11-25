@@ -134,13 +134,10 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         self.tx_buffer.replace(tx_buffer);
 
-        // Make sure there's enough space for the PEC byte
-        if len == 0 || len > self.max_read_len.get() - 1 {
-            capsule_debug!(
-                "MCTP",
-                "Invalid length. Expected: {}",
-                self.max_read_len.get() - 1
-            );
+        // TX is a controller read. Reserve one byte of its limit for PEC.
+        let max_payload_len = self.max_read_len.get().saturating_sub(1);
+        if len == 0 || len > max_payload_len {
+            capsule_debug!("MCTP", "Invalid length. Expected: {}", max_payload_len);
             Err((ErrorCode::SIZE, self.tx_buffer.take().unwrap()))?;
         }
 
@@ -201,7 +198,7 @@ impl RxClient for MCTPI3CBinding<'_> {
         // if yes, compute PEC and check if it matches with the last byte of the buffer
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
-        if len == 0 || len > self.max_write_len.get() {
+        if len == 0 || len > self.max_write_len.get() || len > rx_buffer.len() {
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
@@ -236,6 +233,79 @@ impl RxClient for MCTPI3CBinding<'_> {
 mod tests {
 
     use super::*;
+
+    struct TestTarget {
+        wire_len: Cell<usize>,
+        rx_buffer: TakeCell<'static, [u8]>,
+    }
+
+    impl<'a> I3CTarget<'a> for TestTarget {
+        fn set_tx_client(&self, _client: &'a dyn TxClient) {}
+        fn set_rx_client(&self, _client: &'a dyn RxClient) {}
+        fn set_rx_buffer(&self, buffer: &'static mut [u8]) {
+            self.rx_buffer.replace(buffer);
+        }
+        fn transmit_read(
+            &self,
+            _buffer: &'static mut [u8],
+            len: usize,
+        ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+            self.wire_len.set(len);
+            Ok(())
+        }
+        fn enable(&self) {}
+        fn disable(&self) {}
+        fn get_device_info(&self) -> caliptra_mcu_i3c_driver::hil::I3CTargetInfo {
+            caliptra_mcu_i3c_driver::hil::I3CTargetInfo {
+                static_addr: Some(0x10),
+                dynamic_addr: None,
+                max_read_len: MCTP_I3C_MIN_PACKET_SIZE,
+                max_write_len: MCTP_I3C_MAXBUF,
+            }
+        }
+    }
+
+    #[test]
+    fn transmit_uses_read_limit_including_pec() {
+        let target = TestTarget {
+            wire_len: Cell::new(0),
+            rx_buffer: TakeCell::empty(),
+        };
+        let binding = MCTPI3CBinding::new(&target);
+        binding.setup_mctp_i3c();
+        let buffer = Box::leak(Box::new([0; MCTP_I3C_MIN_PACKET_SIZE + 1]));
+        let ptr = buffer.as_ptr();
+        let (error, buffer) = binding
+            .transmit(buffer, MCTP_I3C_MIN_PACKET_SIZE)
+            .unwrap_err();
+        assert_eq!(error, ErrorCode::SIZE);
+        assert_eq!(buffer.as_ptr(), ptr);
+        assert_eq!(target.wire_len.get(), 0);
+        binding
+            .transmit(buffer, MCTP_I3C_MIN_PACKET_SIZE - 1)
+            .unwrap();
+        assert_eq!(target.wire_len.get(), MCTP_I3C_MIN_PACKET_SIZE);
+    }
+
+    #[test]
+    fn receive_returns_buffer_for_invalid_lengths() {
+        for len in [0, 3, MCTP_I3C_MAXBUF + 1] {
+            let target = TestTarget {
+                wire_len: Cell::new(0),
+                rx_buffer: TakeCell::empty(),
+            };
+            let binding = MCTPI3CBinding::new(&target);
+            binding.setup_mctp_i3c();
+            let buffer = Box::leak(Box::new([0xA5; 2]));
+            let ptr = buffer.as_ptr();
+
+            binding.receive_write(buffer, len);
+
+            let buffer = target.rx_buffer.take().unwrap();
+            assert_eq!(buffer.as_ptr(), ptr);
+            assert_eq!(buffer, &[0xA5; 2]);
+        }
+    }
 
     fn calculate_crc8(data: &[u8]) -> u8 {
         let polynomial = 0x07;

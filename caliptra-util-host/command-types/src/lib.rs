@@ -63,10 +63,15 @@ pub enum CaliptraCommandId {
     ExportAttestedCsr = 0x1005,
     ExportIdevidCsr = 0x1006,
     GetAttestation = 0x1007,
+    GetCertChainInfo = 0x1008,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate
     SetCertificate = 0x1013, // Generic set certificate
+    SetCertChain = 0x1014,
+    ProvisionIdevCert = 0x1015,
+    DpeSignerContextCert = 0x1016,
+    DpeSignerContextSign = 0x1017,
 
     // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,
@@ -137,6 +142,7 @@ pub enum CaliptraCommandId {
     ProvisionOwnerPkHash = 0x8017,
     OcpLockRotateHek = 0x8018,
     OcpLockSetPermaHek = 0x8019,
+    AuthSetCertChain = 0x801A,
 
     // Device Ownership Transfer Commands (0x8020-0x802A)
     DotLock = 0x8020,

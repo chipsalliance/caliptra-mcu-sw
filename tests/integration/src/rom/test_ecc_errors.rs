@@ -102,6 +102,10 @@ fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &st
 }
 
 #[test]
+#[cfg_attr(
+    hw_rev = "latest",
+    ignore = "Caliptra 2.2 ECC injection investigation: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2279"
+)]
 fn test_rom_iccm_ecc_unc() -> Result<()> {
     test_rom_hw_error(
         0x1,
@@ -111,6 +115,10 @@ fn test_rom_iccm_ecc_unc() -> Result<()> {
 }
 
 #[test]
+#[cfg_attr(
+    hw_rev = "latest",
+    ignore = "Caliptra 2.2 ECC injection investigation: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2279"
+)]
 fn test_rom_dccm_ecc_unc() -> Result<()> {
     test_rom_hw_error(
         0x2,

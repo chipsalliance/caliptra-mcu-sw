@@ -1,9 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer};
+use crate::{
+    AsymAlgo, AuthSetCertChainPayload, CaliptraCmdHandler, CaliptraCmdResult,
+    CaliptraCompletionCode, CommandAuthorizer, PkiEntitySlot,
+};
+use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, HybridSignature, SvnTarget,
-    AUTH_CMD_NONCE_LEN, MAX_FUSE_DATA_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, SvnTarget, AUTH_CMD_NONCE_LEN,
+    MAX_FUSE_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
@@ -20,21 +24,22 @@ use zerocopy::IntoBytes;
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 const U32_LEN: usize = core::mem::size_of::<u32>();
-const ECC_P384_COORD_LEN: usize = 48;
-const MLDSA87_PUB_KEY_LEN: usize = 2592;
-const AUTHORIZATION_TRAILER_LEN: usize = AUTH_CMD_NONCE_LEN
-    + 2 * ECC_P384_COORD_LEN
-    + MLDSA87_PUB_KEY_LEN
-    + core::mem::size_of::<HybridSignature>();
+const AUTHORIZATION_TRAILER_LEN: usize = core::mem::size_of::<AuthorizationBlock>();
 
 #[cfg(feature = "device-ownership-transfer")]
-const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
+/// Largest payload supported by the canonical authorization buffers.
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
 #[cfg(not(feature = "device-ownership-transfer"))]
-const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
+/// Largest payload supported by the canonical authorization buffers.
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = core::mem::size_of::<AuthSetCertChainPayload>();
 
 /// Largest canonical AuthorizedCommand body, including its target ID.
 pub const MAX_AUTHORIZED_REQUEST_LEN: usize =
     U32_LEN + MAX_AUTHORIZED_PAYLOAD_LEN + AUTHORIZATION_TRAILER_LEN;
+pub const MAX_AUTHORIZED_MESSAGE_LEN: usize = U32_LEN
+    + MAX_AUTHORIZED_PAYLOAD_LEN
+    + core::mem::size_of::<AuthorizationMetadata>()
+    + AUTH_CMD_NONCE_LEN;
 
 #[repr(C)]
 #[derive(FromBytes, Immutable, KnownLayout)]
@@ -108,8 +113,11 @@ struct FuseWritePayload {
 
 #[repr(C)]
 #[derive(FromBytes, Immutable, KnownLayout)]
-struct ZeroizeUdsFeAndEnterRmaPayload {
-    rma_token: [u8; 16],
+struct WireAuthSetCertChainPayload {
+    pki_entity_slot: U32,
+    algorithm: U32,
+    total_size: U32,
+    expected_sha384: [u8; 48],
 }
 
 #[cfg(feature = "ocp-lock")]
@@ -121,18 +129,6 @@ struct OcpLockEpochKeyReportPayload {
     _reserved: U16,
     algorithm: U32,
 }
-
-#[repr(C)]
-#[derive(FromBytes, Immutable, KnownLayout)]
-struct AuthorizationBlock {
-    nonce: [u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: [u8; ECC_P384_COORD_LEN],
-    ecc_pub_y: [u8; ECC_P384_COORD_LEN],
-    mldsa_pub: [u8; MLDSA87_PUB_KEY_LEN],
-    signature: HybridSignature,
-}
-
-const _: () = assert!(core::mem::size_of::<AuthorizationBlock>() == AUTHORIZATION_TRAILER_LEN);
 
 /// Result data produced by a transport-independent command executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,9 +187,14 @@ where
     Alloc: ScratchAlloc,
 {
     let (target_id, request) = split_id(request)?;
-    if CommandId::from(target_id).is_vendor_unique() {
-        return Err(CaliptraCompletionCode::UnsupportedOperation);
-    }
+    let vendor_limits = if CommandId::from(target_id).is_vendor_unique() {
+        Some(
+            H::vendor_command_limits(target_id)
+                .ok_or(CaliptraCompletionCode::UnsupportedOperation)?,
+        )
+    } else {
+        None
+    };
 
     if target_id == CommandId::MC_GET_AUTH_CMD_CHALLENGE.0 {
         if !request.is_empty() {
@@ -206,6 +207,9 @@ where
             .generate_challenge(alloc)
             .await
             .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+        if challenge == [0; AUTH_CMD_NONCE_LEN] {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
         output.copy_from_slice(&challenge);
         authorizer.set_challenge(challenge);
         return Ok(CommandResponse::Data(AUTH_CMD_NONCE_LEN));
@@ -229,13 +233,49 @@ where
         return Err(CaliptraCompletionCode::UnsupportedOperation);
     }
 
-    let payload_len = authorized_payload_len(target_id, request)?;
+    let payload_len = if let Some(limits) = vendor_limits {
+        let len = request
+            .len()
+            .checked_sub(AUTHORIZATION_TRAILER_LEN)
+            .ok_or(CaliptraCompletionCode::InvalidPayloadSize)?;
+        if len > limits.max_payload_len || len > MAX_AUTHORIZED_PAYLOAD_LEN {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        len
+    } else {
+        authorized_payload_len(target_id, request)?
+    };
     let parsed = split_authorized_request(request, payload_len)?;
+    let output = if let Some(limits) = vendor_limits {
+        output
+            .get_mut(..limits.max_response_len)
+            .ok_or(CaliptraCompletionCode::InsufficientResources)?
+    } else {
+        output
+    };
+    let authority = parsed
+        .authorization
+        .validate_format()
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    if !authorizer.permits_authority(target_id, parsed.payload, authority) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+    if !parsed.authorization.metadata.is_fleet() {
+        let ueid = authorizer
+            .device_ueid()
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        parsed
+            .authorization
+            .metadata
+            .validate_target(&ueid)
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    }
     authorizer
         .verify_signatures(
             alloc,
             target_id,
             parsed.payload,
+            &parsed.authorization.metadata,
             &parsed.authorization.nonce,
             &parsed.authorization.ecc_pub_x,
             &parsed.authorization.ecc_pub_y,
@@ -244,6 +284,16 @@ where
         )
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+
+    if vendor_limits.is_some() {
+        let len = commands
+            .handle_vendor_command(alloc, target_id, parsed.payload, output)
+            .await?;
+        if len > output.len() {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        return Ok(CommandResponse::Data(len));
+    }
 
     match target_id {
         value if value == CommandId::MC_PROVISION_VENDOR_PK_HASH.0 => {
@@ -329,11 +379,20 @@ where
                 .await?;
             Ok(CommandResponse::Empty)
         }
-        value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
-            let payload = ZeroizeUdsFeAndEnterRmaPayload::ref_from_bytes(parsed.payload)
+        value if value == CommandId::MC_AUTH_SET_CERT_CHAIN.0 => {
+            let payload = WireAuthSetCertChainPayload::ref_from_bytes(parsed.payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+            let entity = PkiEntitySlot::try_from(payload.pki_entity_slot.get())
+                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+            let algorithm = AsymAlgo::try_from(payload.algorithm.get())
+                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
             commands
-                .zeroize_uds_fe_and_enter_rma(&payload.rma_token)
+                .auth_set_cert_chain(
+                    entity,
+                    algorithm,
+                    payload.total_size.get(),
+                    &payload.expected_sha384,
+                )
                 .await?;
             Ok(CommandResponse::Empty)
         }
@@ -493,8 +552,8 @@ fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<u
         value if value == CommandId::MC_FUSE_WRITE.0 => {
             Ok(core::mem::size_of::<FuseWritePayload>())
         }
-        value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
-            Ok(core::mem::size_of::<ZeroizeUdsFeAndEnterRmaPayload>())
+        value if value == CommandId::MC_AUTH_SET_CERT_CHAIN.0 => {
+            Ok(core::mem::size_of::<AuthSetCertChainPayload>())
         }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             authorized_dot_payload_len(request)

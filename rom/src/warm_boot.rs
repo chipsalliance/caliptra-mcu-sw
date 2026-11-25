@@ -60,6 +60,18 @@ impl BootFlow for WarmBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
+        #[cfg(hw_capability = "recovery-interface-select")]
+        if let Err(err) = params
+            .recovery_interface
+            .configure(&mci.registers.mci_reg_hw_capabilities)
+        {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Recovery interface selection failed: {}",
+                caliptra_mcu_romtime::HexWord(err.into())
+            );
+            fatal_error(err);
+        }
+
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();
@@ -98,14 +110,7 @@ impl BootFlow for WarmBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
 
-        soc.set_axi_users(AxiUsers {
-            mbox_users: params
-                .cptra_mbox_axi_users
-                .map(|u| if u != 0 { Some(u) } else { None }),
-            fuse_user: params.cptra_fuse_axi_user,
-            trng_user: params.cptra_trng_axi_user,
-            dma_user: params.cptra_dma_axi_user,
-        });
+        soc.set_axi_users(AxiUsers::from(&params), mci);
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         // Configure MCU mailbox AXI users before locking

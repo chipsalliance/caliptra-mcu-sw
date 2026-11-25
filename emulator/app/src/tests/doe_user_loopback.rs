@@ -1,14 +1,15 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
+use caliptra_mcu_testing_common::doe_util::common::DoeUtil;
+use caliptra_mcu_testing_common::doe_util::protocol::DataObjectType;
 use caliptra_mcu_testing_common::sleep_emulator_ticks;
 use rand::Rng;
+use std::sync::mpsc::{Receiver, Sender};
+
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 1; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 250; // maximum size of test vectors
-use caliptra_mcu_testing_common::doe_util::common::DoeUtil;
-use caliptra_mcu_testing_common::doe_util::protocol::DataObjectType;
-use std::sync::mpsc::{Receiver, Sender};
 
 const TEST_NAME: &str = "DOE_USER_LOOPBACK_TEST";
 
@@ -21,12 +22,22 @@ struct Test {
 
 pub fn generate_tests() -> Vec<Box<dyn DoeTransportTest + Send>> {
     let mut rng = rand::thread_rng();
-    let mut tests: Vec<Box<dyn DoeTransportTest + Send>> = Vec::new();
-    for _ in 0..NUM_TEST_VECTORS {
-        // Generate a random size (multiple of 4 bytes)
-        let num_words = rng.gen_range((MIN_TEST_DATA_DWORDS)..=(MAX_TEST_DATA_DWORDS));
+    let random_vectors = (0..NUM_TEST_VECTORS).map(|_| {
+        let num_words = rng.gen_range(MIN_TEST_DATA_DWORDS..=MAX_TEST_DATA_DWORDS);
         let mut vector = vec![0u8; num_words * 4];
         rng.fill(vector.as_mut_slice());
+        vector
+    });
+    let boundary_vectors = [1, 2, 3, 249, 250, 1, 250, 2, 249, 1]
+        .into_iter()
+        .enumerate()
+        .map(|(index, num_words)| {
+            (0..num_words * 4)
+                .map(|offset| (offset as u8).wrapping_add(index as u8))
+                .collect()
+        });
+    let mut tests: Vec<Box<dyn DoeTransportTest + Send>> = Vec::new();
+    for vector in random_vectors.chain(boundary_vectors) {
         tests.push(Box::new(Test {
             test_vector: vector,
             test_state: DoeTestState::Start,

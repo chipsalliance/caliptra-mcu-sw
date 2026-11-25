@@ -20,21 +20,12 @@ use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::{fuses, soc};
 use caliptra_mcu_romtime::otp::{Otp, HEK_OFFSETS, HEK_SEED_SIZE, HEK_ZER_MARKER_OFFSET};
 use caliptra_mcu_romtime::{McuRomBootStatus, StaticRef};
-use tock_registers::interfaces::{Readable, Writeable};
+use tock_registers::interfaces::Writeable;
 use zerocopy::transmute;
 
 const STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE: usize = 32;
-const STABLE_OWNER_KEY_STRAP_INDEX: usize = 3;
-const STABLE_OWNER_KEY_STRAP_MASK: u32 = 1;
 const STABLE_OWNER_KEY_OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
 const STABLE_OWNER_KEY_OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
-
-pub(crate) fn enable_owner_key_strap(registers: StaticRef<soc::regs::Soc>) {
-    // Caliptra ROM gates owner stable key availability on SS_STRAP_GENERIC[3] bit 0.
-    let strap = registers.ss_strap_generic[STABLE_OWNER_KEY_STRAP_INDEX].get();
-    registers.ss_strap_generic[STABLE_OWNER_KEY_STRAP_INDEX]
-        .set(strap | STABLE_OWNER_KEY_STRAP_MASK);
-}
 
 fn write_hek_seed(registers: StaticRef<soc::regs::Soc>, seed: &[u8]) {
     for (reg, word) in

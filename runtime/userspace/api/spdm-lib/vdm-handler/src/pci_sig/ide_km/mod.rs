@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! PCI-SIG IDE-KM VDM responder for SPDM-Lite.
+//! PCI-SIG IDE-KM VDM responder for the SPDM stack.
 
 use caliptra_mcu_spdm_codec::{
     IdeKmCommand, IdeKmHdr, PciSigProtocolHdr, StandardsBodyId, WireReader, WireWriter,

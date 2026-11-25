@@ -4,6 +4,7 @@
 //! communicate with Caliptra.
 
 use crate::dma::hil::{Dma, DmaRoute, DmaStatus};
+use caliptra_api::mailbox::SUBSYSTEM_MAILBOX_SIZE_LIMIT;
 use caliptra_api::CaliptraApiError;
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::CaliptraSoC;
@@ -69,7 +70,6 @@ fn log_caliptra_error(err: &CaliptraApiError) {
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
-const CALIPTRA_SUBSYSTEM_MAILBOX_SIZE: usize = 16 * 1024;
 
 /// IDs for subscribed upcalls.
 mod upcall {
@@ -173,9 +173,12 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         }
     }
 
+    /// Returns the staging SRAM AXI address if `request_len` does not fit in
+    /// the Caliptra mailbox (`SUBSYSTEM_MAILBOX_SIZE_LIMIT`) and must use the
+    /// external mailbox path.
     fn staging_addr_for_request(&self, request_len: usize) -> Option<u64> {
         self.staging_sram_axi_addr
-            .filter(|_| request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE)
+            .filter(|_| request_len > SUBSYSTEM_MAILBOX_SIZE_LIMIT)
     }
 
     // Check if any command is pending. If not, this command is executed.
@@ -232,8 +235,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
                 // Configure and execute DMA transfer for this chunk
                 let src_addr = chunk_buf.as_ptr() as u64;
-                let dest_addr =
-                    self.staging_sram_axi_addr.unwrap() + (offset + bytes_written) as u64;
+                let dest_addr = self.staging_sram_axi_addr.ok_or(ErrorCode::FAIL)?
+                    + (offset + bytes_written) as u64;
                 self.dma_driver.configure_transfer(
                     chunk_len,
                     chunk_len,
@@ -288,10 +291,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
 
-        self.use_external_mailbox
-            .set(self.staging_addr_for_request(app_buffer.len()).is_some());
+        let staging_addr = self.staging_addr_for_request(app_buffer.len());
+        self.use_external_mailbox.set(staging_addr.is_some());
 
-        if let Some(staging_axi_addr) = self.staging_addr_for_request(app_buffer.len()) {
+        if let Some(staging_axi_addr) = staging_addr {
             // Copy payload to staging SRAM
             self.copy_app_buffer_to_staging_sram(app_buffer, 0)?;
 
@@ -554,7 +557,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         if start < out_len {
                             let end = (start + 4).min(out_len);
                             if let Some(out) = output.get(start..end) {
-                                out.copy_from_slice(&word.to_le_bytes()[..end - start]);
+                                for (byte, value) in out.iter().zip(word.to_le_bytes()) {
+                                    byte.set(value);
+                                }
                             }
                         }
                     }

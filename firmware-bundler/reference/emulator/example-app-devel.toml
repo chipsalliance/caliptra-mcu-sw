@@ -5,6 +5,7 @@
 # `example-app.toml`) so debug-only Tock components fit alongside the kernel +
 # app, and is paired with the default cargo features (without the `release` cargo feature).  Selected by
 # `xtask runtime-build --profile devel` and `xtask runtime`.
+# DCCM and the handoff region match the release layout.
 
 [platform]
 name = "emulator-example-app"
@@ -22,11 +23,11 @@ sram = { offset = 0x4000_0000, size = 0x10_0000 }
 
 [platform.dccm]
 offset = 0x5000_0000
-size = 0x3800
+size = 0x3C00
 
 [platform.handoff]
-offset = 0x5000_3800
-size = 0x800
+offset = 0x5000_3C00
+size = 1024
 
 # This section is optional.
 [rom]
@@ -42,4 +43,3 @@ stack = 0x0_7000
 name = "caliptra-mcu-example-app"
 stack = 0xC000
 grant_space = 0x4000
-
