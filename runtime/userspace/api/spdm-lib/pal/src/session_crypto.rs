@@ -7,6 +7,7 @@
 
 use super::measurements::MeasurementProvider;
 use super::*;
+use caliptra_mcu_cert_store::EndorsementStorage;
 use caliptra_mcu_spdm_traits::{McuResult, SpdmPalIo, SpdmPalSessionCrypto};
 use mcu_caliptra_api::{
     cm_hmac, cm_import, ecdh_finish as api_ecdh_finish, ecdh_generate as api_ecdh_generate,
@@ -14,7 +15,7 @@ use mcu_caliptra_api::{
     CmKeyUsage, Cmk, HkdfSalt,
 };
 
-impl<M: MeasurementProvider> SpdmPalSessionCrypto for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalSessionCrypto for McuSpdmPal<M, S> {
     type Key = Cmk;
 
     async fn ecdh_generate(

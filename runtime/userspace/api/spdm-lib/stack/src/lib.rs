@@ -3,7 +3,7 @@
 //! `caliptra-mcu-spdm-stack` — SPDM responder state machine and dispatcher.
 //!
 //! This crate implements the responder side of the SPDM protocol on
-//! top of the SPDM-Lite Platform Abstraction Layer
+//! top of the SPDM Platform Abstraction Layer
 //! ([`caliptra_mcu_spdm_traits`]). It owns:
 //!
 //! * A [`SpdmStack`] — the main `run()` loop that receives an SPDM

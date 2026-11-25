@@ -163,13 +163,23 @@ pub mod test {
             assert_eq!(byte, ((active_slot + 1) ^ idx) as u8);
         }
 
-        let stable_owner_key_strap = hw
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        assert!(hw
             .caliptra_soc_manager()
             .soc_ifc()
-            .ss_strap_generic()
-            .at(3)
-            .read();
-        assert_eq!(stable_owner_key_strap & 1, 1);
+            .ss_fw_feature_cfg()
+            .read()
+            .stable_owner_key_en());
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        assert_eq!(
+            hw.caliptra_soc_manager()
+                .soc_ifc()
+                .ss_strap_generic()
+                .at(3)
+                .read()
+                & 1,
+            1
+        );
     }
 
     #[test]

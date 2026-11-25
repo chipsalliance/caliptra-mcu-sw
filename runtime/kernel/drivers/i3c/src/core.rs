@@ -21,6 +21,7 @@ use tock_registers::{register_bitfields, LocalRegisterCopy};
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 /// TTI RX and TX data FIFO capacity: 64 DWORD entries.
 pub const MAX_READ_WRITE_SIZE: usize = 256;
+#[cfg(target_arch = "riscv32")]
 const WRITE_DELAY_CYCLES: usize = 100;
 
 register_bitfields! {
@@ -42,8 +43,6 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
 
     // buffers data to be received from the controller when it issues a write to us
     rx_buffer: TakeCell<'static, [u8]>,
-    rx_buffer_idx: Cell<usize>,
-    rx_buffer_size: Cell<usize>,
 
     // buffers data to be sent to the controller when it issues a read to us
     tx_buffer: TakeCell<'static, [u8]>,
@@ -55,6 +54,7 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     retry_outgoing_read: Cell<bool>,
     retry_incoming_write: Cell<bool>,
     pending_ibi: OptionalCell<(u8, u16)>,
+    pending_read_ibi_mdb_only: Cell<bool>,
     tx_desc_complete: Cell<bool>,
     max_read_len: Cell<usize>,
     max_write_len: Cell<usize>,
@@ -73,8 +73,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             tx_client: OptionalCell::empty(),
             rx_client: OptionalCell::empty(),
             rx_buffer: TakeCell::empty(),
-            rx_buffer_idx: Cell::new(0),
-            rx_buffer_size: Cell::new(0),
             tx_buffer: TakeCell::empty(),
             tx_buffer_idx: Cell::new(0),
             tx_buffer_size: Cell::new(0),
@@ -82,6 +80,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             retry_outgoing_read: Cell::new(false),
             retry_incoming_write: Cell::new(false),
             pending_ibi: OptionalCell::empty(),
+            pending_read_ibi_mdb_only: Cell::new(false),
             tx_desc_complete: Cell::new(false),
             max_read_len: Cell::new(MAX_READ_WRITE_SIZE),
             max_write_len: Cell::new(MAX_READ_WRITE_SIZE),
@@ -99,6 +98,16 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     pub fn set_max_write_len(&self, max_write_len: usize) {
         assert!((1..=MAX_READ_WRITE_SIZE).contains(&max_write_len));
         self.max_write_len.set(max_write_len);
+    }
+
+    /// Selects MDB-only pending-read IBIs instead of the default two-byte length payload.
+    /// Returns BUSY while a transmit buffer or IBI is outstanding.
+    pub fn set_pending_read_ibi_mdb_only(&self, mdb_only: bool) -> Result<(), ErrorCode> {
+        if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
+            return Err(ErrorCode::BUSY);
+        }
+        self.pending_read_ibi_mdb_only.set(mdb_only);
+        Ok(())
     }
 
     pub fn init(&'static self) {
@@ -162,55 +171,47 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             });
         }
 
-        if self.rx_buffer.is_none() {
+        let Some(rx_buffer) = self.rx_buffer.take() else {
             // try again later
             self.retry_incoming_write.set(true);
             self.set_alarm(Self::RETRY_WAIT_TICKS);
             return false;
-        }
+        };
 
         let desc = self.registers.tti_rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
         let len = desc.read(RxDesc::DataLength) as usize;
         if len == 0 {
             // we're done
+            self.rx_buffer.replace(rx_buffer);
             return false;
         }
-        let rx_buffer = self.rx_buffer.take().unwrap();
-        let mut buf_idx = self.rx_buffer_idx.get();
-        let buf_size = self.rx_buffer_size.get();
+        let valid = desc.read(RxDesc::Error) == 0
+            && len <= rx_buffer.len()
+            && len <= self.max_write_len.get();
 
-        // read everything
-        let mut full = false;
-        for i in (0..len.next_multiple_of(4)).step_by(4) {
+        // Drain every word, including rejected packets, so the next descriptor
+        // stays aligned with its data. Never deliver a truncated packet to the
+        // transport: a coincidental PEC match could otherwise accept it.
+        let mut output = rx_buffer.iter_mut();
+        for i in (0..len).step_by(4) {
             let data = self.registers.tti_rx_data_port.get().to_le_bytes();
-            for (j, data_j) in data.iter().enumerate() {
-                if buf_idx >= buf_size {
-                    full = true;
-                    break;
+            if valid {
+                let count = (len - i).min(4);
+                for (destination, byte) in output.by_ref().take(count).zip(data) {
+                    *destination = byte;
                 }
-                if let Some(x) = rx_buffer.get_mut(buf_idx) {
-                    *x = *data_j;
-                } else {
-                    // check if we ran out of space or if this is just the padding
-                    if i + j < len {
-                        full = true;
-                    }
-                }
-                buf_idx += 1;
             }
         }
 
-        if full {
-            // TODO: we need a way to say that the buffer was not big enough
+        if !valid {
+            // Keep the receive buffer armed for the next valid packet.
+            self.rx_buffer.put(Some(rx_buffer));
+            return true;
         }
 
-        // reset
-        self.rx_buffer_idx.set(0);
-        self.rx_buffer_size.set(0);
-
         self.rx_client.map(|client| {
-            client.receive_write(rx_buffer, len.min(buf_size));
+            client.receive_write(rx_buffer, len);
         });
         true
     }
@@ -219,25 +220,38 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     pub fn handle_outgoing_read(&self) {
         self.retry_outgoing_read.set(false);
 
-        if self.tx_buffer.is_none() {
+        let Some(buf) = self.tx_buffer.take() else {
             // we have nothing to send, retry in a little while
             self.retry_outgoing_read.set(true);
             self.set_alarm(Self::RETRY_WAIT_TICKS);
             return;
-        }
+        };
 
-        let buf = self.tx_buffer.take().unwrap();
-        let mut idx = self.tx_buffer_idx.replace(0);
+        let idx = self.tx_buffer_idx.replace(0);
         let size = self.tx_buffer_size.replace(0);
-        if idx < size {
+        let payload = match buf.get(idx..size) {
+            Some(payload) => payload,
+            None => {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-runtime-i3c] Invalid TX buffer range {}..{} for length {}",
+                    idx,
+                    size,
+                    buf.len()
+                );
+                self.tx_buffer_idx.set(idx);
+                self.tx_buffer_size.set(size);
+                self.tx_buffer.put(Some(buf));
+                return;
+            }
+        };
+        if !payload.is_empty() {
             self.registers
                 .tti_tx_desc_queue_port
-                .set((size - idx) as u32);
-            while idx < size {
+                .set(payload.len() as u32);
+            for chunk in payload.chunks(4) {
                 let mut bytes = [0; 4];
-                for b in bytes[0..4.min(size - idx)].iter_mut() {
-                    *b = buf[idx];
-                    idx += 1;
+                for (byte, source) in bytes.iter_mut().zip(chunk) {
+                    *byte = *source;
                 }
                 let word = u32::from_le_bytes(bytes);
                 self.registers.tti_tx_data_port.set(word);
@@ -247,7 +261,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // complete. Returning it earlier lets the client fill the target TX
         // queue with later packets before this packet is consumed.
 
-        // add a small delay to ensure that the write is finished buffering
+        // Give hardware time to finish buffering. Tock's host nop is a
+        // panicking stub; memory-backed host tests do not need this delay.
+        #[cfg(target_arch = "riscv32")]
         for _ in 0..WRITE_DELAY_CYCLES {
             rv32i::support::nop();
         }
@@ -257,11 +273,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn deferred_done(&self) {
-        if self.tx_buffer.is_none() {
+        if self.tx_client.is_none() {
             return;
         }
+        let Some(tx_buffer) = self.tx_buffer.take() else {
+            return;
+        };
         self.tx_client.map(|client| {
-            client.send_done(self.tx_buffer.take().unwrap(), Ok(()));
+            client.send_done(tx_buffer, Ok(()));
         });
     }
 
@@ -277,14 +296,21 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             // we can only have one IBI pending at a time
             return;
         }
+        let data_len = if self.pending_read_ibi_mdb_only.get() {
+            0
+        } else {
+            2
+        };
         // write the descriptor first
-        self.registers
-            .tti_tti_ibi_port
-            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(2)).into());
+        self.registers.tti_tti_ibi_port.set(
+            (IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(data_len)).into(),
+        );
 
         // Note: we only write 2 bytes so that the IBI is <=4 bytes long so that
         // the controller can read it in one dword.
-        self.registers.tti_tti_ibi_port.set(len.swap_bytes() as u32);
+        if data_len != 0 {
+            self.registers.tti_tti_ibi_port.set(len.swap_bytes() as u32);
+        }
         self.pending_ibi.set((mdb, len));
     }
 
@@ -313,10 +339,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
     }
 
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
-        let len = rx_buf.len();
         self.rx_buffer.replace(rx_buf);
-        self.rx_buffer_idx.replace(0);
-        self.rx_buffer_size.replace(len);
     }
 
     fn transmit_read(
@@ -324,13 +347,13 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         tx_buf: &'static mut [u8],
         len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        if len == 0 || len > self.max_read_len.get() || len > tx_buf.len() {
-            return Err((ErrorCode::SIZE, tx_buf));
-        }
         // The buffer remains owned until both the IBI and private read complete.
         if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
             caliptra_mcu_romtime::println!("[mcu-runtime-i3c] transmit_read called but previous IBI still pending or tx_buffer in use: {} {}", self.tx_buffer.is_some(), self.pending_ibi.is_some());
             return Err((ErrorCode::BUSY, tx_buf));
+        }
+        if len == 0 || len > tx_buf.len() || len > self.max_read_len.get() {
+            return Err((ErrorCode::SIZE, tx_buf));
         }
         self.tx_desc_complete.set(false);
         self.tx_buffer.replace(tx_buf);
@@ -410,3 +433,7 @@ impl<'a, A: Alarm<'a>> DeferredCallClient for I3CCore<'a, A> {
         self.deferred_call.register(self);
     }
 }
+
+#[cfg(all(test, not(target_arch = "riscv32")))]
+#[path = "tests.rs"]
+mod tests;

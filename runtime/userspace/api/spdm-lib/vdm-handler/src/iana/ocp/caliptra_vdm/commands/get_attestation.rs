@@ -56,9 +56,11 @@ pub(crate) fn decode_format(req: &[u8]) -> Option<(EvidenceFormat, AsymAlgo)> {
     ))
 }
 
-fn write_fields(buf: &mut [u8], format: u32, data_len: usize) {
-    buf[..4].copy_from_slice(&format.to_le_bytes());
-    buf[4..RESP_FIELDS_LEN].copy_from_slice(&(data_len as u32).to_le_bytes());
+fn response_fields(format: u32, data_len: usize) -> [u8; RESP_FIELDS_LEN] {
+    let mut fields = [0; RESP_FIELDS_LEN];
+    fields[..4].copy_from_slice(&format.to_le_bytes());
+    fields[4..].copy_from_slice(&(data_len as u32).to_le_bytes());
+    fields
 }
 
 /// Answers a discovery query with the responder's supported-format bitmap.
@@ -71,7 +73,8 @@ fn handle_query<H: CaliptraCmdHandler>(inline_payload: &mut [u8]) -> CaliptraVdm
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
     inline_payload[0] = CaliptraCompletionCode::Success as u8;
-    write_fields(&mut inline_payload[1..], EVIDENCE_FORMAT_QUERY, BITMAP_LEN);
+    inline_payload[1..INLINE_PREFIX_LEN]
+        .copy_from_slice(&response_fields(EVIDENCE_FORMAT_QUERY, BITMAP_LEN));
     inline_payload[INLINE_PREFIX_LEN..INLINE_PREFIX_LEN + BITMAP_LEN]
         .copy_from_slice(&H::SUPPORTED_EVIDENCE_FORMATS.to_le_bytes());
     CaliptraVdmCmdResult::Response(INLINE_PREFIX_LEN + BITMAP_LEN)
@@ -86,21 +89,27 @@ fn finish_staged(
     format: EvidenceFormat,
     data_len: usize,
 ) -> CaliptraVdmCmdResult {
-    if data_len > large.len().saturating_sub(LARGE_PREFIX_LEN) {
+    let Some((prefix, evidence)) = large.split_first_chunk_mut::<LARGE_PREFIX_LEN>() else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
-    }
+    };
+    let Some(evidence) = evidence.get(..data_len) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
 
-    if INLINE_PREFIX_LEN + data_len <= inline_payload.len() {
-        inline_payload[0] = CaliptraCompletionCode::Success as u8;
-        write_fields(&mut inline_payload[1..], format as u32, data_len);
-        inline_payload[INLINE_PREFIX_LEN..INLINE_PREFIX_LEN + data_len]
-            .copy_from_slice(&large[LARGE_PREFIX_LEN..LARGE_PREFIX_LEN + data_len]);
-        CaliptraVdmCmdResult::Response(INLINE_PREFIX_LEN + data_len)
+    let inline_len = INLINE_PREFIX_LEN + data_len;
+    if let Some((inline_prefix, destination)) = inline_payload
+        .get_mut(..inline_len)
+        .and_then(|out| out.split_first_chunk_mut::<INLINE_PREFIX_LEN>())
+    {
+        inline_prefix[0] = CaliptraCompletionCode::Success as u8;
+        inline_prefix[1..].copy_from_slice(&response_fields(format as u32, data_len));
+        destination.copy_from_slice(evidence);
+        CaliptraVdmCmdResult::Response(inline_len)
     } else {
-        large[0] = CALIPTRA_VDM_COMMAND_VERSION;
-        large[1] = command_code;
-        large[2] = CaliptraCompletionCode::Success as u8;
-        write_fields(&mut large[3..], format as u32, data_len);
+        prefix[0] = CALIPTRA_VDM_COMMAND_VERSION;
+        prefix[1] = command_code;
+        prefix[2] = CaliptraCompletionCode::Success as u8;
+        prefix[3..].copy_from_slice(&response_fields(format as u32, data_len));
         CaliptraVdmCmdResult::Large(LARGE_PREFIX_LEN + data_len)
     }
 }
@@ -110,11 +119,15 @@ fn finish_inline(
     format: EvidenceFormat,
     data_len: usize,
 ) -> CaliptraVdmCmdResult {
-    if INLINE_PREFIX_LEN + data_len > inline_payload.len() {
+    let Some((prefix, evidence)) = inline_payload.split_first_chunk_mut::<INLINE_PREFIX_LEN>()
+    else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    if data_len > evidence.len() {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
-    inline_payload[0] = CaliptraCompletionCode::Success as u8;
-    write_fields(&mut inline_payload[1..], format as u32, data_len);
+    prefix[0] = CaliptraCompletionCode::Success as u8;
+    prefix[1..].copy_from_slice(&response_fields(format as u32, data_len));
     CaliptraVdmCmdResult::Response(INLINE_PREFIX_LEN + data_len)
 }
 
@@ -199,5 +212,44 @@ where
             Err(code) => return CaliptraVdmCmdResult::Error(super::map_common_completion(code)),
         };
         finish_inline(inline_payload, format, data_len)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_response_rejects_oversized_reported_length_before_writing() {
+        let mut inline = [0xaa; INLINE_PREFIX_LEN];
+        let result = finish_inline(&mut inline, EvidenceFormat::PcrQuote, usize::MAX);
+        assert!(matches!(
+            result,
+            CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources)
+        ));
+        assert_eq!(inline, [0xaa; INLINE_PREFIX_LEN]);
+    }
+
+    #[test]
+    fn staged_response_rejects_truncated_prefix_before_writing() {
+        for large_len in 0..LARGE_PREFIX_LEN {
+            for inline_len in [0, INLINE_PREFIX_LEN] {
+                let mut inline = [0xaa; INLINE_PREFIX_LEN];
+                let mut large = [0x55; LARGE_PREFIX_LEN];
+                let result = finish_staged(
+                    0x05,
+                    &mut inline[..inline_len],
+                    &mut large[..large_len],
+                    EvidenceFormat::PcrQuote,
+                    0,
+                );
+                assert!(matches!(
+                    result,
+                    CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources)
+                ));
+                assert_eq!(inline, [0xaa; INLINE_PREFIX_LEN]);
+                assert_eq!(large, [0x55; LARGE_PREFIX_LEN]);
+            }
+        }
     }
 }

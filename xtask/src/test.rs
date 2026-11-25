@@ -154,7 +154,7 @@ struct FeatureVariantTest {
 /// `cargo nextest run` pass.
 const FEATURE_VARIANT_TESTS: &[FeatureVariantTest] = &[FeatureVariantTest {
     packages: &["caliptra-mcu-mbox-lib", "caliptra-mcu-spdm-vdm-handler"],
-    features: "caliptra-mcu-mbox-lib/attested-csr,caliptra-mcu-spdm-vdm-handler/attested-csr",
+    features: "caliptra-mcu-mbox-lib/attested-csr,caliptra-mcu-mbox-lib/unsafe-allow-mcu-signing-oracle,caliptra-mcu-spdm-vdm-handler/attested-csr",
 }];
 
 pub(crate) fn feature_variant_tests() -> Result<()> {
@@ -196,7 +196,10 @@ pub(crate) fn test_xtask_runtime() -> Result<()> {
         }])?;
 
     crate::runtime::runtime_run(Commands::Runtime {
-        hw_revision: semver::Version::new(2, 0, 0),
+        hw_revision: caliptra_mcu_hw_revision::HardwareRevision::from_env()
+            .map_err(anyhow::Error::msg)?
+            .emulator_version()
+            .parse()?,
         trace: false,
         i3c_port: None,
         features: vec!["test-xtask-runtime".to_string()],

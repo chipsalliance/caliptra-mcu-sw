@@ -37,6 +37,7 @@ struct FeatureTestResource {
     feature: String,
     runtime_file: tempfile::NamedTempFile,
     soc_manifest_file: tempfile::NamedTempFile,
+    owner_auth_manifest_file: Option<tempfile::NamedTempFile>,
     flash_image: PathBuf,
     pldm_fw_pkg: tempfile::NamedTempFile,
     update_flash_image: Option<PathBuf>,
@@ -134,6 +135,10 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     use std::process::Command;
 
     let mut cmd = Command::new("cargo");
+    cmd.env(
+        caliptra_mcu_hw_revision::ENV,
+        crate::hardware_revision()?.as_str(),
+    );
     cmd.current_dir(&*PROJECT_ROOT).args([
         "build",
         "-p",
@@ -404,6 +409,7 @@ impl FirmwareBinaries {
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const USER_APP_ELF_NAME: &'static str = "user_app_elf.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
+    const OWNER_SOC_MANIFEST_NAME: &'static str = "owner_soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
     const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
 
@@ -733,6 +739,7 @@ pub struct AllBuildArgs<'a> {
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
+    pub owner_soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub caliptra_firmware_network_filename: Option<&'a str>,
     pub soc_manifest_network_filename: Option<&'a str>,
@@ -754,6 +761,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         runtime_features,
         separate_runtimes,
         soc_images,
+        owner_soc_images: configured_owner_soc_images,
         mcu_cfgs,
         caliptra_firmware_network_filename,
         soc_manifest_network_filename,
@@ -792,7 +800,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     ..Default::default()
                 })?);
 
-                let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
+                let filename = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
                 Ok((bin_path, filename))
             })
             .collect();
@@ -810,9 +818,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 let release_dir = target_dir.join(TARGET).join("release");
 
                 std::fs::create_dir_all(&release_dir)?;
-                let bin_path = release_dir.join(&filename);
-                let rom_bytes = caliptra_builder::build_firmware_rom(fwid)?;
-                std::fs::write(&bin_path, rom_bytes)?;
+                let bin_path = release_dir.join(crate::revisioned_name(&filename)?);
+                CaliptraBuilder::build_core_rom(*fwid, &bin_path)?;
                 Ok((bin_path, filename))
             })
             .collect();
@@ -961,8 +968,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
     // Caliptra currently rejects owner manifests with an empty metadata collection.
-    let owner_soc_images =
-        create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]));
+    let owner_soc_images = configured_owner_soc_images.clone().unwrap_or_else(|| {
+        create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]))
+    });
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
@@ -1010,7 +1018,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let flash_image = create_flash_image(FlashImageBuildArgs {
         caliptra_fw_path: Some(caliptra_fw.clone()),
         soc_manifest_path: Some(soc_manifest.clone()),
-        owner_auth_manifest_path: Some(owner_auth_manifest),
+        owner_auth_manifest_path: Some(owner_auth_manifest.clone()),
         owner_measurement_policy_path: Some(owner_measurement_policy),
         owner_soc_images: Some(owner_soc_images),
         mcu_runtime_path: Some(mcu_runtime.into()),
@@ -1132,7 +1140,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                             .collect(),
                     )
                 };
-            let feature_owner_soc_images = if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) {
+            let feature_owner_soc_images = if let Some(images) = &configured_owner_soc_images {
+                Some(images.clone())
+            } else if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) {
                 Some(create_default_owner_soc_images(
                     feature_soc_images.as_deref().unwrap_or(&[]),
                 ))
@@ -1376,6 +1386,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 feature: feature.to_string(),
                 runtime_file: feature_runtime_file,
                 soc_manifest_file: feature_soc_manifest_file,
+                owner_auth_manifest_file: feature_owner_auth_manifest_file.map(|(file, _)| file),
                 flash_image: feature_flash_image,
                 pldm_fw_pkg: feature_pldm_fw_pkg,
                 update_flash_image: feature_update_flash_image,
@@ -1412,7 +1423,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         (false, true) => format!("all-fw-shard-{}.zip", shard_index),
         (false, false) => "all-fw.zip".to_string(),
     };
-    let default_path = crate::target_dir().join(&default_name);
+    let default_path = crate::target_dir().join(crate::revisioned_name(&default_name)?);
     let path = output.map(Path::new).unwrap_or(&default_path);
     println!("Creating ZIP file: {}", path.display());
     let file = std::fs::File::create(path)?;
@@ -1422,6 +1433,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         .unix_permissions(0o644)
         .last_modified_time(zip::DateTime::try_from(chrono::Local::now().naive_local())?);
 
+    add_bytes_to_zip(
+        crate::hardware_provenance()?.as_bytes(),
+        "hardware-provenance.txt",
+        &mut zip,
+        options,
+    )?;
     add_to_zip(
         &caliptra_rom,
         FirmwareBinaries::CALIPTRA_ROM_NAME,
@@ -1482,6 +1499,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         options,
     )?;
     add_to_zip(
+        &owner_auth_manifest,
+        FirmwareBinaries::OWNER_SOC_MANIFEST_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
         &flash_image,
         FirmwareBinaries::FLASH_IMAGE_NAME,
         &mut zip,
@@ -1505,6 +1528,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         feature,
         runtime_file: runtime,
         soc_manifest_file: soc_manifest,
+        owner_auth_manifest_file: owner_auth_manifest,
         flash_image,
         pldm_fw_pkg,
         update_flash_image,
@@ -1533,6 +1557,24 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             &mut zip,
             options,
         )?;
+
+        if let Some(owner_auth_manifest) = owner_auth_manifest.as_ref() {
+            add_to_zip(
+                &owner_auth_manifest.path().to_path_buf(),
+                &format!("mcu-test-owner-soc-manifest-{}.bin", feature),
+                &mut zip,
+                options,
+            )?;
+            if update_soc_manifest.is_some() {
+                // Hitless update flash images reuse the cold-boot Owner manifest.
+                add_to_zip(
+                    &owner_auth_manifest.path().to_path_buf(),
+                    &format!("mcu-test-owner-soc-manifest-update-{}.bin", feature),
+                    &mut zip,
+                    options,
+                )?;
+            }
+        }
 
         if let Some(update_soc_manifest) = update_soc_manifest.as_ref() {
             let update_soc_manifest_name = format!("mcu-test-soc-manifest-update-{}.bin", feature);
@@ -1605,7 +1647,7 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
     let emulator_path = build_emulator_with_feature("")?
         .ok_or_else(|| anyhow::anyhow!("Failed to build emulator"))?;
 
-    let default_path = crate::target_dir().join("emulators.zip");
+    let default_path = crate::target_dir().join(crate::revisioned_name("emulators.zip")?);
     let path = output.map(Path::new).unwrap_or(&default_path);
     println!("Creating emulator ZIP file: {}", path.display());
     let file = std::fs::File::create(path)?;
@@ -1616,6 +1658,12 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
         .last_modified_time(zip::DateTime::try_from(chrono::Local::now().naive_local())?);
 
     println!("Adding {} -> emulator", emulator_path.display());
+    add_bytes_to_zip(
+        crate::hardware_provenance()?.as_bytes(),
+        "hardware-provenance.txt",
+        &mut zip,
+        options,
+    )?;
     add_to_zip(&emulator_path, "emulator", &mut zip, options)?;
 
     zip.finish()?;

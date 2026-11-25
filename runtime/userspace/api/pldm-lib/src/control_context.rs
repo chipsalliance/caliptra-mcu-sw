@@ -226,16 +226,12 @@ impl CtrlCmdResponder for ControlContext<'_> {
         }
 
         let version_in_req = req.protocol_version;
-        if !self.is_supported_version(pldm_type_in_req, version_in_req) {
+        let Some(cmds) = self.get_supported_commands(pldm_type_in_req, version_in_req) else {
             return generate_failure_response(
                 payload,
                 PldmControlCompletionCode::InvalidPldmVersionInRequestData as u8,
             );
-        }
-
-        let cmds = self
-            .get_supported_commands(pldm_type_in_req, version_in_req)
-            .unwrap();
+        };
 
         let resp = GetPldmCommandsResponse::new(
             req.hdr.instance_id(),

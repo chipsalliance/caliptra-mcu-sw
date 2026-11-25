@@ -31,7 +31,7 @@ use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmP
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
 /// Peer-advertised algorithm bitmaps, one per family the responder
@@ -107,10 +107,9 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     // SPDM: NEGOTIATE_ALGORITHMS + ALGORITHMS contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state
-        .transcript
-        .append_vca(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_vca(pal, io, response).await?;
 
     state.phase = Phase::AfterAlgorithms;
     Ok(resp)
@@ -408,6 +407,45 @@ mod tests {
         request
     }
 
+    #[test]
+    fn doe_and_mctp_algorithms_append_exact_logical_transcript_bytes() {
+        let request = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+        let mut baseline = None;
+        for (header_size, send_len_alignment) in [(1, 1), (8, 4)] {
+            let pal = TestPal {
+                header_size,
+                send_len_alignment,
+                ..TestPal::default()
+            };
+            let mut state = ConnectionState {
+                phase: Phase::AfterCapabilities,
+                version: SpdmVersion::V14,
+                ..ConnectionState::default()
+            };
+            let io = TestIo::message(request.clone());
+            block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+            let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
+            let length =
+                u16::from_le_bytes([response[header_size + 4], response[header_size + 5]]) as usize;
+            let payload = &response[header_size..header_size + length];
+            let expected = [b"VCA".as_slice(), request.as_slice(), payload].concat();
+            assert_eq!(state.transcript.vca.as_ref().unwrap().bytes, expected);
+            assert!(response[header_size + length..]
+                .iter()
+                .all(|&byte| byte == 0));
+            if let Some(expected) = &baseline {
+                assert_eq!(&state.transcript.vca.as_ref().unwrap().bytes, expected);
+            } else {
+                baseline = Some(state.transcript.vca.as_ref().unwrap().bytes.clone());
+            }
+        }
+    }
+
     fn run_negotiate(request: Vec<u8>) -> (ConnectionState<TestHashState, Vec<u8>>, Vec<u8>) {
         let pal = TestPal::default();
         let version = SpdmVersion::from_u8(request[0]).unwrap();
@@ -499,6 +537,16 @@ mod tests {
         block_on(pal.hash_finish(&io, state.transcript.vca.as_mut().unwrap(), &mut digest))
             .unwrap();
         assert_eq!(digest, test_digest(response));
+    }
+
+    fn selected_alg(response: &[u8], alg_type: u8) -> Option<u16> {
+        let (_, body) = SpdmMsgHdrPdu::ref_from_prefix(response).unwrap();
+        body[AlgorithmsRspBodyFixed::SIZE..]
+            .chunks_exact(AlgStructEntry::SIZE)
+            .find_map(|entry| {
+                let entry = AlgStructEntry::ref_from_bytes(entry).unwrap();
+                (entry.alg_type == alg_type).then(|| entry.alg_supported.get())
+            })
     }
 
     #[test]
@@ -756,5 +804,175 @@ mod tests {
             fixed.pqc_asym_sel.into_bits(),
             PqcAsymAlgos::EMPTY.into_bits()
         );
+    }
+
+    #[test]
+    fn v14_prefers_ml_kem1024_over_offered_dhe() {
+        let mut request = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::EMPTY,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+        append_alg_structs(&mut request, &[AlgStructEntry::kem(KemAlgos::ML_KEM1024)]);
+
+        let (state, response) = run_negotiate(request);
+        let expected_entries = [
+            AlgStructEntry::dhe(DheAlgos::EMPTY),
+            AlgStructEntry::aead(AeadAlgos::AES_256_GCM),
+            AlgStructEntry::key_schedule(KeyScheduleAlgos::SPDM),
+            AlgStructEntry::kem(KemAlgos::ML_KEM1024),
+        ];
+
+        assert!(matches!(state.negotiated_key_ex_sel, KeyExSel::Kem));
+        assert_algorithms_response(
+            &response,
+            SpdmVersion::V14,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            &expected_entries,
+        );
+    }
+
+    #[test]
+    fn v14_falls_back_to_secp384r1_when_kem_is_not_offered() {
+        let request = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+
+        let (state, _) = run_negotiate(request);
+
+        assert!(matches!(state.negotiated_key_ex_sel, KeyExSel::Dhe));
+    }
+
+    #[test]
+    fn malformed_negotiation_preserves_state_for_valid_retry() {
+        let pal = TestPal::default();
+        let mut state = ConnectionState {
+            version: SpdmVersion::V14,
+            phase: Phase::AfterCapabilities,
+            ..ConnectionState::default()
+        };
+        let mut malformed = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+        malformed.pop();
+
+        let malformed_io = TestIo::message(malformed);
+        assert_eq!(
+            block_on(handle_negotiate_algorithms(&mut state, &pal, &malformed_io)),
+            Err(SPDM_INVALID_REQUEST)
+        );
+        assert_eq!(state.phase, Phase::AfterCapabilities);
+        assert!(state.transcript.vca.is_none());
+        assert_eq!(
+            state.negotiated_base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
+        assert!(matches!(state.negotiated_key_ex_sel, KeyExSel::None));
+
+        let valid_io = TestIo::message(negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        ));
+        block_on(handle_negotiate_algorithms(&mut state, &pal, &valid_io)).unwrap();
+
+        assert_eq!(state.phase, Phase::AfterAlgorithms);
+        assert_eq!(
+            state.negotiated_pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::ML_DSA_87.into_bits()
+        );
+        assert!(matches!(state.negotiated_key_ex_sel, KeyExSel::Dhe));
+        assert!(state.transcript.vca.is_some());
+    }
+
+    #[test]
+    fn supported_signature_and_key_exchange_tuples_select_required_algorithms() {
+        for (pqc, base, offer_kem, expected_key_ex) in [
+            (
+                PqcAsymAlgos::EMPTY,
+                AsymAlgos::ECDSA_ECC_NIST_P384,
+                false,
+                KeyExSel::Dhe,
+            ),
+            (
+                PqcAsymAlgos::EMPTY,
+                AsymAlgos::ECDSA_ECC_NIST_P384,
+                true,
+                KeyExSel::Kem,
+            ),
+            (
+                PqcAsymAlgos::ML_DSA_87,
+                AsymAlgos::ECDSA_ECC_NIST_P384,
+                false,
+                KeyExSel::Dhe,
+            ),
+            (
+                PqcAsymAlgos::ML_DSA_87,
+                AsymAlgos::ECDSA_ECC_NIST_P384,
+                true,
+                KeyExSel::Kem,
+            ),
+        ] {
+            let mut request = negotiate_request(SpdmVersion::V14, pqc, base, false);
+            if offer_kem {
+                append_alg_structs(&mut request, &[AlgStructEntry::kem(KemAlgos::ML_KEM1024)]);
+            }
+
+            let (state, response) = run_negotiate(request);
+            let (_, body) = SpdmMsgHdrPdu::ref_from_prefix(&response).unwrap();
+            let fixed = AlgorithmsRspBodyFixed::ref_from_bytes(
+                body.get(..AlgorithmsRspBodyFixed::SIZE).unwrap(),
+            )
+            .unwrap();
+
+            assert!(state.negotiated_key_ex_sel == expected_key_ex);
+            assert_eq!(
+                fixed.base_hash_sel.into_bits(),
+                HashAlgos::SHA_384.into_bits()
+            );
+            assert_eq!(
+                fixed.base_asym_sel.into_bits(),
+                if pqc.is_empty() {
+                    AsymAlgos::ECDSA_ECC_NIST_P384.into_bits()
+                } else {
+                    AsymAlgos::EMPTY.into_bits()
+                }
+            );
+            assert_eq!(
+                fixed.pqc_asym_sel.into_bits(),
+                if pqc.is_empty() {
+                    PqcAsymAlgos::EMPTY.into_bits()
+                } else {
+                    PqcAsymAlgos::ML_DSA_87.into_bits()
+                }
+            );
+            assert_eq!(
+                selected_alg(&response, alg_type::AEAD),
+                Some(AeadAlgos::AES_256_GCM.into_bits())
+            );
+            assert_eq!(
+                selected_alg(&response, alg_type::KEY_SCHEDULE),
+                Some(KeyScheduleAlgos::SPDM.into_bits())
+            );
+            match expected_key_ex {
+                KeyExSel::Dhe => assert_eq!(
+                    selected_alg(&response, alg_type::DHE),
+                    Some(DheAlgos::SECP_384_R1.into_bits())
+                ),
+                KeyExSel::Kem => assert_eq!(
+                    selected_alg(&response, alg_type::KEM_ALG),
+                    Some(KemAlgos::ML_KEM1024.into_bits())
+                ),
+                KeyExSel::None => unreachable!(),
+            }
+        }
     }
 }

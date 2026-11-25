@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Zero-copy SPDM PDU codec for SPDM-Lite.
+//! Zero-copy SPDM PDU codec for the SPDM stack.
 
 #![no_std]
 #![forbid(unsafe_code)]

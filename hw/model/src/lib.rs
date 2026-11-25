@@ -36,6 +36,7 @@ pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
 
 // Re-export flash image builder for creating flash images from firmware bytes
+#[cfg(feature = "builder")]
 pub use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 
 mod bus_logger;
@@ -44,6 +45,8 @@ pub mod debug_unlock;
 #[cfg(feature = "fpga_realtime")]
 pub mod flash_ctrl;
 mod fpga_regs;
+#[cfg(all(feature = "fpga_realtime", feature = "usb"))]
+pub mod fpga_usb;
 #[cfg(feature = "fpga_realtime")]
 pub mod jtag;
 #[cfg(feature = "fpga_realtime")]
@@ -117,6 +120,8 @@ pub fn new(init_params: InitParams) -> Result<DefaultHwModel> {
 }
 
 pub struct InitParams<'a> {
+    /// Explicit emulator hardware revision; otherwise retain boot-mode defaults.
+    pub hw_revision: Option<semver::Version>,
     /// Fuse settings
     pub fuses: Fuses,
     /// The contents of the Caliptra ROM
@@ -223,6 +228,16 @@ pub struct InitParams<'a> {
     pub enable_mcu_uart_log: bool,
 
     pub i3c_port: Option<u16>,
+    /// Observe MCU emulator termination instead of exiting the test process.
+    pub capture_mcu_exit: bool,
+    /// Send Caliptra's UART output to this model's `Output` (alongside the
+    /// MCU's) instead of printing it to stdout. Caliptra's test pass/fail
+    /// bytes then set the `Output` exit status rather than exiting the
+    /// process.
+    pub caliptra_uart_to_output: bool,
+    /// Log OTP DAI read / write / digest commands; drain the log with
+    /// `McuHwModel::take_otp_dai_log`.
+    pub log_otp_dai: bool,
 
     /// Initial contents of DOT flash.
     pub dot_flash_initial_contents: Option<Vec<u8>>,
@@ -289,6 +304,7 @@ impl Default for InitParams<'_> {
                 Box::new(RandomEtrngResponses::new_from_stdrng())
             };
         Self {
+            hw_revision: None,
             fuses: Default::default(),
             caliptra_rom: Default::default(),
             caliptra_firmware: Default::default(),
@@ -331,6 +347,9 @@ impl Default for InitParams<'_> {
             vendor_pk_hash: None,
             vendor_pqc_type: None,
             i3c_port: None,
+            capture_mcu_exit: false,
+            caliptra_uart_to_output: false,
+            log_otp_dai: false,
             dot_flash_initial_contents: None,
             primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
@@ -403,6 +422,18 @@ pub trait McuHwModel {
 
     fn save_otp_memory(&self, path: &Path) -> Result<()>;
     fn read_otp_memory(&self) -> Vec<u8>;
+
+    /// A snapshot of Caliptra's key vault (keys, PCRs and their control
+    /// registers), for models that can provide one. The emulated model does.
+    fn key_vault_snapshot(&self) -> Option<caliptra_emu_periph::KeyVaultSnapshot> {
+        None
+    }
+
+    /// The OTP DAI commands logged since the last call, when
+    /// `InitParams::log_otp_dai` is set. Empty otherwise, and by default.
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        Vec::new()
+    }
 
     fn read_dot_flash(&self) -> Vec<u8>;
     fn write_dot_flash(&mut self, data: &[u8]) -> Result<()>;
@@ -531,6 +562,10 @@ pub trait McuHwModel {
 
     fn set_axi_user(&mut self, axi_user: u32);
 
+    fn set_mcu_mbox_axi_user(&mut self, axi_user: u32) {
+        self.set_axi_user(axi_user);
+    }
+
     fn set_itrng_divider(&mut self, _divider: u32) {}
 
     fn set_generic_input_wires(&mut self, _value: &[u32; 2]) {}
@@ -540,6 +575,10 @@ pub trait McuHwModel {
     fn set_caliptra_boot_go(&mut self, _value: bool) {}
 
     fn events_from_caliptra(&mut self) -> Vec<Event>;
+
+    fn mcu_exit_status(&self) -> Option<i32> {
+        None
+    }
 
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
 
@@ -781,11 +820,16 @@ pub trait McuHwModel {
     }
 
     fn set_i3c_recovery_device_reset_ctrl(&mut self, reset_ctrl: u32) {
-        self.mcu_manager()
-            .i3c()
-            .sec_fw_recovery_if()
-            .device_reset()
-            .write(|w| w.reset_ctrl(reset_ctrl));
+        // Inject a BMC result through the hardware-update aperture: a direct
+        // software write to DEVICE_RESET.RESET_CTRL only clears bits.
+        let mut manager = self.mcu_manager();
+        let i3c = manager.i3c();
+        let mgmt = i3c.so_cmgmt_if();
+        let bypass = mgmt.rec_intf_cfg().read().rec_intf_bypass();
+        mgmt.rec_intf_cfg().modify(|w| w.rec_intf_bypass(true));
+        mgmt.rec_intf_reg_w1_c_access()
+            .modify(|w| w.device_reset_ctrl(reset_ctrl));
+        mgmt.rec_intf_cfg().modify(|w| w.rec_intf_bypass(bypass));
     }
 
     fn network_manager(&mut self) -> impl NetworkManager;

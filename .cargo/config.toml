@@ -1,5 +1,9 @@
 # Licensed under the Apache-2.0 license
 
+[env]
+# Keep MCU and its Caliptra dependencies on the same default register revision.
+CALIPTRA_HW_REV = { value = "latest", force = false }
+
 [alias]
 xtask = "run --package caliptra-mcu-xtask --"
 xtask-fpga = "run --package caliptra-mcu-xtask --features=fpga_realtime --"

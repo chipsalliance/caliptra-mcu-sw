@@ -27,6 +27,8 @@ pub struct TripleResult {
     pub env_label: String,
     /// Whether a matching evidence triple was found.
     pub env_matched: bool,
+    /// Whether this absent reference is optional for EAT appraisal.
+    pub missing_optional_claim: bool,
     /// Per-measurement outcomes (populated only when `env_matched`).
     pub measurements: Vec<MeasurementResult>,
 }
@@ -73,7 +75,10 @@ impl AppraisalReport {
     pub fn all_passed(&self) -> bool {
         self.verifier_checks.iter().all(|c| c.passed)
             && !self.results.is_empty()
-            && self.results.iter().all(|r| r.passed())
+            && self
+                .results
+                .iter()
+                .all(|r| r.passed() || r.missing_optional_claim)
     }
 }
 
@@ -137,9 +142,28 @@ pub fn appraise(
             .collect();
 
         if matching_ev.is_empty() {
+            // MCU RT can be the attestation node, which EAT omits.
+            let missing_optional_claim = ref_triple
+                .ref_env
+                .class
+                .as_ref()
+                .and_then(|class| class.class_id.as_ref())
+                .and_then(|class_id| class_id.as_bytes())
+                .is_some_and(|class_id| {
+                    class_id == b"0x00000002"
+                        && !ev_triples.iter().any(|ev| {
+                            ev.ref_env
+                                .class
+                                .as_ref()
+                                .and_then(|class| class.class_id.as_ref())
+                                .and_then(|class_id| class_id.as_bytes())
+                                == Some(class_id)
+                        })
+                });
             results.push(TripleResult {
                 env_label,
                 env_matched: false,
+                missing_optional_claim,
                 measurements: Vec::new(),
             });
             continue;
@@ -155,6 +179,7 @@ pub fn appraise(
         results.push(TripleResult {
             env_label,
             env_matched: true,
+            missing_optional_claim: false,
             measurements,
         });
     }
@@ -256,7 +281,7 @@ fn appraise_measurement(
     MeasurementResult {
         label,
         matched: false,
-        detail: "no evidence measurement found for this key".into(),
+        detail: "missing in evidence: no measurement found for this key".into(),
     }
 }
 

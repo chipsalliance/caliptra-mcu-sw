@@ -8,7 +8,10 @@ authors.workspace = true
 
 [dependencies]
 caliptra-api.workspace = true
-mcu-caliptra-api.workspace = true
+caliptra-mcu-flash-image.workspace = true
 caliptra-image-types.workspace = true
 zerocopy.workspace = true
 caliptra-mcu-registers-generated.workspace = true
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

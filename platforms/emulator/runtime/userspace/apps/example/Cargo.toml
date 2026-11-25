@@ -12,6 +12,7 @@ caliptra-api.workspace = true
 caliptra-error.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-mcu-attestation-evidence.workspace = true
+caliptra-mcu-measurement-api.workspace = true
 critical-section.workspace = true
 dpe.workspace = true
 embassy-executor.workspace = true
@@ -47,6 +48,7 @@ doe = []
 disable-lms-sig-verify = []
 hw-2-1 = []
 ocp-lock = [
+    "caliptra-mcu-measurement-api/ocp-lock",
     "mcu-caliptra-api/ocp-lock",
 ]
 # No-op stub forwarded through `runtime_build_with_apps`; size optimization

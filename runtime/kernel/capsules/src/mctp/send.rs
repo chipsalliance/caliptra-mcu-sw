@@ -143,11 +143,18 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
 
         self.msg_payload
             .map_or(Err(ErrorCode::FAIL), |msg_payload| {
-                let max_payload_len = pkt_buf.len() - MCTP_HDR_SIZE;
-                let total_msg_len = msg_payload.len();
+                let (header, payload) = pkt_buf
+                    .as_slice()
+                    .split_at_mut_checked(MCTP_HDR_SIZE)
+                    .ok_or(ErrorCode::FAIL)?;
+                let max_payload_len = payload.len();
                 let offset = self.offset.get();
                 let pkt_seq = self.pkt_seq.get();
-                let remaining_len = total_msg_len - offset;
+                let msg_payload = msg_payload
+                    .as_slice()
+                    .get(offset..)
+                    .ok_or(ErrorCode::FAIL)?;
+                let remaining_len = msg_payload.len();
                 let som = if offset == 0 { 1 } else { 0 };
                 let eom = if remaining_len <= max_payload_len {
                     1
@@ -165,9 +172,10 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
                     self.tag_owner.get() as u8,
                     self.msg_tag.get(),
                 );
-                pkt_buf[0..MCTP_HDR_SIZE].copy_from_slice(&mctp_hdr.0.to_le_bytes());
-                pkt_buf[MCTP_HDR_SIZE..MCTP_HDR_SIZE + copy_len]
-                    .copy_from_slice(&msg_payload[offset..offset + copy_len]);
+                header.copy_from_slice(&mctp_hdr.0.to_le_bytes());
+                for (out, byte) in payload.iter_mut().zip(msg_payload) {
+                    *out = *byte;
+                }
                 self.offset.set(offset + copy_len);
                 self.pkt_seq.set((pkt_seq + 1) % 4);
                 Ok(copy_len + MCTP_HDR_SIZE)

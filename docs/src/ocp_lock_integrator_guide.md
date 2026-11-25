@@ -80,7 +80,7 @@ flowchart TD
 |---|---|
 | **MCU ROM** (`romtime::ocp_lock`) | • Reads HEK seed fuses from OTP during cold boot.<br>• Determines slot states and selects the active HEK slot using the `Platform` trait.<br>• Programs encryption engine registers (MEK size, key release target address).<br>• Dispatches `REPORT_HEK_METADATA` mailbox command to Caliptra Core.<br>• Writes `HekState` into DCCM `HandoffData` for the runtime kernel. |
 | **MCU Kernel** (`capsules::otp`) | • Provides kernel-level OTP access control and syscall drivers.<br>• Validates slot transition policies (sequential rotation, slot bounds).<br>• Enforces the single-rotation-per-boot lifecycle constraint (`has_rotated`).<br>• Performs atomic HEK sanitization (0xFF write) and new seed + digest programming via `KernelConfig`.<br>• Enforces permanent lock policy (`PERMA_HEK_EN`). |
-| **MCU Runtime Userspace** (`mcu-caliptra-api`) | • Exposes async `OcpLock` client for KMB operations (MEK/MPK generation, derivation, rotation).<br>• Constructs and signs X.509 v3 endorsement certificates for KMB HPKE public keys.<br>• Formats and signs TCG EKP Epoch Key Reports wrapped in standard `COSE_Sign1` structures.<br>• Integrates with DPE context signing (`CaliptraDpeSigner`). |
+| **MCU Runtime Userspace** (`mcu-caliptra-api` / `caliptra-mcu-measurement-api`) | • Exposes async `OcpLock` client for KMB operations (MEK/MPK generation, derivation, rotation).<br>• Constructs and signs X.509 v3 endorsement certificates for KMB HPKE public keys.<br>• Formats and signs TCG EKP Epoch Key Reports wrapped in standard `COSE_Sign1` structures.<br>• Integrates with Measurement API Exported-CDI signing (`caliptra_mcu_measurement_api::signer::CaliptraDpeSigner`). |
 | **Host Mailbox Interface** (`mcu-mbox-lib`) | • Dispatches authorized host commands (`MC_OCP_LOCK_PROGRAM_HEK`, `MC_OCP_LOCK_ZERO_HEK`, `MC_OCP_LOCK_ROTATE_HEK`, `MC_OCP_LOCK_SET_PERMA_HEK`).<br>• Dispatches unauthenticated status and public key queries and attestation requests (`MC_HEK_STATUS`, `MC_GET_OCP_LOCK_ENDORSEMENT_CERT`, `MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES`, `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`, `MC_DPE_SIGNER_CONTEXT_CERT`). |
 
 ---
@@ -345,7 +345,7 @@ let mpk_resp = ocp_lock.generate_mpk(&mut mpk_req).await?;
 To allow external entities to encrypt sensitive key material for the device, Caliptra MCU generates standard X.509 v3 certificates endorsing KMB HPKE public keys. The certificate is signed by the MCU Firmware DPE context (`CaliptraDpeSigner` with label `b"MCU FW HPKE Endorsement"`).
 
 ```rust
-let signer = CaliptraDpeSigner::new(&mailbox);
+let signer = CaliptraDpeSigner::new(scratch);
 let mut cert_buf = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
 
 let cert_len = ocp_lock

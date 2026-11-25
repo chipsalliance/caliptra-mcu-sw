@@ -14,7 +14,7 @@ use caliptra_api::mailbox::{
     AuthManifestSource, CommandId, GetImageInfoReq, MailboxReqHeader, MailboxRespHeader, Request,
 };
 use caliptra_mcu_flash_image::{
-    FlashHeader, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    MAX_FLASH_HEADER_SIZE, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
@@ -107,21 +107,19 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         image_id: u32,
         source: AuthManifestSource,
     ) -> Result<LoadedImage, ErrorCode> {
-        let (load_address, component_id, measurement) = {
+        let (caliptra_load_address, component_id, measurement) = {
             let image_info = get_image_info(&self.mailbox, image_id, source).await?;
-            let load_address = convert_dma_cptra_addr_to_mcu_addr(
-                self.dma_transfer,
-                ((image_info.image_load_address_high as u64) << 32)
-                    | (image_info.image_load_address_low as u64),
-            )?;
+            let load_address = ((image_info.image_load_address_high as u64) << 32)
+                | (image_info.image_load_address_low as u64);
             (load_address, image_info.component_id, image_info.digest)
         };
 
-        let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
-            [0; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, component_id).await?;
+        let load_address =
+            convert_dma_cptra_addr_to_mcu_addr(self.dma_transfer, caliptra_load_address, size)?;
         flash_client::flash_load_image(
             self.dma_transfer,
             load_address,
@@ -139,7 +137,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         &self,
         retained_preamble: &mut [u8],
     ) -> Result<usize, ErrorCode> {
-        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0u8; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, OWNER_AUTH_MANIFEST_IDENTIFIER)
@@ -165,7 +163,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
     }
 
     async fn read_owner_measurement_policy(&self, dst: &mut [u8]) -> Result<usize, ErrorCode> {
-        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0u8; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, OWNER_MEASUREMENT_POLICY_IDENTIFIER)
@@ -183,8 +181,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
 
 impl<T: DmaTransfer> FlashImageLoader<'_, T> {
     pub async fn set_auth_manifest(&self) -> Result<(), ErrorCode> {
-        let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
-            [0; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, SOC_MANIFEST_IDENTIFIER).await?;
@@ -231,13 +228,10 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
         image_id: u32,
         source: AuthManifestSource,
     ) -> Result<LoadedImage, ErrorCode> {
-        let (load_address, component_id, measurement) = {
+        let (caliptra_load_address, component_id, measurement) = {
             let image_info = get_image_info(&self.mailbox, image_id, source).await?;
-            let load_address = convert_dma_cptra_addr_to_mcu_addr(
-                self.dma_mapping,
-                ((image_info.image_load_address_high as u64) << 32)
-                    | (image_info.image_load_address_low as u64),
-            )?;
+            let load_address = ((image_info.image_load_address_high as u64) << 32)
+                | (image_info.image_load_address_low as u64);
             (load_address, image_info.component_id, image_info.digest)
         };
 
@@ -250,6 +244,8 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
             )
             .await?;
             let (offset, size) = pldm_client::pldm_download_toc(component_id).await?;
+            let load_address =
+                convert_dma_cptra_addr_to_mcu_addr(self.dma_mapping, caliptra_load_address, size)?;
             pldm_client::pldm_download_image(load_address, offset, size).await?;
             Ok(LoadedImage {
                 image_size: size,
@@ -352,12 +348,9 @@ impl PayloadStream for PldmMailboxPayloadStream<'_> {
         if bytes_to_read == 0 {
             return Ok(0);
         }
-        pldm_client::pldm_download_payload_chunk(
-            self.offset + self.cursor,
-            &mut buffer[..bytes_to_read],
-        )
-        .await?;
-        self.capture.record(&buffer[..bytes_to_read]);
+        let chunk = buffer.get_mut(..bytes_to_read).ok_or(ErrorCode::Size)?;
+        pldm_client::pldm_download_payload_chunk(self.offset + self.cursor, chunk).await?;
+        self.capture.record(chunk);
         self.cursor += bytes_to_read;
         Ok(bytes_to_read)
     }
@@ -366,7 +359,13 @@ impl PayloadStream for PldmMailboxPayloadStream<'_> {
 fn convert_dma_cptra_addr_to_mcu_addr(
     dma_mapping: &impl DMAMapping,
     caliptra_axi_addr: u64,
+    image_size: u32,
 ) -> Result<AXIAddr, ErrorCode> {
+    let end = caliptra_axi_addr
+        .checked_add(u64::from(image_size))
+        .filter(|end| *end > caliptra_axi_addr)
+        .ok_or(ErrorCode::Invalid)?;
+    dma_mapping.validate_image_load_range(caliptra_axi_addr..end)?;
     dma_mapping
         .cptra_axi_to_mcu_axi(caliptra_axi_addr)
         .map_err(|_| ErrorCode::Fail)
@@ -474,11 +473,10 @@ impl PayloadStream for FlashMailboxPayloadStream<'_> {
         }
 
         let bytes_to_read = (self.len - (self.cursor - self.offset)).min(buffer.len());
-        self.flash
-            .read(self.cursor, bytes_to_read, &mut buffer[..bytes_to_read])
-            .await?;
+        let chunk = buffer.get_mut(..bytes_to_read).ok_or(ErrorCode::Size)?;
+        self.flash.read(self.cursor, bytes_to_read, chunk).await?;
         if let Some(capture) = &mut self.capture {
-            capture.record(&buffer[..bytes_to_read]);
+            capture.record(chunk);
         }
         self.cursor += bytes_to_read;
         Ok(bytes_to_read)
@@ -564,6 +562,53 @@ pub struct AuthManifestReqHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ImageDmaMapping;
+
+    impl DMAMapping for ImageDmaMapping {
+        fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+            Ok(u64::from(addr))
+        }
+
+        fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+            Ok(addr + 0x2000)
+        }
+
+        fn validate_image_load_range(
+            &self,
+            range: core::ops::Range<AXIAddr>,
+        ) -> Result<(), ErrorCode> {
+            if range.start >= 0x1000 && range.end <= 0x2000 {
+                Ok(())
+            } else {
+                Err(ErrorCode::Invalid)
+            }
+        }
+    }
+
+    #[test]
+    fn image_load_range_is_checked_before_address_translation() {
+        assert_eq!(
+            convert_dma_cptra_addr_to_mcu_addr(&ImageDmaMapping, 0x1000, 0x1000),
+            Ok(0x3000)
+        );
+        for (address, size) in [(0xffff, 512), (0x10000, 512), (0x1ffc, 8)] {
+            assert_eq!(
+                convert_dma_cptra_addr_to_mcu_addr(&ImageDmaMapping, address, size),
+                Err(ErrorCode::Invalid)
+            );
+        }
+    }
+
+    #[test]
+    fn image_load_range_rejects_empty_and_overflowing_images() {
+        for (address, size) in [(0x1000, 0), (u64::MAX - 3, 8)] {
+            assert_eq!(
+                convert_dma_cptra_addr_to_mcu_addr(&ImageDmaMapping, address, size),
+                Err(ErrorCode::Invalid)
+            );
+        }
+    }
 
     #[test]
     fn parse_image_info_response_preserves_digest() {

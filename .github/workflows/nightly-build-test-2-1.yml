@@ -15,6 +15,7 @@ jobs:
   dispatch-and-monitor:
     name: ${{ matrix.workflow }} (main-2.1)
     runs-on: ubuntu-latest
+    timeout-minutes: 310
     strategy:
       fail-fast: false
       matrix:
@@ -93,7 +94,7 @@ jobs:
               `Tracking ${dispatchedRun.html_url} (run #${dispatchedRun.run_number}, id ${dispatchedRun.id})`,
             );
 
-            const maxTrackAttempts = 420;
+            const maxTrackAttempts = 600;
             const trackDelayMs = 30000;
 
             for (let attempt = 1; attempt <= maxTrackAttempts; attempt++) {
@@ -117,5 +118,7 @@ jobs:
 
               await sleep(trackDelayMs);
             }
+
+            core.setFailed(`Timed out while waiting for ${workflowId} to complete.`);
 
             core.setFailed(`Timed out while waiting for ${workflowId} to complete.`);
