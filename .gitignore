@@ -64,3 +64,6 @@ attestation-artifacts/*
 # Mjolnir
 tools/mjolnir/results/
 tools/mjolnir/workspace/
+
+# WebAssembly binaries
+*.wasm

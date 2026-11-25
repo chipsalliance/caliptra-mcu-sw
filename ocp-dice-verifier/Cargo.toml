@@ -1,0 +1,37 @@
+# Licensed under the Apache-2.0 license
+
+[workspace]
+members = [
+    "crates/dice-rs",
+    "crates/spdm-cert-rs",
+    "crates/dice-visualizer-wasm",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/chipsalliance/caliptra-mcu-sw"
+
+[workspace.dependencies]
+dice-rs = { path = "crates/dice-rs" }
+spdm-cert-rs = { path = "crates/spdm-cert-rs" }
+thiserror = "2.0"
+hex = "0.4"
+openssl = { version = "0.10", features = ["vendored"] }
+zeroize = { version = "1.6", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+corim-rs = { git = "https://github.com/chipsalliance/caliptra-corim-rs.git", branch = "caliptra-main" }
+ciborium = "0.2"
+coset = "0.4.1"
+sha2 = { version = "0.10", features = ["oid"] }
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+wasm-bindgen = "0.2"
+
+# ASN.1 and X.509 cert extensions
+asn1 = { version = "0.13.0", default-features = false }
+x509-parser = { version = "0.15.1", features = ["verify"] }

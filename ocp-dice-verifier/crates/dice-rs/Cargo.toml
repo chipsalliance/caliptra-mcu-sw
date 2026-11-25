@@ -1,0 +1,25 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "dice-rs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust implementation of TCG DICE Attestation Architecture certificate extensions (TcbInfo, MultiTcbInfo, Ueid)"
+readme = "README.md"
+keywords = ["dice", "tcg", "attestation", "x509", "dpe"]
+categories = ["cryptography", "parser-implementations"]
+
+[features]
+default = ["std"]
+std = ["asn1/std", "dep:x509-parser"]
+
+[dependencies]
+asn1 = { workspace = true }
+x509-parser = { workspace = true, optional = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }
