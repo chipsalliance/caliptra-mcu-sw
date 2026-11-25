@@ -5,16 +5,29 @@ name: SPDM Validator Tests
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: false
+        type: choice
+        options: ["2.1", "latest"]
+        default: "2.1"
   workflow_call:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: false
+        type: string
+        default: "2.1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.run_id }}
+  group: ${{ github.workflow }}-spdm-validator-${{ inputs.hw-revision }}-${{ github.run_id }}
   cancel-in-progress: false
 
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
 env:
-  CALIPTRA_HW_REV: "2.1"
+  CALIPTRA_HW_REV: ${{ inputs.hw-revision }}
 
 jobs:
   build_spdm_emu_tools:
@@ -65,7 +78,7 @@ jobs:
       - name: Upload spdm-emu tools
         uses: actions/upload-artifact@v7
         with:
-          name: spdm-emu-tools
+          name: spdm-emu-tools-${{ inputs.hw-revision }}
           path: ${{ runner.temp }}/spdm-emu-tools.tar.gz
           retention-days: 1
 
@@ -147,12 +160,12 @@ jobs:
       - name: Upload spdm-rs tools
         uses: actions/upload-artifact@v7
         with:
-          name: spdm-rs-tools
+          name: spdm-rs-tools-${{ inputs.hw-revision }}
           path: ${{ runner.temp }}/spdm-rs-tools.tar.gz
           retention-days: 1
 
   spdm_emu_tests:
-    name: ${{ matrix.suite }}
+    name: ${{ matrix.suite }} (${{ inputs.hw-revision }})
     needs: build_spdm_emu_tools
     runs-on: ubuntu-24.04
 
@@ -190,8 +203,8 @@ jobs:
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
-      - name: Select pinned Caliptra 2.1 software
-        run: CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
+      - name: Select pinned Caliptra software
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version "$CALIPTRA_HW_REV"
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v6
@@ -226,7 +239,7 @@ jobs:
       - name: Download spdm-emu tools
         uses: actions/download-artifact@v8
         with:
-          name: spdm-emu-tools
+          name: spdm-emu-tools-${{ inputs.hw-revision }}
           path: ${{ runner.temp }}
 
       - name: Extract spdm-emu tools
@@ -258,7 +271,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-mctp-validator-test-results
+          name: spdm-mctp-validator-test-results-${{ inputs.hw-revision }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
@@ -293,7 +306,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-mctp-attestation-results
+          name: spdm-mctp-attestation-results-${{ inputs.hw-revision }}
           if-no-files-found: warn
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/spdm_requester_emu_output.txt
@@ -317,7 +330,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-doe-validator-test-results
+          name: spdm-doe-validator-test-results-${{ inputs.hw-revision }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
@@ -339,7 +352,7 @@ jobs:
           fi
 
   tdisp_ide_tests:
-    name: tdisp-ide
+    name: tdisp-ide (${{ inputs.hw-revision }})
     needs: build_spdm_rs_tools
     runs-on: ubuntu-24.04
 
@@ -369,8 +382,8 @@ jobs:
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
-      - name: Select pinned Caliptra 2.1 software
-        run: CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
+      - name: Select pinned Caliptra software
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version "$CALIPTRA_HW_REV"
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v6
@@ -403,7 +416,7 @@ jobs:
       - name: Download spdm-rs tools
         uses: actions/download-artifact@v8
         with:
-          name: spdm-rs-tools
+          name: spdm-rs-tools-${{ inputs.hw-revision }}
           path: ${{ runner.temp }}
 
       - name: Extract spdm-rs tools
@@ -438,6 +451,6 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         with:
-          name: spdm-tdisp-ide-validator-test-results
+          name: spdm-tdisp-ide-validator-test-results-${{ inputs.hw-revision }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/tdisp_ide_validator_output.txt

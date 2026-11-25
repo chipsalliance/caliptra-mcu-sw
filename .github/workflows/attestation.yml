@@ -5,16 +5,29 @@ name: End-to-End Attestation
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: false
+        type: choice
+        options: ["2.1", "latest"]
+        default: "2.1"
   workflow_call:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: false
+        type: string
+        default: "2.1"
 
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
 env:
-  CALIPTRA_HW_REV: "2.1"
+  CALIPTRA_HW_REV: ${{ inputs.hw-revision }}
 
 jobs:
   attestation_e2e:
-    name: attestation-e2e (${{ matrix.name }})
+    name: attestation-e2e (${{ inputs.hw-revision }}, ${{ matrix.name }})
     runs-on: ubuntu-24.04
     # The hitless variants drive a full PLDM update and MCU reboot, so they run
     # noticeably longer than the cold-boot ones. A failure in the activation
@@ -79,8 +92,8 @@ jobs:
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
-      - name: Select pinned Caliptra 2.1 software
-        run: CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
+      - name: Select pinned Caliptra software
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version "$CALIPTRA_HW_REV"
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v6
@@ -217,7 +230,7 @@ jobs:
         if: always() && matrix.appraise
         uses: actions/upload-artifact@v7
         with:
-          name: attestation-artifacts-${{ matrix.name }}
+          name: attestation-artifacts-${{ inputs.hw-revision }}-${{ matrix.name }}
           path: |
             attestation-artifacts/
 
@@ -247,7 +260,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-mctp-attestation-${{ matrix.name }}-test-results
+          name: spdm-mctp-attestation-${{ inputs.hw-revision }}-${{ matrix.name }}-test-results
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/spdm_requester_emu_output.txt
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra-evidence.pcap

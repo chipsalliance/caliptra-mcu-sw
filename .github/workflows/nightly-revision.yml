@@ -1,0 +1,36 @@
+# Licensed under the Apache-2.0 license
+
+name: Nightly revision tests
+
+on:
+  workflow_call:
+    inputs:
+      hw-revision:
+        description: Hardware and pinned Caliptra software revision
+        required: true
+        type: string
+
+jobs:
+  attestation_e2e:
+    uses: ./.github/workflows/attestation.yml
+    with:
+      hw-revision: ${{ inputs.hw-revision }}
+    secrets: inherit
+
+  caliptra_util_host_validator_tests:
+    uses: ./.github/workflows/caliptra-util-host-validator.yml
+    with:
+      hw-revision: ${{ inputs.hw-revision }}
+    secrets: inherit
+
+  spdm_validator_tests:
+    uses: ./.github/workflows/spdm-validator.yml
+    with:
+      hw-revision: ${{ inputs.hw-revision }}
+    secrets: inherit
+
+  rom_runtime_compatibility:
+    # Remove when 2.2 support is added to the rom runtime compatibility tests
+    if: inputs.hw-revision == '2.1'
+    uses: ./.github/workflows/rom-runtime-compatibility.yml
+    secrets: inherit

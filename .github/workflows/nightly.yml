@@ -8,14 +8,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  attestation_e2e:
-    uses: ./.github/workflows/attestation.yml
+  revision_2_1:
+    uses: ./.github/workflows/nightly-revision.yml
+    with:
+      hw-revision: "2.1"
+    secrets: inherit
 
-  caliptra_util_host_validator_tests:
-    uses: ./.github/workflows/caliptra-util-host-validator.yml
-
-  rom_runtime_compatibility:
-    uses: ./.github/workflows/rom-runtime-compatibility.yml
-
-  spdm_validator_tests:
-    uses: ./.github/workflows/spdm-validator.yml
+  revision_latest:
+    uses: ./.github/workflows/nightly-revision.yml
+    with:
+      hw-revision: "latest"
+    secrets: inherit
