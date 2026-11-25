@@ -124,6 +124,7 @@ fn handle_i3c_socket_connection(
 ) {
     let stream = &mut stream;
     stream.set_nonblocking(true).unwrap();
+    let _ = stream.set_nodelay(true);
 
     while crate::is_emulator_running() {
         // try reading from TCP socket (non-blocking)
@@ -180,13 +181,14 @@ fn handle_i3c_socket_connection(
                     response_descriptor: response.resp.resp,
                 };
                 let header_bytes: [u8; 6] = transmute!(outgoing_header);
-                let write_result = stream.write_all(&header_bytes).and_then(|()| {
-                    if data_len > 0 {
-                        stream.write_all(&response.resp.data[..data_len])
-                    } else {
-                        Ok(())
-                    }
-                });
+                let write_result = if data_len > 0 {
+                    let mut frame = Vec::with_capacity(header_bytes.len() + data_len);
+                    frame.extend_from_slice(&header_bytes);
+                    frame.extend_from_slice(&response.resp.data[..data_len]);
+                    stream.write_all(&frame)
+                } else {
+                    stream.write_all(&header_bytes)
+                };
                 if let Err(e) = write_result {
                     if is_client_disconnect(&e) {
                         println!(
