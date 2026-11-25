@@ -148,6 +148,12 @@ pub struct EmulatorArgs {
     #[arg(long, default_value_t = false)]
     pub flash_based_boot: bool,
 
+    /// Route Caliptra recovery register/DMA events through LPCIP Device 0.
+    /// Firmware must initialize USB; no host images are injected automatically.
+    #[cfg(hw_rev = "latest")]
+    #[arg(long, conflicts_with_all = ["flash_based_boot", "network_rom"])]
+    pub usb_recovery: bool,
+
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
     pub caliptra_rom: PathBuf,
@@ -315,6 +321,51 @@ pub struct EmulatorArgs {
     pub active_i3c1: bool,
 }
 
+#[cfg(all(test, hw_rev = "latest"))]
+mod usb_recovery_args_tests {
+    use super::*;
+    use clap::{error::ErrorKind, CommandFactory};
+
+    const ARGS: [&str; 11] = [
+        "emulator",
+        "--rom",
+        "mcu.bin",
+        "--firmware",
+        "mcu-fw.bin",
+        "--caliptra-rom",
+        "core.bin",
+        "--caliptra-firmware",
+        "core-fw.bin",
+        "--soc-manifest",
+        "soc.bin",
+    ];
+
+    #[test]
+    fn usb_recovery_is_explicit_and_does_not_change_boot_defaults() {
+        EmulatorArgs::command().debug_assert();
+        assert!(!EmulatorArgs::try_parse_from(ARGS).unwrap().usb_recovery);
+        assert!(
+            EmulatorArgs::try_parse_from(ARGS.into_iter().chain(["--usb-recovery"]))
+                .unwrap()
+                .usb_recovery
+        );
+    }
+
+    #[test]
+    fn usb_recovery_rejects_competing_i3c_transports() {
+        for extra in [
+            vec!["--flash-based-boot"],
+            vec!["--network-rom", "network.bin"],
+        ] {
+            let error = EmulatorArgs::try_parse_from(
+                ARGS.into_iter().chain(["--usb-recovery"]).chain(extra),
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+        }
+    }
+}
+
 pub struct Emulator {
     pub mcu_cpu: Cpu<AutoRootBus>,
     pub caliptra_cpu: Cpu<CaliptraMainRootBus>,
@@ -343,6 +394,10 @@ pub struct Emulator {
     pub step_lock: Arc<Mutex<()>>,
     #[allow(dead_code)]
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    #[cfg(hw_rev = "latest")]
+    pub lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
+    #[cfg(hw_rev = "latest")]
+    pub lpcip_usb_hub_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHubHostController,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
@@ -466,7 +521,11 @@ impl Emulator {
             None
         };
 
-        let use_mcu_recovery_interface = is_flash_based_boot;
+        #[cfg(hw_rev = "latest")]
+        let usb_recovery = cli.usb_recovery;
+        #[cfg(not(hw_rev = "latest"))]
+        let usb_recovery = false;
+        let use_mcu_recovery_interface = is_flash_based_boot || usb_recovery;
 
         let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
@@ -972,15 +1031,30 @@ impl Emulator {
         let usb_irq = pic.register_irq(McuRootBus::USB_IRQ);
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new_with_irq(usb_irq);
         let usb_host_controller = usb_periph.host_controller();
+        #[cfg(hw_rev = "latest")]
+        let usb_combo = caliptra_mcu_emulator_periph::UsbCombo::new_with_irq(
+            pic.register_irq(McuRootBus::USB_IRQ),
+            usb_host_controller.clone(),
+        );
+        #[cfg(hw_rev = "latest")]
+        let lpcip_usb_host_controller = usb_combo.host_controller();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev0_memory = usb_combo.device0_memory();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev1 = usb_combo.device1();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev1_memory = usb_combo.device1_memory();
+        #[cfg(hw_rev = "latest")]
+        let lpcip_usb_hub_host_controller = usb_combo.hub_host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(usb_periph)),
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_combo)),
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_dev1)),
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
@@ -988,10 +1062,10 @@ impl Emulator {
             None,
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_dev0_memory)),
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_dev1_memory)),
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
@@ -1101,7 +1175,26 @@ impl Emulator {
         };
 
         let mut bmc;
-        if is_flash_based_boot {
+        if usb_recovery {
+            bmc = None;
+            #[cfg(hw_rev = "latest")]
+            {
+                let (caliptra_event_sender, caliptra_event_receiver) =
+                    caliptra_cpu.register_events();
+                let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
+                cpu.bus
+                    .usb_combo_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .register_event_channels(
+                        caliptra_event_sender,
+                        caliptra_event_receiver,
+                        mcu_event_sender,
+                        mcu_event_receiver,
+                    );
+            }
+        } else if is_flash_based_boot {
             println!("Emulator is using MCU recovery interface");
             bmc = None;
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
@@ -1269,6 +1362,10 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_hub_host_controller,
             cptra_boot_go,
             mci_regs,
             state,
@@ -1293,6 +1390,10 @@ impl Emulator {
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         step_lock: Arc<Mutex<()>>,
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+        #[cfg(hw_rev = "latest")]
+        lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
+        #[cfg(hw_rev = "latest")]
+        lpcip_usb_hub_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHubHostController,
         cptra_boot_go: Rc<Cell<bool>>,
         mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
         state: Arc<EmulatorState>,
@@ -1331,6 +1432,10 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_hub_host_controller,
             cptra_boot_go,
             mci_regs,
             state,

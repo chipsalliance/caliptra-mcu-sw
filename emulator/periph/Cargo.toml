@@ -42,6 +42,7 @@ tempfile.workspace = true
 
 [features]
 default = []
+test-hooks = []
 
 [build-dependencies]
 caliptra-mcu-hw-revision.workspace = true

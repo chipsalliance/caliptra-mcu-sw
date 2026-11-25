@@ -15,6 +15,9 @@ Abstract:
 use std::env;
 
 fn main() {
+    caliptra_mcu_hw_revision::HardwareRevision::from_env()
+        .unwrap_or_else(|error| panic!("{error}"))
+        .emit_build_configuration();
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     cbindgen::Builder::new()
