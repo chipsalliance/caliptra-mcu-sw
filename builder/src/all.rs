@@ -837,7 +837,14 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 if is_release {
                     crate::features::RELEASE_RUNTIME_TEST_FEATURES.to_vec()
                 } else if platform == "fpga" {
-                    crate::features::FPGA_RUNTIME_TEST_FEATURES.to_vec()
+                    let mut features = crate::features::FPGA_RUNTIME_TEST_FEATURES.to_vec();
+                    if crate::hardware_revision()?
+                        == caliptra_mcu_hw_revision::HardwareRevision::Latest
+                    {
+                        features
+                            .extend_from_slice(crate::features::LATEST_FPGA_RUNTIME_TEST_FEATURES);
+                    }
+                    features
                 } else {
                     crate::features::EMULATOR_RUNTIME_TEST_FEATURES.to_vec()
                 }

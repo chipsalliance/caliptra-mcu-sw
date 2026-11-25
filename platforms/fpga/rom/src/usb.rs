@@ -18,6 +18,7 @@ pub fn test_parameters() -> caliptra_mcu_usb_common::UsbParams {
     // Placeholder identity/power values are gated test policy, not release IDs
     // or an approved board VBUS budget. The hardware hub routes Device 0 on port 1.
     UsbParams {
+        shared_phy_owner: true,
         enable_hub: true,
         enable_logs: true,
         registers: unsafe { StaticRef::new(FPGA_USB_COMBO_ADDR as *const _) },

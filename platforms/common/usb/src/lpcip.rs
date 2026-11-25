@@ -8,6 +8,11 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use usb_combo::bits::{ConfigT, Control, DevcmdstatT, UlpidebugT};
 use zerocopy::IntoBytes;
 
+#[cfg(feature = "test-stress")]
+mod stress;
+#[cfg(feature = "test-stress")]
+pub use stress::UsbStressDriver;
+
 const PACKET_SIZE: usize = 64;
 const SETUP_OFFSET: usize = 0x100;
 const OUT_OFFSET: usize = 0x140;
@@ -20,6 +25,8 @@ const KEEP_CLOCK: u32 = DevcmdstatT::ForceNeedclk::SET.value;
 
 /// All caller-supplied USB configuration. No release identity or mapping default.
 pub struct UsbParams {
+    /// Secondary controllers must not change the shared PHY, hub or recovery path.
+    pub shared_phy_owner: bool,
     pub registers: StaticRef<usb_combo::regs::UsbCombo>,
     /// Dedicated Device 0 SRAM; the driver reserves its first 448 bytes.
     pub packet_memory: StaticRef<usb_dev0_mem::regs::UsbDev0Mem>,
@@ -53,6 +60,7 @@ pub enum UsbError {
     HubConfigurationMismatch,
     VbusTimeout,
     CancellationTimeout,
+    RecoveryPathEnabled,
     NotInitialized,
     UnsupportedRequest,
 }
@@ -197,24 +205,26 @@ impl LpcipUsbDriver {
             self.write_word(index, if index >= 4 { DISABLED } else { 0 })?;
         }
         self.write_word(1, self.descriptor(SETUP_OFFSET, 0)?)?;
-        let mut identity = [0; 4];
-        for (address, value) in identity.iter_mut().enumerate() {
-            *value = self.ulpi(address as u8, None)?;
-        }
-        if self.params.enable_logs {
-            caliptra_mcu_romtime::println!(
-                "[usb] PHY VID={} PID={}",
-                HexWord(u32::from(u16::from_le_bytes([identity[0], identity[1]]))),
-                HexWord(u32::from(u16::from_le_bytes([identity[2], identity[3]])))
-            );
-        }
-        if identity != [0x24, 0x04, 0x07, 0] {
-            return Err(UsbError::PhyIdentityMismatch);
-        }
-        self.ulpi(4, Some(0x40))?; // HS device mode, SUSPENDM keeps the PHY awake.
-        self.ulpi(0x0a, Some(0))?; // No pull-downs, VBUS drive or discharge.
-        if self.ulpi(4, None)? != 0x40 || self.ulpi(0x0a, None)? != 0 {
-            return Err(UsbError::PhyConfigurationMismatch);
+        if self.params.shared_phy_owner {
+            let mut identity = [0; 4];
+            for (address, value) in identity.iter_mut().enumerate() {
+                *value = self.ulpi(address as u8, None)?;
+            }
+            if self.params.enable_logs {
+                caliptra_mcu_romtime::println!(
+                    "[usb] PHY VID={} PID={}",
+                    HexWord(u32::from(u16::from_le_bytes([identity[0], identity[1]]))),
+                    HexWord(u32::from(u16::from_le_bytes([identity[2], identity[3]])))
+                );
+            }
+            if identity != [0x24, 0x04, 0x07, 0] {
+                return Err(UsbError::PhyIdentityMismatch);
+            }
+            self.ulpi(4, Some(0x40))?; // HS device mode, SUSPENDM keeps the PHY awake.
+            self.ulpi(0x0a, Some(0))?; // No pull-downs, VBUS drive or discharge.
+            if self.ulpi(4, None)? != 0x40 || self.ulpi(0x0a, None)? != 0 {
+                return Err(UsbError::PhyConfigurationMismatch);
+            }
         }
         self.wait(
             || {
@@ -294,6 +304,9 @@ impl LpcipUsbDriver {
     }
 
     fn validate(&self) -> Result<(), UsbError> {
+        if self.params.enable_hub && !self.params.shared_phy_owner {
+            return Err(UsbError::InvalidParameters);
+        }
         if self.params.poll_limit == 0 || self.params.max_power_2ma > 250 {
             return Err(UsbError::InvalidParameters);
         }

@@ -20,7 +20,7 @@ use caliptra_mcu_usb_recovery::{
 };
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
-use tock_registers::interfaces::Readable;
+use tock_registers::interfaces::{Readable, Writeable};
 use zerocopy::FromBytes;
 
 fn log_host_otp_lc_snapshot(hw: &DefaultHwModel, phase: &str) -> Result<()> {
@@ -281,6 +281,7 @@ fn boot_usb_recovery(binaries: &FirmwareBinaries) -> Result<DefaultHwModel> {
     let vpk = binaries
         .vendor_pk_hash()
         .context("missing vendor public-key hash")?;
+    ensure!(vpk.len() == 48, "vendor public-key hash must be 48 bytes");
     let mut vendor_pk_hash = [0; 12];
     for (word, bytes) in vendor_pk_hash.iter_mut().zip(vpk.chunks_exact(4)) {
         *word = u32::from_be_bytes(bytes.try_into()?);
@@ -322,11 +323,24 @@ fn recovery_agent(hw: &mut DefaultHwModel) -> Result<RecoveryAgent<FpgaUlpiRecov
 #[test]
 fn test_fpga_usb_arch_b_ocp_recovery_boot() -> Result<()> {
     let lock = TEST_LOCK.lock().unwrap();
+    recover_runtime(None)?;
+    lock.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}
+
+pub(super) fn recover_runtime(runtime_feature: Option<&str>) -> Result<DefaultHwModel> {
     let binaries = FirmwareBinaries::from_env().context("load CPTRA_FIRMWARE_BUNDLE")?;
+    let (soc_manifest, mcu_runtime) = match runtime_feature {
+        Some(feature) => (
+            binaries.test_soc_manifest(feature)?,
+            binaries.test_runtime(feature)?,
+        ),
+        None => (binaries.soc_manifest.clone(), binaries.mcu_runtime.clone()),
+    };
     let images = RecoveryImages {
         caliptra_fmc_rt: &binaries.caliptra_fw,
-        soc_manifest: &binaries.soc_manifest,
-        mcu_runtime: &binaries.mcu_runtime,
+        soc_manifest: &soc_manifest,
+        mcu_runtime: &mcu_runtime,
     };
     ensure!(
         !images.caliptra_fmc_rt.is_empty()
@@ -335,6 +349,15 @@ fn test_fpga_usb_arch_b_ocp_recovery_boot() -> Result<()> {
         "recovery requires all three firmware images"
     );
     let mut hw = boot_usb_recovery(binaries)?;
+    if runtime_feature.is_some() {
+        // Wrapper GPIO survives subsystem resets; do not start CST1 until recovery is confirmed.
+        let start_signal = &hw.base.wrapper.regs().mci_generic_input_wires[0];
+        println!(
+            "[arch-b-recovery] Clearing runtime start signal: 0x{:08x}",
+            start_signal.get()
+        );
+        start_signal.set(0);
+    }
     let mut agent = recovery_agent(&mut hw)?;
     println!("[arch-b-recovery] Discovery: {:?}", agent.probe()?);
     let outcome = agent
@@ -370,8 +393,10 @@ fn test_fpga_usb_arch_b_ocp_recovery_boot() -> Result<()> {
             u16::from(hw.mci_boot_milestones())
         );
     }
-    lock.fetch_add(1, Ordering::Relaxed);
-    Ok(())
+    println!(
+        "[arch-b-recovery] MCU runtime booted after USB recovery; runtime feature={runtime_feature:?}"
+    );
+    Ok(hw)
 }
 
 #[test]

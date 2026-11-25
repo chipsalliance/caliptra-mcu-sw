@@ -1,5 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+#[cfg(feature = "test-usb-stress-dev0")]
+pub(crate) mod usb_stress_test;
+
 #[cfg(any(feature = "test-i3c-simple", feature = "test-i3c-constant-writes",))]
 pub(crate) mod i3c_target_test;
 #[cfg(any(

@@ -32,6 +32,7 @@ const OP_SEND_RXCMD: u32 = 5;
 const PID_NIB_ACK: u8 = 0x2;
 const PID_NIB_NYET: u8 = 0x6;
 const PID_NIB_NAK: u8 = 0xA;
+const PID_NIB_DATA0: u8 = 0x3;
 const PID_NIB_DATA1: u8 = 0xB;
 const PID_NIB_STALL: u8 = 0xE;
 
@@ -347,6 +348,90 @@ impl FpgaUlpiUsbHost {
             }
             step_fn();
             std::thread::sleep(Duration::from_micros(50));
+        }
+    }
+
+    pub fn bulk_write_packet<F: FnMut()>(
+        &self,
+        addr: u8,
+        endpoint: u8,
+        data: &[u8],
+        data1: bool,
+        mut step: F,
+        timeout: Duration,
+    ) -> Result<()> {
+        ensure!(
+            (1..=127).contains(&addr) && (1..=15).contains(&endpoint),
+            "invalid bulk target"
+        );
+        ensure!(
+            data.len() <= 64,
+            "Architecture-B bulk packets are limited to 64 bytes"
+        );
+        self.write_tx_buf(data);
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|d| !d.is_zero())
+                .context("bulk OUT packet timed out")?;
+            let status = self.exec_cmd(
+                Self::make_cmd(OP_OUT, data1, addr, endpoint, data.len()),
+                remaining,
+            )?;
+            ensure!(
+                !status.timeout_err,
+                "ambiguous bulk OUT hardware timeout: {status:?}"
+            );
+            if out_packet_accepted(status.rx_pid)? {
+                return Ok(());
+            }
+            step();
+            std::thread::sleep(Duration::from_micros(50));
+        }
+    }
+
+    pub fn bulk_read_packet<F: FnMut()>(
+        &self,
+        addr: u8,
+        endpoint: u8,
+        out: &mut [u8],
+        data1: bool,
+        mut step: F,
+        timeout: Duration,
+    ) -> Result<usize> {
+        ensure!(
+            (1..=127).contains(&addr) && (1..=15).contains(&endpoint),
+            "invalid bulk target"
+        );
+        ensure!(
+            out.len() <= 64,
+            "Architecture-B bulk packets are limited to 64 bytes"
+        );
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|d| !d.is_zero())
+                .context("bulk IN packet timed out")?;
+            let status =
+                self.exec_cmd(Self::make_cmd(OP_IN, data1, addr, endpoint, 0), remaining)?;
+            ensure!(!status.timeout_err, "bulk IN hardware timeout: {status:?}");
+            if status.rx_pid == PID_NIB_NAK {
+                step();
+                std::thread::sleep(Duration::from_micros(50));
+                continue;
+            }
+            ensure!(
+                status.rx_pid == if data1 { PID_NIB_DATA1 } else { PID_NIB_DATA0 },
+                "unexpected bulk IN PID/toggle: {status:?}"
+            );
+            ensure!(
+                status.rx_len <= out.len(),
+                "bulk IN packet exceeds output buffer: {status:?}"
+            );
+            self.read_rx_buf(out, status.rx_len);
+            return Ok(status.rx_len);
         }
     }
 
@@ -749,7 +834,7 @@ impl FpgaUlpiUsbHost {
     }
 }
 
-fn enumerate_hub_port(
+pub fn enumerate_hub_port(
     hub_address: u8,
     timeout: Duration,
     mut control: impl FnMut(u8, [u8; 8], Duration) -> Result<Vec<u8>>,
@@ -1090,5 +1175,15 @@ mod tests {
                 )
                 .is_err());
         }
+        assert!(host
+            .bulk_write_packet(7, 1, &[0; 65], false, || {}, Duration::from_secs(1))
+            .is_err());
+        assert!(host
+            .bulk_read_packet(7, 1, &mut [0; 65], false, || {}, Duration::from_secs(1))
+            .is_err());
+        assert!(host
+            .bulk_write_packet(7, 0, &[1], false, || {}, Duration::from_secs(1))
+            .is_err());
+        assert_eq!(registers[ULPI_HOST_WRAPPER_WORD_OFFSET + REG_CMD], 0);
     }
 }

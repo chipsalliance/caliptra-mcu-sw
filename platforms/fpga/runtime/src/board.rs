@@ -77,7 +77,12 @@ use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
     feature = "firmware-update"
 ))]
 use capsules_core::virtualizers::virtual_flash;
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::addr_of;
+#[cfg(not(any(
+    feature = "test-mctp-capsule-loopback",
+    feature = "test-usb-stress-dev0"
+)))]
+use core::ptr::addr_of_mut;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::errorcode;
@@ -169,6 +174,10 @@ static mut PLATFORM: Option<&'static VeeR> = None;
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
 // How should the kernel respond when a process faults.
+#[cfg(not(any(
+    feature = "test-mctp-capsule-loopback",
+    feature = "test-usb-stress-dev0"
+)))]
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
 
@@ -548,6 +557,18 @@ pub unsafe fn main() {
     });
 
     // Create PMP configuration
+    #[cfg(feature = "test-usb-stress-dev0")]
+    for (address, size) in [(0xa420_0000u32, 0x2000), (0xa430_0000u32, 0x40000)] {
+        platform_regions.push(PlatformRegion {
+            start_addr: address as *const u8,
+            size,
+            is_mmio: true,
+            user_accessible: false,
+            read: true,
+            write: true,
+            execute: false,
+        });
+    }
     let config = PlatformPMPConfig {
         regions: &platform_regions,
         memory_map: &MCU_MEMORY_MAP,
@@ -565,6 +586,10 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::println!("[mcu-runtime] Set PMP done");
 
     // initialize capabilities
+    #[cfg(not(any(
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-usb-stress-dev0"
+    )))]
     let process_mgmt_cap = create_capability!(capabilities::ProcessManagementCapability);
     let memory_allocation_cap = create_capability!(capabilities::MemoryAllocationCapability);
 
@@ -1114,7 +1139,10 @@ pub unsafe fn main() {
         }
     );
 
-    #[cfg(not(feature = "test-mctp-capsule-loopback"))]
+    #[cfg(not(any(
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-usb-stress-dev0"
+    )))]
     kernel::process::load_processes(
         board_kernel,
         chip,
@@ -1311,6 +1339,8 @@ pub unsafe fn main() {
         .modify(mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET);
 
     mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
+    #[cfg(feature = "test-usb-stress-dev0")]
+    crate::tests::usb_stress_test::start(mux_alarm);
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 

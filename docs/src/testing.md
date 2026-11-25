@@ -82,4 +82,50 @@ To ensure your test is built by default and included in CI, add the feature name
 
 ## Continuous Integration (CI)
 
+### VCK190 Device 0 kernel USB stress (latest only)
+
+The `test-usb-stress-dev0` runtime exposes the CST1 stress personality from
+the kernel, without loading userspace processes. A 100-microsecond kernel alarm
+services the USB driver; it does not replace the kernel loop with a busy loop.
+The short polling interval allows deferred EP0 status actions to complete
+within the host's SET_ADDRESS recovery window.
+Each ARM-side Rust test first boots the USB OCP recovery ROM and transfers Core
+firmware, the stress-specific SoC manifest, and the stress-enabled MCU runtime
+through the internal ULPI host. Automatic I3C firmware recovery is disabled.
+After confirmed USB recovery and MCU runtime boot, the host signals the kernel
+through MCI generic input wire 0. Generic output wire 1 reports readiness or
+failure. The kernel takes Device 0 out of OCP recovery and initializes CST1;
+the host resets and re-enumerates USB before running stress transfers.
+Device 0 owns the shared hub/PHY and its private USB SRAM.
+
+```shell
+CALIPTRA_HW_REV=latest cargo xtask all-build --platform fpga \
+  --rom-features core_test --separate-runtimes \
+  --runtime-features test-usb-stress-dev0 --output target/usb-stress-fw.zip
+```
+
+Run the ARM test archive on VCK190 with `CPTRA_FIRMWARE_BUNDLE` pointing to
+that bundle and nextest profile `usb-stress-fpga`.
+Alternatively, build the standalone Rust test executable:
+
+```shell
+CALIPTRA_HW_REV=latest \
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+  cargo test -p caliptra-mcu-tests-integration --features fpga_realtime \
+  --target aarch64-unknown-linux-gnu --no-run
+```
+
+Copy the executable reported by Cargo and the firmware bundle to VCK190, then
+run the executable there with `CPTRA_FIRMWARE_BUNDLE` set to the bundle's
+absolute path and arguments
+`--nocapture --test-threads=1 test_fpga_usb_stress_dev0`.
+This runner does not require Python, Cargo, or nextest on the board.
+
+The tests verify the CST1 handshake, control echo, and bulk loopback packets
+from 0 through 64 bytes with DATA0/DATA1 progression.
+The device retains legal 512-byte HS endpoint descriptors, but the current
+internal FPGA host has only 64-byte packet buffers. These tests do not claim
+full HS source/sink, asynchronous queues, physical port cycling, or Device 1
+coverage. They require no Python application and remain opt-in.
+
 The CI workflow in `.github/workflows/build-test.yml` uses the same `xtask` commands to build and run tests. By maintaining the runtime feature list in `builder/src/features.rs`, you ensure that CI always tests the same set of features as your local default build. The emulator itself no longer uses feature flags; all test features are enabled at runtime using the `--test-feature` flag.
