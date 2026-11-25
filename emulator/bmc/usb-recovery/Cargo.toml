@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-usb-recovery"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+libusb = ["dep:rusb"]
+
+[dependencies]
+anyhow.workspace = true
+caliptra-mcu-ocp.workspace = true
+# Vendor libusb C sources so cross-builds (e.g. aarch64 inside caliptra-builder)
+# require no target-arch system libusb-dev package.
+rusb = { workspace = true, optional = true, features = ["vendored"] }
+zerocopy.workspace = true
