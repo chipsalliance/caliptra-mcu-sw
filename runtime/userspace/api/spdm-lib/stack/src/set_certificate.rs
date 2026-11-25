@@ -381,9 +381,7 @@ fn unsupported_set_certificate() -> SpdmError {
 }
 
 fn validate_request_slot(slot_id: u8, supported_slots: u8) -> SpdmResult<()> {
-    // Caliptra's Vendor certificate lives in slot 0 and is read-only;
-    // SET_CERTIFICATE may only provision mutable owner/device slots.
-    if slot_id == 0 || slot_id >= MAX_SLOTS {
+    if slot_id >= MAX_SLOTS {
         return Err(SPDM_INVALID_REQUEST);
     }
     if supported_slots & (1u8 << slot_id) == 0 {

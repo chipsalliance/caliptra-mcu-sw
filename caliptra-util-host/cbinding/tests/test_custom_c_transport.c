@@ -101,7 +101,7 @@ static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
 
 static const uint8_t MOCK_FIELD_ENTROPY_STATUS_RESPONSE[] = {
     0x01, 0x00, 0x00, 0x00, // fips_status
-    0x01, 0x00, 0x00, 0x00, // already_provisioned
+    0x55, 0x00, 0x00, 0x00, // fe_status
 };
 
 static const uint8_t MOCK_VENDOR_PK_HASH_STATUS_RESPONSE[] = {
@@ -297,7 +297,7 @@ int test_custom_c_transport_device_capabilities(void) {
     result = caliptra_cmd_field_entropy_status_c_impl(session, &field_entropy_status);
     TEST_ASSERT_EQ(result, Success, "Field entropy status command should succeed");
     TEST_ASSERT(field_entropy_status.common.fips_status == 1, "Field entropy FIPS status should match");
-    TEST_ASSERT(field_entropy_status.already_provisioned == 1, "Field entropy should be provisioned");
+    TEST_ASSERT(field_entropy_status.fe_status == 0x55, "Field entropy status should match");
 
     struct VendorPkHashStatusResponse vendor_pk_hash_status = {0};
     result = caliptra_cmd_vendor_pk_hash_status_c_impl(session, &vendor_pk_hash_status);

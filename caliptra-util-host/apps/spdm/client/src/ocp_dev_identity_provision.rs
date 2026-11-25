@@ -18,7 +18,10 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrRequest;
+use caliptra_mcu_core_util_host_command_types::attestation::{AsymAlgo, PkiEntitySlot};
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    ExportAttestedCsrRequest, MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+};
 use caliptra_spdm_requester::{
     split_der_certificates, verify_x509_certificate_chain, PeerRootCert, SpdmConfig, SpdmRequester,
     SpdmSocketDeviceIo, SpdmVdmDriverImpl,
@@ -37,7 +40,9 @@ use x509_cert::time::Validity;
 use x509_cert::Certificate;
 
 use crate::ocp_dip::{self, AttestedCsr, DerivationAttribute, KeyPair};
-use crate::SpdmVdmClient;
+use crate::{
+    AsymmetricCommandAuthorizer, AuthorizedCommandData, CommandAuthChallengeSigner, SpdmVdmClient,
+};
 
 macro_rules! status {
     ($($arg:tt)*) => {
@@ -57,6 +62,12 @@ const SPDM_CERT_CHAIN_HEADER_LEN: usize = 4;
 const SHA384_DIGEST_LEN: usize = 48;
 const OWNER_SLOT_DYNAMIC_TAIL_CERTS: usize = 3; // FMC alias + RT alias + DPE leaf
 const TEST_OWNER_ROOT_KEY_BYTES: [u8; 48] = [0x0B; 48];
+const TEST_OWNER_AUTH_ECC_PRIV_KEY: [u8; 48] = [
+    61, 169, 230, 128, 175, 245, 161, 206, 169, 106, 62, 137, 129, 2, 134, 251, 59, 48, 48, 169,
+    201, 36, 173, 47, 32, 49, 160, 125, 41, 64, 82, 169, 124, 175, 161, 252, 110, 167, 96, 164, 61,
+    183, 99, 202, 159, 47, 112, 54,
+];
+const TEST_OWNER_AUTH_MLDSA_SEED: [u8; 32] = *b"caliptra-mcu-testing-mldsa-seed-";
 
 /// How to reach and authenticate the device.
 #[derive(Debug, Clone)]
@@ -210,6 +221,10 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
     let provisioned_certs = validate_owner_chain(&cert_chain, "attested CSR")?;
     verify_csr_matches_owner_leaf(&csr.csr_der, &provisioned_certs)?;
     status!("Attested CSR public key matches owner/LDevID leaf certificate");
+
+    session
+        .authorize_set_cert_chain(options.slot_id, &cert_chain)
+        .context("failed to pre-authorize SET_CERTIFICATE via AuthSetCertChain")?;
 
     status!(
         "SET_CERTIFICATE slot_id={} key_pair_id={} cert_chain=attested CSR ({} bytes)",
@@ -366,6 +381,63 @@ impl AuthenticatedDevice {
                 format!("attested CSR verification failed for key pair {key_pair_id}")
             })?;
         Ok((evidence, csr))
+    }
+
+    fn authorize_set_cert_chain(&mut self, slot_id: u8, cert_chain: &[u8]) -> Result<()> {
+        let entity = match slot_id {
+            0 => PkiEntitySlot::Vendor,
+            2 => PkiEntitySlot::Owner,
+            _ => return Ok(()),
+        };
+        let authorizer = AsymmetricCommandAuthorizer::new(
+            &TEST_OWNER_AUTH_ECC_PRIV_KEY,
+            &TEST_OWNER_AUTH_MLDSA_SEED,
+        )
+        .map_err(|e| anyhow!("failed to initialize test command authorizer: {e}"))?;
+        let total_size =
+            u32::try_from(cert_chain.len()).context("certificate chain length exceeds u32::MAX")?;
+        let expected_sha384: [u8; 48] = Sha384::digest(cert_chain).into();
+        let algorithm = AsymAlgo::EccP384 as u32;
+        let pki_entity_slot = entity as u32;
+
+        let mut payload = Vec::with_capacity(60);
+        payload.extend_from_slice(&pki_entity_slot.to_le_bytes());
+        payload.extend_from_slice(&algorithm.to_le_bytes());
+        payload.extend_from_slice(&total_size.to_le_bytes());
+        payload.extend_from_slice(&expected_sha384);
+
+        let mut vdm = SpdmVdmDriverImpl::new(&mut self.requester, None);
+        let mut client = SpdmVdmClient::new(&mut vdm);
+        let challenge = client
+            .get_auth_challenge()
+            .map_err(|e| anyhow!("failed to get auth challenge: {e}"))?;
+        let sig = authorizer
+            .authorize(
+                MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+                &payload,
+                &challenge.challenge,
+            )
+            .map_err(|e| anyhow!("failed to sign AuthSetCertChain: {e}"))?;
+        let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer
+            .public_keys()
+            .map_err(|e| anyhow!("public_keys() failed: {e}"))?;
+        client
+            .auth_set_cert_chain(
+                pki_entity_slot,
+                algorithm,
+                total_size,
+                &expected_sha384,
+                AuthorizedCommandData {
+                    metadata: Default::default(),
+                    nonce: &challenge.challenge,
+                    ecc_pub_x: &ecc_pub_x,
+                    ecc_pub_y: &ecc_pub_y,
+                    mldsa_pub: &mldsa_pub,
+                    sig: &sig,
+                },
+            )
+            .map_err(|e| anyhow!("AuthSetCertChain VDM command failed: {e}"))?;
+        Ok(())
     }
 
     /// Send STOP to the test bridge. Call this last: the bridge treats STOP as

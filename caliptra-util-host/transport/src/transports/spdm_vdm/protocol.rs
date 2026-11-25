@@ -150,7 +150,8 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
             || x == CaliptraCommandId::FuseLockPartition as u32
             || x == CaliptraCommandId::ProvisionOwnerPkHash as u32
             || x == CaliptraCommandId::OcpLockRotateHek as u32
-            || x == CaliptraCommandId::OcpLockSetPermaHek as u32 =>
+            || x == CaliptraCommandId::OcpLockSetPermaHek as u32
+            || x == CaliptraCommandId::AuthSetCertChain as u32 =>
         {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }

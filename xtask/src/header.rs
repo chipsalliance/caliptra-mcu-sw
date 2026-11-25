@@ -23,6 +23,7 @@ const IGNORED_DIRS: &[&str] = &[
     ".git",
     "caliptra-rtl",
     "caliptra-ss",
+    "caliptra-sw",
     "compliance-test",
     "i3c-core",
     "libtock",

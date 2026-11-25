@@ -49,6 +49,8 @@ fn map_set_cert_error(err: mcu_error::McuErrorCode) -> mcu_error::McuErrorCode {
         caliptra_mcu_spdm_codec::errors::SPDM_BUSY
     } else if err == cert_errors::STORAGE_ERROR {
         caliptra_mcu_spdm_codec::errors::SPDM_OPERATION_FAILED
+    } else if err == cert_errors::UNAUTHORIZED {
+        caliptra_mcu_spdm_codec::errors::SPDM_SESSION_REQUIRED
     } else if err.domain() == mcu_error::domain::CERT_STORE {
         caliptra_mcu_spdm_codec::errors::SPDM_INVALID_REQUEST
     } else {
@@ -105,7 +107,7 @@ impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalCertStore for McuSpdm
         _erase: bool,
     ) -> bool {
         slot_role(slot)
-            .map(|role| self.cert_store.cert_slot(role).is_writable())
+            .map(|role| self.cert_store.cert_slot(role).is_write_authorized())
             .unwrap_or(false)
     }
 
@@ -205,6 +207,7 @@ impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalCertStore for McuSpdm
         let role = slot_role(slot).ok_or(INVARIANT)?;
         self.cert_store
             .write_endorsement_chain(
+                self.allocator,
                 role,
                 cert_algo(algo),
                 key_pair_id,
@@ -404,6 +407,10 @@ mod tests {
         assert_eq!(
             map_set_cert_error(cert_errors::STORAGE_ERROR),
             caliptra_mcu_spdm_codec::errors::SPDM_OPERATION_FAILED
+        );
+        assert_eq!(
+            map_set_cert_error(cert_errors::UNAUTHORIZED),
+            caliptra_mcu_spdm_codec::errors::SPDM_SESSION_REQUIRED
         );
         assert_eq!(
             map_set_cert_error(cert_errors::INVALID_ENDORSEMENT),
