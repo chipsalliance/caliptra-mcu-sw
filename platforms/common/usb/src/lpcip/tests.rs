@@ -5,12 +5,13 @@ extern crate std;
 use super::*;
 use std::boxed::Box;
 
-fn params() -> UsbParams {
+pub(super) fn params() -> UsbParams {
     // Generated blocks contain only MMIO words, padding and PhantomData.
     // Pure descriptor/validation tests never depend on hardware side effects.
     let registers = Box::leak(Box::new(unsafe { core::mem::zeroed() }));
     let memory = Box::leak(Box::new(unsafe { core::mem::zeroed() }));
     UsbParams {
+        shared_phy_owner: true,
         enable_hub: false,
         enable_logs: false,
         registers: unsafe { StaticRef::new(registers) },

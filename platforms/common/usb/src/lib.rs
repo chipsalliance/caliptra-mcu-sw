@@ -37,6 +37,10 @@ mod lpcip;
 #[cfg(hw_rev = "latest")]
 pub use lpcip::{LpcipUsbDriver, UsbError, UsbParams, UsbPoll};
 
+/// Test-only CST1 control echo and EP1 source/sink/loopback personality.
+#[cfg(all(hw_rev = "latest", feature = "test-stress"))]
+pub use lpcip::UsbStressDriver;
+
 /// Enumeration-only ROM test entry point, not production recovery boot policy.
 #[cfg(all(hw_rev = "latest", feature = "test-enumeration"))]
 pub fn enumeration_test(params: UsbParams) -> ! {

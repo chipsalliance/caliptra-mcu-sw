@@ -9,6 +9,7 @@ edition.workspace = true
 [features]
 test-enumeration = []
 test-host = ["test-enumeration"]
+test-stress = []
 
 [dependencies]
 caliptra-mcu-ocp.workspace = true

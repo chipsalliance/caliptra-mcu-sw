@@ -59,6 +59,8 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-network-boot",
 ];
 
+pub const LATEST_FPGA_RUNTIME_TEST_FEATURES: &[&str] = &["test-usb-stress-dev0"];
+
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-simple",
     "test-i3c-constant-writes",

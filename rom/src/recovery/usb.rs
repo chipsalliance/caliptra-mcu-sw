@@ -251,6 +251,7 @@ mod tests {
         RomParameters {
             recovery_interface: RecoveryInterface::Usb,
             usb: Some(UsbParams {
+                shared_phy_owner: true,
                 enable_hub: false,
                 enable_logs: false,
                 registers: unsafe { StaticRef::new(registers) },

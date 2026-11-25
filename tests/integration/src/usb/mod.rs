@@ -2,6 +2,8 @@
 
 #[cfg(feature = "fpga_realtime")]
 mod test_fpga_usb_arch_b;
+#[cfg(feature = "fpga_realtime")]
+mod test_fpga_usb_stress;
 #[cfg(not(feature = "fpga_realtime"))]
 mod usb_driver_tests;
 #[cfg(not(feature = "fpga_realtime"))]

@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-mcu-usb-common = { workspace = true, optional = true, features = ["test-stress"] }
 arrayvec.workspace = true
 capsules-core.workspace = true
 capsules-extra.workspace = true
@@ -31,6 +32,8 @@ caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
 
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
@@ -112,6 +115,7 @@ test-mctp-user-loopback = ["mctp-vdm-service"]
 test-mctp-vdm-cmds = ["mctp-vdm-service", "userspace-log"]
 test-mctp-vdm-production = ["mctp-vdm-service"]
 test-mcu-mbox-driver = []
+test-usb-stress-dev0 = ["dep:caliptra-mcu-usb-common"]
 test-mcu-mbox-cmds = ["mcu-mbox-service"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service"]
