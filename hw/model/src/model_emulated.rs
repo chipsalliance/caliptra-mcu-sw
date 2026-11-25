@@ -111,6 +111,11 @@ pub struct ModelEmulated {
     state: Arc<EmulatorState>,
 }
 
+impl ModelEmulated {
+    const SOC_IFC_ADDR: u32 = 0x3003_0000;
+    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+}
+
 fn hash_slice(slice: &[u8]) -> u64 {
     let mut hasher = DefaultHasher::new();
     std::hash::Hash::hash_slice(slice, &mut hasher);
@@ -420,7 +425,7 @@ impl McuHwModel for ModelEmulated {
         // an ACTIVATE_FIRMWARE reset, before Caliptra has completed the command.
         let soc_ifc = unsafe {
             caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
-                0x3003_0000 as *mut u32,
+                Self::SOC_IFC_ADDR as *mut u32,
                 BusMmio::new(
                     caliptra_cpu
                         .bus
@@ -977,6 +982,8 @@ impl McuManager for &mut ModelEmulated {
 }
 
 impl SocManager for &mut ModelEmulated {
+    const MAX_WAIT_CYCLES: u32 = 40_000_000; // 100ms @400MHz
+
     type TMmio<'a>
         = BusMmio<EmulatedAxiBus<'a>>
     where
@@ -990,11 +997,19 @@ impl SocManager for &mut ModelEmulated {
         BusMmio::new(self.caliptra_axi_bus())
     }
 
-    const SOC_IFC_ADDR: u32 = 0x3003_0000;
-    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
-    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+    fn log_mailbox(&mut self, args: core::fmt::Arguments<'_>) {
+        // Go through `McuHwModel::output()` rather than the field, stamping the
+        // log sink with the current emulator time.
+        writeln!(self.output().logger(), "{args}").unwrap()
+    }
 
-    const MAX_WAIT_CYCLES: u32 = 20_000_000;
+    fn soc_ifc_addr(&self) -> u32 {
+        ModelEmulated::SOC_IFC_ADDR
+    }
+
+    fn soc_mbox_addr(&self) -> u32 {
+        ModelEmulated::SOC_MBOX_ADDR
+    }
 }
 
 impl NetworkManager for &mut ModelEmulated {

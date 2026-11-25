@@ -3,6 +3,14 @@
 # Immutable caliptra-sw commits. The submodule gitlink defaults to latest.
 # 2.1 preserves main-2.1's Core baseline. Latest pins caliptra-2.2-dev
 # after merging the functional backports in chipsalliance/caliptra-sw#4444.
+#
+# TEMPORARY: both pins also carry the SocManager mailbox/logging/lock API from
+# the leongross/caliptra-sw fork (see .gitmodules). Each is the upstream pin
+# above + chipsalliance/caliptra-sw#4394 + the six commits of
+# leongross/socmgr-rework, in these fork branches:
+#   2.1    = 757b744 + 7 commits, leongross/socmgr-core-2.1
+#   latest = 80b89df + 7 commits, leongross/socmgr-core-latest
+# TODO: restore the upstream pins once the caliptra-sw changes are merged.
 [versions]
-"2.1" = "757b7445b18483d624612f03b195cbff2b415963"
-latest = "dd76cbc0efd8bab57e9105bbda40cb3c6e71ea44"
+"2.1" = "b3bd40195ae5b812f9db1fd5739ecdeb7526d976"
+latest = "fd38fc6c15d91d812779820a727e17a2bd926b89"

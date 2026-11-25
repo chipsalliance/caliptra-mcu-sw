@@ -658,7 +658,6 @@ pub unsafe fn main() {
         caliptra_mcu_romtime::CaliptraSoC,
         caliptra_mcu_romtime::CaliptraSoC::new(
             Some(MCU_MEMORY_MAP.soc_offset),
-            Some(MCU_MEMORY_MAP.soc_offset),
             Some(MCU_MEMORY_MAP.mbox_offset)
         )
     );

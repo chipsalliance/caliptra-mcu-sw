@@ -57,7 +57,6 @@ impl RomEnv {
             // Create SoC manager
             let soc_manager = CaliptraSoC::new(
                 Some(crate::MCU_MEMORY_MAP.soc_offset),
-                Some(crate::MCU_MEMORY_MAP.soc_offset),
                 Some(crate::MCU_MEMORY_MAP.mbox_offset),
             );
 

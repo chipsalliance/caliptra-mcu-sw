@@ -6,6 +6,7 @@
 use crate::dma::hil::{Dma, DmaRoute, DmaStatus};
 use caliptra_api::mailbox::SUBSYSTEM_MAILBOX_SIZE_LIMIT;
 use caliptra_api::CaliptraApiError;
+use caliptra_api::SocManager;
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::CaliptraSoC;
 use core::cell::Cell;
@@ -17,56 +18,6 @@ use kernel::processbuffer::{
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{debug, ErrorCode, ProcessId};
-
-fn log_caliptra_error(err: &CaliptraApiError) {
-    match err {
-        CaliptraApiError::MailboxCmdFailed(code) => {
-            capsule_error!("MBOX", "Mailbox cmd failed: 0x{:08x}", code)
-        }
-        CaliptraApiError::UnknownCommandStatus(code) => {
-            capsule_error!("MBOX", "Unknown command status: 0x{:08x}", code)
-        }
-        CaliptraApiError::MailboxRespInvalidChecksum { expected, actual } => capsule_error!(
-            "MBOX",
-            "Invalid checksum: exp=0x{:08x} act=0x{:08x}",
-            expected,
-            actual
-        ),
-        CaliptraApiError::MailboxRespInvalidFipsStatus(status) => {
-            capsule_error!("MBOX", "Invalid FIPS status: 0x{:08x}", status)
-        }
-        CaliptraApiError::MailboxUnexpectedResponseLen {
-            expected_min,
-            expected_max,
-            actual,
-        } => capsule_error!(
-            "MBOX",
-            "Unexpected resp len: min={} max={} actual={}",
-            expected_min,
-            expected_max,
-            actual
-        ),
-        CaliptraApiError::UnexpectedMailboxFsmStatus { expected, actual } => capsule_error!(
-            "MBOX",
-            "Unexpected FSM status: exp=0x{:08x} act=0x{:08x}",
-            expected,
-            actual
-        ),
-        CaliptraApiError::BufferTooLargeForMailbox => {
-            capsule_error!("MBOX", "Buffer too large for mailbox")
-        }
-        CaliptraApiError::UnableToLockMailbox => capsule_error!("MBOX", "Unable to lock mailbox"),
-        CaliptraApiError::MailboxTimeout => capsule_error!("MBOX", "Mailbox timeout"),
-        CaliptraApiError::MailboxRespTypeTooSmall => {
-            capsule_error!("MBOX", "Response type too small")
-        }
-        CaliptraApiError::MailboxReqTypeTooSmall => {
-            capsule_error!("MBOX", "Request type too small")
-        }
-        CaliptraApiError::MailboxNoResponseData => capsule_error!("MBOX", "No response data"),
-        _ => capsule_error!("MBOX", "Mailbox error"),
-    }
-}
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
@@ -306,7 +257,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     Ok(())
                 }
                 Err(err) => {
-                    log_caliptra_error(&err);
+                    capsule_error!("MBOX", "{}", err);
                     self.reset_to_idle();
                     Err(ErrorCode::FAIL)
                 }
@@ -316,7 +267,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             // payload length is delimited by `dlen` (= `app_buffer.len()`), so the
             // final partial word (if any) must be zero-padded into a u32 rather
             // than rejected or truncated.
-            match driver.start_mailbox_req(
+            match driver.start_mailbox_exec_words(
                 command,
                 app_buffer.len(),
                 app_buffer.chunks(4).map(|chunk| {
@@ -333,7 +284,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     Ok(())
                 }
                 Err(err) => {
-                    log_caliptra_error(&err);
+                    capsule_error!("MBOX", "{}", err);
                     self.reset_to_idle();
                     Err(ErrorCode::FAIL)
                 }
@@ -363,7 +314,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             // If not using staging SRAM, then the mailbox command can be initiated directly.
             self.driver
                 .map(
-                    |driver| match driver.initiate_request(command, payload_size) {
+                    |driver| match driver.begin_mailbox_req(command, payload_size) {
                         Ok(()) => {
                             self.schedule_initiate_timeout();
                             Ok(())
@@ -419,8 +370,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
     fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
         if !self.use_external_mailbox.get() {
-            let _: Result<(), ErrorCode> = self
-                .driver
+            self.driver
                 .map(|driver| {
                     let mut pending_bytes = self.pending_bytes.get() as usize;
                     let mut pending_word = self.pending_word.get();
@@ -429,10 +379,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         pending_word |= u32::from(byte.get()) << (pending_bytes * 8);
                         pending_bytes += 1;
                         if pending_bytes == 4 {
-                            if driver.write_data(pending_word).is_err() {
-                                self.abort_and_reset(driver);
-                                return Err(ErrorCode::FAIL);
-                            }
+                            driver.write_mailbox_word(pending_word);
                             pending_bytes = 0;
                             pending_word = 0;
                         }
@@ -440,7 +387,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
                     self.pending_bytes.set(pending_bytes as u8);
                     self.pending_word.set(pending_word);
-                    Ok(())
                 })
                 .ok_or(ErrorCode::RESERVE)?;
         } else {
@@ -468,7 +414,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     fn abort_and_reset(&self, driver: &mut CaliptraSoC) {
-        driver.abort_request();
+        driver.unlock_mailbox();
         self.reset_to_idle();
     }
 
@@ -523,21 +469,14 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         } else {
             self.driver
                 .map(|driver| {
-                    if self.pending_bytes.get() != 0
-                        && driver.write_data(self.pending_word.get()).is_err()
-                    {
-                        self.abort_and_reset(driver);
-                        return Err(ErrorCode::FAIL);
+                    if self.pending_bytes.get() != 0 {
+                        driver.write_mailbox_word(self.pending_word.get());
                     }
-                    if driver.execute_command().is_err() {
-                        self.abort_and_reset(driver);
-                        return Err(ErrorCode::FAIL);
-                    }
+                    driver.execute_mailbox();
                     self.clear_pending();
                     self.schedule_alarm();
-                    Ok(())
                 })
-                .unwrap_or(Err(ErrorCode::FAIL))?;
+                .ok_or(ErrorCode::FAIL)?;
         }
         Ok(())
     }
@@ -642,7 +581,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                 capsule_debug!("MBOX", "Mailbox initiate timeout: resetting to idle");
                 // Release the HW mailbox lock by clearing the execute bit.
                 self.driver.map(|driver| {
-                    driver.abort_request();
+                    driver.unlock_mailbox();
                 });
                 self.reset_to_idle();
             }

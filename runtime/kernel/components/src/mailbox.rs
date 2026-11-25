@@ -68,11 +68,9 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
         let mux_alarm = static_buffer.0.write(VirtualMuxAlarm::new(self.mux_alarm));
         mux_alarm.setup();
 
-        let caliptra_soc = static_buffer.2.write(CaliptraSoC::new(
-            static_buffer.3,
-            static_buffer.4,
-            static_buffer.5,
-        ));
+        let caliptra_soc = static_buffer
+            .2
+            .write(CaliptraSoC::new(static_buffer.3, static_buffer.5));
 
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
         let mailbox: &Mailbox<'_, VirtualMuxAlarm<'_, _>> =
