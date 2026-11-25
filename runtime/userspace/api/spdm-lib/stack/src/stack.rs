@@ -769,9 +769,15 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
             key_exchange::handle_key_exchange(state, sessions, pal, io).await
         }
         ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
-        // With the feature, HEARTBEAT is advertised (HBEAT cap) but only valid inside
-        // a session, so an unsecured request gets SessionRequired. Without it HBEAT_CAP
-        // is not advertised and HEARTBEAT is unsupported in every phase.
+        // With the feature, HEARTBEAT is supported only when both sides set HBEAT_CAP
+        // (checked before the session, as in libspdm): then an unsecured request gets
+        // SessionRequired, otherwise UnsupportedRequest, matching the secured arm.
+        // Without the feature HBEAT_CAP is not advertised and HEARTBEAT is
+        // unsupported in every phase.
+        #[cfg(feature = "spdm-set-heartbeat")]
+        ReqRespCode::HEARTBEAT if !state.heartbeat_enabled() => {
+            Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0))
+        }
         #[cfg(feature = "spdm-set-heartbeat")]
         ReqRespCode::HEARTBEAT => Err(SPDM_SESSION_REQUIRED),
         #[cfg(not(feature = "spdm-set-heartbeat"))]

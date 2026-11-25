@@ -471,6 +471,8 @@ fn secured_heartbeat_unsupported_when_disabled() {
 fn plaintext_heartbeat_session_required_when_enabled() {
     let pal = TestPal::default();
     let mut state = negotiated_state(SpdmVersion::V12);
+    // SessionRequired applies only when both endpoints set HBEAT_CAP.
+    set_hbeat_both(&mut state);
     let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
     let io = TestIo::message(vec![
         SpdmVersion::V12.to_u8(),
@@ -488,6 +490,40 @@ fn plaintext_heartbeat_session_required_when_enabled() {
     ))
     .unwrap_err();
     assert_eq!(err, SPDM_SESSION_REQUIRED);
+}
+
+// With the feature on but no HBEAT_CAP from the peer, an unsecured HEARTBEAT is
+// UnsupportedRequest, not SessionRequired: the capability is checked before the
+// session (as in libspdm), so both paths give the same answer on one connection.
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn plaintext_heartbeat_unsupported_without_peer_hbeat_cap() {
+    use caliptra_mcu_spdm_codec::CapFlags;
+    let pal = TestPal::default();
+    let mut state = negotiated_state(SpdmVersion::V12);
+    set_hbeat_both(&mut state);
+    state.peer_cap_flags =
+        CapFlags::from_bits(state.peer_cap_flags.into_bits() & !CapFlags::HBEAT.into_bits());
+    let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
+    let io = TestIo::message(vec![
+        SpdmVersion::V12.to_u8(),
+        ReqRespCode::HEARTBEAT.0,
+        0,
+        0,
+    ]);
+    let err = block_on(dispatch(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        ReqRespCode::HEARTBEAT,
+        &NoVdmBackend,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        err,
+        SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::HEARTBEAT.0)
+    );
 }
 
 // ... and UnsupportedRequest without it, since HBEAT_CAP is not advertised.
