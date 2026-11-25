@@ -64,6 +64,11 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     staging_sram_size: 1024 * 1024,
 };
 
+/// AXI address at which the emulated Caliptra reaches MCI. The emulator's AXI
+/// simulation uses FPGA-like addresses, so this differs from
+/// `EMULATOR_MEMORY_MAP.mci_offset`, where the MCU sees MCI.
+pub const EMULATOR_CALIPTRA_AXI_MCI_OFFSET: u64 = 0xa800_0000;
+
 const ACTIVE_I3C: u8 = if cfg!(feature = "active-i3c1") { 1 } else { 0 };
 
 // A nonzero manufacturer serial number provisioned into the emulator's UEID fuse.

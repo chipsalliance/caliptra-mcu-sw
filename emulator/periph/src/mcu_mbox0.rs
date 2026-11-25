@@ -539,15 +539,15 @@ impl MciMailboxImpl {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, cell::RefCell, rc::Rc};
+    use std::{cell::RefCell, rc::Rc};
 
     use super::*;
-    use crate::mci::Mci;
+    use crate::mci::{Mci, MciArgs};
     use crate::McuRootBus;
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusArgs};
     use caliptra_mcu_registers_generated::mci::bits::{
         MboxCmdStatus, MboxExecute, MboxTargetStatus, Notif0IntrEnT, Notif0IntrT,
     };
@@ -578,40 +578,15 @@ mod tests {
             clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(mci_irq)),
-            Some(mcu_mailbox0.clone()),
-            None,
-            None,
-            [0, 0],
-            false,
-            Rc::new(Cell::new(true)),
+            MciArgs {
+                mcu_mailbox0: Some(mcu_mailbox0.clone()),
+                ..Default::default()
+            },
         );
-        AutoRootBus::new(
-            vec![],
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(Box::new(mci)),
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        AutoRootBus::new(AutoRootBusArgs {
+            mci_periph: Some(Box::new(mci)),
+            ..Default::default()
+        })
     }
 
     fn test_mailbox_zeroization(test_dlen: u32, mcu_mailbox0: &McuMailbox0Internal) {

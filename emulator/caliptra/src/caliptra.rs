@@ -65,7 +65,7 @@ impl BytesOrPath {
 pub struct StartCaliptraArgs<'a> {
     pub rom: BytesOrPath,
     pub req_idevid_csr: Option<bool>,
-    pub device_lifecycle: Option<String>,
+    pub device_lifecycle: Option<DeviceLifecycle>,
     pub use_mcu_recovery_interface: bool,
     pub extra_soc_bus: Option<u32>,
     pub ocp_lock_en: bool,
@@ -99,10 +99,8 @@ pub fn start_caliptra(
 )> {
     let tmp = PathBuf::from("/tmp");
     let args_log_dir = &tmp;
-    let args_idevid_key_id_algo = "sha1";
+    let args_idevid_key_id_algo = IDevIdCertAttrFlags::KEY_ID_ALGO::SHA1;
     let args_ueid = u128::MAX;
-    let unprovisioned = String::from("unprovisioned");
-    let args_device_lifecycle = args.device_lifecycle.as_ref().unwrap_or(&unprovisioned);
     let args_use_mcu_recovery_interface = args.use_mcu_recovery_interface;
     if !args.rom.exists() {
         Err(io::Error::new(
@@ -130,15 +128,9 @@ pub fn start_caliptra(
     let pic = Rc::new(Pic::new());
 
     let mut security_state = SecurityState::default();
-    let requested_lifecycle = match args_device_lifecycle.to_ascii_lowercase().as_str() {
-        "manufacturing" => DeviceLifecycle::Manufacturing,
-        "production" => DeviceLifecycle::Production,
-        "unprovisioned" | "" => DeviceLifecycle::Unprovisioned,
-        other => Err(io::Error::new(
-            ErrorKind::InvalidInput,
-            format!("Unknown device lifecycle {:?}", other),
-        ))?,
-    };
+    let requested_lifecycle = args
+        .device_lifecycle
+        .unwrap_or(DeviceLifecycle::Unprovisioned);
 
     // If debug intent is not set or unlock level 0 is not set, then the security state
     // should be latched as production.
@@ -224,16 +216,8 @@ pub fn start_caliptra(
     // Populate fuse_idevid_cert_attr
     {
         // Determine the Algorithm used for IDEVID Certificate Subject Key Identifier
-        let algo = match args_idevid_key_id_algo.to_ascii_lowercase().as_str() {
-            "" | "sha1" => IDevIdCertAttrFlags::KEY_ID_ALGO::SHA1,
-            "sha256" => IDevIdCertAttrFlags::KEY_ID_ALGO::SHA256,
-            "sha384" => IDevIdCertAttrFlags::KEY_ID_ALGO::SHA384,
-            "fuse" => IDevIdCertAttrFlags::KEY_ID_ALGO::FUSE,
-            _ => panic!("Unknown idev_key_id_algo {:?}", args_idevid_key_id_algo),
-        };
-
         let flags: InMemoryRegister<u32, IDevIdCertAttrFlags::Register> = InMemoryRegister::new(0);
-        flags.write(algo);
+        flags.write(args_idevid_key_id_algo);
         let mut cert = [0u32; 24];
         // DWORD 00 - Flags
         cert[0] = flags.get();

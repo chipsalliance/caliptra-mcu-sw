@@ -83,9 +83,9 @@ impl AxiCDMA {
         external_sram: Option<Rc<RefCell<Ram>>>,
         mcu_mailbox0: Option<McuMailbox0Internal>,
         mcu_mailbox1: Option<McuMailbox0Internal>,
-    ) -> Result<Self, std::io::Error> {
+    ) -> Self {
         let timer = Timer::new(clock);
-        Ok(Self {
+        Self {
             control: ReadWriteRegister::new(0),
             status: ReadWriteRegister::new(0),
             src_addr_lsb: ReadWriteRegister::new(0),
@@ -102,7 +102,7 @@ impl AxiCDMA {
             event_irq,
             error_irq,
             operation_start: None,
-        })
+        }
     }
 
     fn raise_interrupt(&mut self, interrupt_type: DmaCtrlIntType) {
@@ -403,7 +403,7 @@ mod test {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusArgs};
     use caliptra_mcu_registers_generated::axicdma::bits::{AxicdmaControl, AxicdmaStatus};
     use caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR;
 
@@ -435,49 +435,23 @@ mod test {
         let pic = Pic::new();
         let (dma_ctrl_error_irq, dma_ctrl_event_irq) = (pic.register_irq(23), pic.register_irq(24));
 
-        let mut dma_controller = Box::new(
-            AxiCDMA::new(
-                clock,
-                dma_ctrl_error_irq,
-                dma_ctrl_event_irq,
-                external_sram,
-                None,
-                None,
-            )
-            .unwrap(),
-        );
+        let mut dma_controller = Box::new(AxiCDMA::new(
+            clock,
+            dma_ctrl_error_irq,
+            dma_ctrl_event_irq,
+            external_sram,
+            None,
+            None,
+        ));
 
         if let Some(mcu_sram) = mcu_sram {
             AxiCDMA::set_dma_ram(&mut *dma_controller, mcu_sram);
         }
 
-        AutoRootBus::new(
-            vec![],
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            #[cfg(hw_rev = "latest")]
-            None,
-            Some(dma_controller),
-        )
+        AutoRootBus::new(AutoRootBusArgs {
+            axicdma_periph: Some(dma_controller),
+            ..Default::default()
+        })
     }
 
     #[test]

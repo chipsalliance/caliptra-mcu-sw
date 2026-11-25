@@ -113,7 +113,7 @@ impl NetworkRootBus {
     pub const UART_NOTIF_IRQ: u8 = 16;
     pub const ETH_NOTIF_IRQ: u8 = 17;
 
-    pub fn new(mut args: NetworkRootBusArgs) -> Result<Self, std::io::Error> {
+    pub fn new(mut args: NetworkRootBusArgs) -> Self {
         let clock = args.clock;
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
@@ -135,7 +135,7 @@ impl NetworkRootBus {
             periph: Box::new(mbox),
         });
 
-        Ok(Self {
+        Self {
             rom,
             iccm: Rc::new(RefCell::new(iccm)),
             dccm: Rc::new(RefCell::new(dccm)),
@@ -146,7 +146,7 @@ impl NetworkRootBus {
             network_mbox,
             event_sender: None,
             offsets: args.offsets,
-        })
+        }
     }
 
     pub fn load_iccm(&mut self, offset: usize, data: &[u8]) {
