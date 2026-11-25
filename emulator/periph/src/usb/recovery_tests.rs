@@ -238,7 +238,12 @@ fn recovery_fifo_backpressure_wrap_completion_and_partial_final_word() {
         assert_eq!(f.read(0x60), 64);
         f.host.host_setup(0, &setup(0x2f, false, 4)).unwrap();
         assert_eq!(f.host.host_out(0, 0, &[0; 4]), Err(LpcipUsbError::Nak));
-        for _ in 0..64 {
+        assert_eq!(f.read(0x68), u32::from_le_bytes([round + 1; 4]));
+        let accepted = f.host.recovery_snapshot().unwrap().accepted_words;
+        assert_eq!(f.host.host_out(0, 0, &[3; 4]), Err(LpcipUsbError::Nak));
+        assert_eq!(f.host.recovery_snapshot().unwrap().accepted_words, accepted);
+        assert!(f.host.recovery_snapshot().unwrap().payload_available);
+        for _ in 1..64 {
             assert_eq!(f.read(0x68), u32::from_le_bytes([round + 1; 4]));
         }
         // A NAK does not consume the packet or raise the internal-overflow bit.
@@ -294,6 +299,25 @@ fn recovery_fifo_reset_underflow_and_reserved_bits_are_observable() {
     assert_eq!(f.read(0x68), 0);
     assert_eq!(f.host.recovery_snapshot().unwrap().underflow_reads, 1);
     assert_eq!(f.read(0x4c), 1);
+}
+
+#[test]
+fn recovery_firmware_disconnect_aborts_pending_fifo_write() {
+    let mut f = Fixture::new();
+    f.image(32);
+    f.put(0x2f, &[7; 64]);
+    f.host.host_setup(0, &setup(0x2f, false, 16)).unwrap();
+    f.bus.write(RvSize::Word, 0, DEV_EN | FORCE_VBUS).unwrap();
+    let snapshot = f.host.recovery_snapshot().unwrap();
+    assert!(!snapshot.claimed);
+    assert_eq!(snapshot.fifo_words, 0);
+    assert_eq!(snapshot.accepted_words, 0);
+    assert!(!snapshot.payload_available);
+    assert_eq!(f.read(0x204), 9);
+    f.bus
+        .write(RvSize::Word, 0, DEV_EN | CONNECT | FORCE_VBUS)
+        .unwrap();
+    assert_eq!(f.host.host_out(0, 0, &[1; 16]), Err(LpcipUsbError::Nak));
 }
 
 #[test]

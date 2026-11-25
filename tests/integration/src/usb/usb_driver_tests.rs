@@ -130,6 +130,28 @@ fn address(model: &mut ModelEmulated, address: u8) {
 }
 
 #[test]
+fn test_lpcip_shared_driver_commits_only_acknowledged_configuration_before_next_setup() {
+    for acknowledged in [false, true] {
+        let mut model = model(true);
+        connected(&mut model);
+        address(&mut model, 7);
+        model
+            .lpcip_usb_host_controller
+            .host_setup(7, &[0, 9, 1, 0, 0, 0, 0, 0])
+            .unwrap();
+        advance(&mut model, 2000);
+        if acknowledged {
+            assert!(input(&mut model, 7).unwrap().is_empty());
+        }
+        // No firmware polling between the status ACK and the next SETUP.
+        assert_eq!(
+            read(&mut model, 7, [0x80, 8, 0, 0, 0, 0, 1, 0]),
+            [u8::from(acknowledged)]
+        );
+    }
+}
+
+#[test]
 fn test_lpcip_shared_driver_enumerates_the_intended_descriptor_tree() {
     let mut model = model(true);
     connected(&mut model);

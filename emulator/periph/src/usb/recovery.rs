@@ -348,7 +348,10 @@ impl Recovery {
             } else {
                 image_size.saturating_sub(self.accepted)
             };
-            if words > FIFO_DEPTH - self.fifo.len() || words as u32 > remaining {
+            if self.payload_available
+                || words > FIFO_DEPTH - self.fifo.len()
+                || words as u32 > remaining
+            {
                 return Some(Err(LpcipUsbError::Nak));
             }
             for bytes in data.chunks(4) {

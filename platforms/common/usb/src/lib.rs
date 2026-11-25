@@ -19,7 +19,9 @@
 //!
 //! The platform owns MMIO mappings and the exclusive Device 0 SRAM reservation.
 //! The driver does not configure the internal hub, Device 1, recovery images or
-//! boot policy. `LpcipUsbDriver::poll` is nonblocking between host transactions;
+//! boot policy. `force_full_speed=true` is rejected: Device 0's bit alone cannot
+//! enforce the shared hub's physical link speed.
+//! `LpcipUsbDriver::poll` is nonblocking between host transactions;
 //! ROM and runtime can schedule it without a persistent compliance-mode loop.
 
 #![no_std]

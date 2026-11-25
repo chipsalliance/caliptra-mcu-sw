@@ -175,6 +175,9 @@ fn unsupported_power_features_and_zero_wait_budgets_are_explicit_errors() {
     driver.params.remote_wakeup = true;
     assert_eq!(driver.validate(), Err(UsbError::UnsupportedRemoteWakeup));
     driver.params.remote_wakeup = false;
+    driver.params.force_full_speed = true;
+    assert_eq!(driver.validate(), Err(UsbError::UnsupportedPhyInterface));
+    driver.params.force_full_speed = false;
     driver.params.max_power_2ma = 251;
     assert_eq!(driver.validate(), Err(UsbError::InvalidParameters));
     driver.params.max_power_2ma = 0;

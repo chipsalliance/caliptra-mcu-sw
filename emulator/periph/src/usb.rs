@@ -284,6 +284,9 @@ impl DeviceState {
 
     fn connection_changed(&mut self, was_connected: bool) {
         if was_connected && !self.link_connected() {
+            if let Some(recovery) = &mut self.recovery {
+                recovery.abort();
+            }
             self.command |= CONNECT_CHANGE;
             self.intstat |= DEVICE_INTERRUPT;
         }

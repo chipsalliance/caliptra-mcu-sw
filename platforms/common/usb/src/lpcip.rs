@@ -31,6 +31,7 @@ pub struct UsbParams {
     pub max_power_2ma: u8,
     /// Currently unsupported: initialization rejects `true`.
     pub remote_wakeup: bool,
+    /// Currently unsupported: initialization rejects `true` because link speed is hub-owned.
     pub force_full_speed: bool,
     /// Maximum MMIO polls per PHY access, VBUS wait or endpoint cancellation.
     pub poll_limit: u32,
@@ -201,6 +202,9 @@ impl LpcipUsbDriver {
         if self.params.remote_wakeup {
             return Err(UsbError::UnsupportedRemoteWakeup);
         }
+        if self.params.force_full_speed {
+            return Err(UsbError::UnsupportedPhyInterface);
+        }
         Ok(())
     }
 
@@ -366,6 +370,31 @@ impl LpcipUsbDriver {
             self.command(true, DevcmdstatT::DresC::SET.value);
             return Ok(UsbPoll::BusReset);
         }
+        // A new SETUP may arrive after the previous status ACK but before polling.
+        // Only an IN-completion interrupt proves that the deferred action committed.
+        let event = match self.stage {
+            Stage::StatusIn(action)
+                if self.read_word(2)? & ACTIVE == 0
+                    && self.params.registers.dev0_csr_intstat.get() & 2 != 0 =>
+            {
+                self.params.registers.dev0_csr_intstat.set(2);
+                self.stage = Stage::Idle;
+                match action {
+                    Action::Address(address) => {
+                        // Selected RTL latches the next SETUP token's address.
+                        self.address = address;
+                        self.command(true, 0);
+                        UsbPoll::Progress
+                    }
+                    Action::Configuration(configuration) => {
+                        self.configuration = configuration;
+                        UsbPoll::ConfigurationChanged(configuration)
+                    }
+                    Action::None => UsbPoll::Progress,
+                }
+            }
+            _ => UsbPoll::Idle,
+        };
         if command & DevcmdstatT::Setup::SET.value != 0 {
             return self.setup();
         }
@@ -389,25 +418,7 @@ impl LpcipUsbDriver {
                 self.stage = Stage::Idle;
                 Ok(UsbPoll::Progress)
             }
-            Stage::StatusIn(action) if self.read_word(2)? & ACTIVE == 0 => {
-                self.params.registers.dev0_csr_intstat.set(2);
-                self.stage = Stage::Idle;
-                match action {
-                    Action::Address(address) => {
-                        // Stage only after the old-address IN status ACK.
-                        // Selected RTL latches the next SETUP token's address.
-                        self.address = address;
-                        self.command(true, 0);
-                        Ok(UsbPoll::Progress)
-                    }
-                    Action::Configuration(configuration) => {
-                        self.configuration = configuration;
-                        Ok(UsbPoll::ConfigurationChanged(configuration))
-                    }
-                    Action::None => Ok(UsbPoll::Progress),
-                }
-            }
-            _ => Ok(UsbPoll::Idle),
+            _ => Ok(event),
         }
     }
 }
