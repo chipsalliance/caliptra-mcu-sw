@@ -10,9 +10,9 @@ use caliptra_mcu_spdm_codec::{
     CHUNK_ATTR_LAST_CHUNK, LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
-    MeasurementInfo, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
-    SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements,
-    SpdmPalSessionCrypto, SPDM_NONCE_LEN,
+    MeasurementInfo, Milliseconds, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore,
+    SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport,
+    SpdmPalMeasurements, SpdmPalSessionCrypto, SPDM_NONCE_LEN,
 };
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -130,6 +130,24 @@ pub struct TestPal {
     pub hash_finishes: RefCell<Vec<Vec<u8>>>,
     pub aead_decrypt_error: Cell<Option<McuErrorCode>>,
     pub last_aead_decrypt_sequence: Cell<Option<u64>>,
+    pub now_ms: RefCell<u64>,
+    /// Polls `recv_request` stays pending for before it completes (with
+    /// `NOT_IMPLEMENTED`). Lets a test make the timer win the run-loop race.
+    pub recv_pending_polls: Cell<usize>,
+    /// Number of `recv_request` futures created. The run loop must create one
+    /// per received request and never drop and re-create it on a timer wake.
+    pub recv_calls: Cell<usize>,
+    /// If set, `recv_request` moves the fake clock to this time as it
+    /// completes, so a test can let a deadline pass while the receive is
+    /// pending and then have the receive (not the timer) win the race.
+    pub now_on_recv_ms: Cell<Option<u64>>,
+}
+
+impl TestPal {
+    /// Advance / set the fake monotonic clock used by `now_ms()`.
+    pub fn set_now_ms(&self, ms: u64) {
+        *self.now_ms.borrow_mut() = ms;
+    }
 }
 
 /// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
@@ -177,6 +195,10 @@ impl Default for TestPal {
             hash_finishes: RefCell::new(Vec::new()),
             aead_decrypt_error: Cell::new(None),
             last_aead_decrypt_sequence: Cell::new(None),
+            now_ms: RefCell::new(0),
+            recv_pending_polls: Cell::new(0),
+            recv_calls: Cell::new(0),
+            now_on_recv_ms: Cell::new(None),
         }
     }
 }
@@ -273,6 +295,20 @@ impl SpdmPalIoTransport for TestPal {
     }
 
     async fn recv_request(&self) -> McuResult<Self::Io<'_>> {
+        self.recv_calls.set(self.recv_calls.get() + 1);
+        core::future::poll_fn(|cx| {
+            let left = self.recv_pending_polls.get();
+            if left == 0 {
+                return core::task::Poll::Ready(());
+            }
+            self.recv_pending_polls.set(left - 1);
+            cx.waker().wake_by_ref();
+            core::task::Poll::Pending
+        })
+        .await;
+        if let Some(ms) = self.now_on_recv_ms.get() {
+            self.set_now_ms(ms);
+        }
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
@@ -283,6 +319,17 @@ impl SpdmPalIoTransport for TestPal {
         _msg: &mut [u8],
     ) -> McuResult<()> {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    fn now(&self) -> Milliseconds {
+        Milliseconds(*self.now_ms.borrow())
+    }
+
+    async fn sleep(&self, dur: Milliseconds) {
+        // Never blocks: the sleep "elapses" at once by moving the fake clock
+        // forward by `dur`. Only the run loop's recv_next sleeps.
+        let now = *self.now_ms.borrow();
+        self.set_now_ms(now.saturating_add(dur.0));
     }
 }
 
