@@ -12,12 +12,27 @@ concurrency:
 
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
-    # Upstream MCU revision selection must be fixed before restoring 2.1 smoke (#2288).
-    if: ${{ vars.RUN_FPGA_CI != 'false' && vars.RUN_FPGA_LATEST_CI == 'true' }}
-    name: Smoke Test (Optional)
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
+    name: Smoke Test 2.1 (Optional)
     uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@main
     with:
       mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}
+      artifact-suffix: -hw-2.1
       branch: main
+      hw-version: "2.1"
+      rom-version: "2.1.2"
+      fpga-itrng: true
+      extra-features: itrng,ocp-lock
+
+  caliptra-sw-mcu-rom-smoke-test-2-2:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
+    name: Smoke Test 2.2 (Optional)
+    uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@caliptra-2.2-dev
+    with:
+      mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}
+      artifact-suffix: -hw-2.2
+      branch: caliptra-2.2-dev
+      hw-version: "2.2"
+      rom-version: "latest"
       fpga-itrng: true
       extra-features: itrng,ocp-lock
