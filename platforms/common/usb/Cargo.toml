@@ -1,0 +1,20 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-usb-common"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[features]
+test-enumeration = []
+
+[dependencies]
+caliptra-mcu-ocp.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-romtime.workspace = true
+tock-registers.workspace = true
+zerocopy.workspace = true
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

@@ -18,6 +18,7 @@ fpga_realtime = [
 ]
 usb = []
 itrng = []
+test-hooks = ["caliptra-mcu-emulator-periph/test-hooks"]
 
 [dependencies]
 anyhow.workspace = true

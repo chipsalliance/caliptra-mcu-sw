@@ -105,6 +105,10 @@ pub struct ModelEmulated {
     // with the CPU step that advances the clock.
     step_lock: Arc<Mutex<()>>,
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    #[cfg(hw_rev = "latest")]
+    pub lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
+    #[cfg(hw_rev = "latest")]
+    pub lpcip_usb_hub_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHubHostController,
     /// Per-instance emulator coordination state. Kept alive for as long as
     /// this model exists so that worker threads that hold an Arc clone
     /// (via spawn_with_emulator_state) observe writes from step()/boot().
@@ -360,8 +364,14 @@ impl McuHwModel for ModelEmulated {
             _ => None,
         };
 
-        // Use MCU recovery interface when flash-based boot or network boot is enabled
-        let use_mcu_recovery_interface = params.flash_boot || params.network_boot;
+        #[cfg(hw_rev = "latest")]
+        let usb_recovery = params.usb_recovery;
+        #[cfg(not(hw_rev = "latest"))]
+        let usb_recovery = false;
+        if usb_recovery && (params.flash_boot || params.network_boot) {
+            bail!("USB recovery cannot share the I3C flash/network recovery event channels");
+        }
+        let use_mcu_recovery_interface = params.flash_boot || params.network_boot || usb_recovery;
 
         // wasm32 cannot set environment variables, so set the offset in the
         // Caliptra emulator directly there.
@@ -443,6 +453,21 @@ impl McuHwModel for ModelEmulated {
 
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
+        #[cfg(hw_rev = "latest")]
+        let usb_combo = caliptra_mcu_emulator_periph::UsbCombo::new_with_irq(
+            pic.register_irq(McuRootBus::USB_IRQ),
+            usb_host_controller.clone(),
+        );
+        #[cfg(hw_rev = "latest")]
+        let lpcip_usb_host_controller = usb_combo.host_controller();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev0_memory = usb_combo.device0_memory();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev1 = usb_combo.device1();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev1_memory = usb_combo.device1_memory();
+        #[cfg(hw_rev = "latest")]
+        let lpcip_usb_hub_host_controller = usb_combo.hub_host_controller();
         let network_mbox = NetworkMailboxInternal::new(&clock.clone());
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
@@ -452,10 +477,10 @@ impl McuHwModel for ModelEmulated {
             delegates,
             None,
             Some(Box::new(usb_periph)),
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_combo)),
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_dev1)),
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
@@ -463,10 +488,10 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(network_mbox.clone())),
             Some(Box::new(mci)),
             None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
-            #[cfg(hw_capability = "usb-support")]
-            None,
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_dev0_memory)),
+            #[cfg(hw_rev = "latest")]
+            Some(Box::new(usb_dev1_memory)),
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
@@ -504,7 +529,22 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface (I3C) when flash-based boot or network
         // boot is enabled; otherwise use BMC recovery interface.
         let use_mcu_recovery = params.flash_boot || params.network_boot;
-        let bmc = if use_mcu_recovery {
+        let bmc = if usb_recovery {
+            #[cfg(hw_rev = "latest")]
+            cpu.bus
+                .bus
+                .usb_combo_periph
+                .as_mut()
+                .unwrap()
+                .periph
+                .register_event_channels(
+                    caliptra_event_sender,
+                    caliptra_event_receiver,
+                    mcu_event_sender,
+                    mcu_event_receiver,
+                );
+            None
+        } else if use_mcu_recovery {
             // Connect event channels to I3C peripheral for MCU recovery interface
             cpu.bus
                 .bus
@@ -608,6 +648,10 @@ impl McuHwModel for ModelEmulated {
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
             usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_hub_host_controller,
             state,
         };
         // Turn tracing on if the trace path was set
@@ -884,6 +928,23 @@ impl ModelEmulated {
     }
 }
 
+#[cfg(all(feature = "test-hooks", hw_rev = "latest"))]
+impl ModelEmulated {
+    /// MCU-side bus access for emulator integration tests.
+    pub fn mcu_bus_for_test(&mut self) -> &mut impl Bus {
+        &mut self.cpu.bus
+    }
+
+    /// Exercise the actual Caliptra DMA and AXI event path in integration tests.
+    pub fn caliptra_dma_for_test(&mut self) -> &mut caliptra_emu_periph::dma::Dma {
+        &mut self.caliptra_cpu.bus.dma
+    }
+
+    pub fn has_bmc_for_test(&self) -> bool {
+        self.bmc.is_some()
+    }
+}
+
 pub struct EmulatedAxiBus<'a> {
     model: &'a mut ModelEmulated,
 }
@@ -1044,6 +1105,132 @@ mod test {
     use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+
+    #[cfg(hw_rev = "latest")]
+    fn lpcip_descriptor_rom(device1: bool) -> Vec<u8> {
+        // Minimal RV32 firmware: configure CSR/SRAM, poll SETUP, publish the
+        // first eight device-descriptor bytes and arm EP0 IN before W1C SETUP.
+        // Keeping this ROM in the test avoids building unrelated firmware.
+        let mut instructions: [u32; 24] = [
+            0x2000_00b7, // lui x1, 0x20000 (USB_COMBO)
+            0x3000_0137, // lui x2, 0x30000 (USB_DEV0_MEM)
+            0x0020_a423, // sw x2, 8(x1) (EPLISTSTART)
+            0x0020_a623, // sw x2, 12(x1) (DATABUFSTART)
+            0x0040_0193, // li x3, 4 (SETUP buffer at SRAM + 0x100)
+            0x0031_2223, // sw x3, 4(x2)
+            0x0001_01b7, // lui x3, 0x10
+            0x0801_8193, // addi x3, x3, 0x80 (DCON | DEV_EN)
+            0x0030_a023, // sw x3, 0(x1)
+            0x0000_a183, // wait: lw x3, 0(x1)
+            0x1001_f193, // andi x3, x3, 0x100 (SETUP)
+            0xfe01_8ce3, // beq x3, zero, wait
+            0x0200_01b7, // lui x3, 0x02000
+            0x1121_8193, // addi x3, x3, 0x112
+            0x2031_2023, // sw x3, 512(x2) ([18, 1, 0, 2])
+            0x4000_01b7, // lui x3, 0x40000
+            0x2031_2223, // sw x3, 516(x2) ([0, 0, 0, 64])
+            0x8000_41b7, // lui x3, 0x80004
+            0x0081_8193, // addi x3, x3, 8 (ACTIVE | NBYTES=8 | offset=8)
+            0x0031_2423, // sw x3, 8(x2) (EP0 IN descriptor)
+            0x0001_01b7, // lui x3, 0x10
+            0x1801_8193, // addi x3, x3, 0x180 (DCON | DEV_EN | SETUP)
+            0x0030_a023, // sw x3, 0(x1)
+            0x0000_006f, // j .
+        ];
+        let mut program = Vec::new();
+        if device1 {
+            instructions[0] = 0x2000_20b7; // Device 1 CSR at 0x2000_2000
+            instructions[1] = 0x3001_0137; // Device 1 SRAM at 0x3001_0000
+            instructions[4] = 0x4040_0193; // SETUP offset includes SRAM page bit
+            instructions[18] = 0x4081_8193; // Likewise for the IN buffer offset
+            program.extend([
+                0x2000_1237, // lui x4, 0x20001 (hub registers)
+                0x0001_01b7, // lui x3, 0x10
+                0x0011_8193, // addi x3, x3, 1 (HUB_ENABLE | DCON)
+                0x0232_2823, // sw x3, 48(x4) (HUB_CONTROL)
+            ]);
+        }
+        program.extend(instructions);
+        program.into_iter().flat_map(u32::to_le_bytes).collect()
+    }
+
+    #[cfg(hw_rev = "latest")]
+    #[test]
+    fn test_lpcip_standard_request_requires_firmware_service() {
+        use caliptra_mcu_emulator_periph::{LpcipUsbError, LpcipUsbSpeed};
+
+        let rom = lpcip_descriptor_rom(false);
+        let mut model = ModelEmulated::new_unbooted(InitParams {
+            mcu_rom: &rom,
+            ..Default::default()
+        })
+        .unwrap();
+        let host = model.lpcip_usb_host_controller.clone();
+        host.set_vbus(true);
+        assert_eq!(host.host_in(0, 0), Err(LpcipUsbError::Disconnected));
+        model.cpu_enabled.set(true);
+        for _ in 0..100 {
+            model.step();
+            if host.connected() {
+                break;
+            }
+        }
+        assert!(host.connected(), "firmware did not enable Device 0");
+        host.bus_reset(LpcipUsbSpeed::Full).unwrap();
+        host.host_setup(0, &[0x80, 6, 0, 1, 0, 0, 8, 0]).unwrap();
+        for _ in 0..10 {
+            assert_eq!(host.host_in(0, 0), Err(LpcipUsbError::Nak));
+        }
+        for _ in 0..100 {
+            model.step();
+        }
+        assert_eq!(host.host_in(0, 0).unwrap(), [18, 1, 0, 2, 0, 0, 0, 64]);
+        assert_eq!(host.host_in(0, 0), Err(LpcipUsbError::Nak));
+    }
+
+    #[cfg(hw_rev = "latest")]
+    #[test]
+    fn test_lpcip_hub_routes_device1_requests_to_firmware() {
+        use caliptra_mcu_emulator_periph::{LpcipUsbError, LpcipUsbSpeed};
+
+        let rom = lpcip_descriptor_rom(true);
+        let mut model = ModelEmulated::new_unbooted(InitParams {
+            mcu_rom: &rom,
+            ..Default::default()
+        })
+        .unwrap();
+        let hub = model.lpcip_usb_hub_host_controller.clone();
+        hub.set_vbus(true);
+        model.cpu_enabled.set(true);
+        for _ in 0..100 {
+            model.step();
+        }
+        assert!(hub.connected(), "firmware did not enable the hub");
+        assert!(!model.lpcip_usb_host_controller.device_enabled());
+        hub.bus_reset(LpcipUsbSpeed::Full).unwrap();
+        hub.host_setup(0, &[0x80, 6, 0, 1, 0, 0, 18, 0]).unwrap();
+        let descriptor = hub.host_in(0, 0).unwrap();
+        assert_eq!(descriptor.len(), 18);
+        assert_eq!(descriptor[4], 9);
+        hub.host_out(0, 0, &[]).unwrap();
+        hub.host_setup(0, &[0, 5, 10, 0, 0, 0, 0, 0]).unwrap();
+        assert!(hub.host_in(0, 0).unwrap().is_empty());
+        hub.host_setup(10, &[0, 9, 1, 0, 0, 0, 0, 0]).unwrap();
+        assert!(hub.host_in(10, 0).unwrap().is_empty());
+        assert_eq!(hub.host_in(10, 1).unwrap(), [4]);
+        hub.host_setup(10, &[0x23, 3, 4, 0, 2, 0, 0, 0]).unwrap();
+        assert!(hub.host_in(10, 0).unwrap().is_empty());
+        hub.port_setup(2, 0, &[0x80, 6, 0, 1, 0, 0, 8, 0]).unwrap();
+        for _ in 0..10 {
+            assert_eq!(hub.port_in(2, 0, 0), Err(LpcipUsbError::Nak));
+        }
+        for _ in 0..100 {
+            model.step();
+        }
+        assert_eq!(hub.port_in(2, 0, 0).unwrap(), [18, 1, 0, 2, 0, 0, 0, 64]);
+        assert_eq!(hub.port_in(2, 0, 0), Err(LpcipUsbError::Nak));
+        assert_eq!(hub.port_in(1, 0, 0), Err(LpcipUsbError::Disconnected));
+    }
 
     #[test]
     fn test_subsystem_warm_reset_preserves_memory_and_clears_readiness() {

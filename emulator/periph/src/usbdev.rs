@@ -337,6 +337,13 @@ pub struct UsbHostController {
 }
 
 impl UsbHostController {
+    #[cfg(hw_rev = "latest")]
+    pub(crate) fn interrupt_pending(&self) -> bool {
+        let mut state = self.state.lock().unwrap();
+        let enabled = state.generated.read_intr_enable().reg.get();
+        state.effective_intr_state() & enabled != 0
+    }
+
     /// Returns `true` if firmware has set the `enable` bit in the `usbctrl` register,
     /// indicating the device is initialized and ready to communicate.
     pub fn device_enabled(&self) -> bool {
