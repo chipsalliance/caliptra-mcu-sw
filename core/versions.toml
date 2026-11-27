@@ -5,4 +5,4 @@
 # after merging the functional backports in chipsalliance/caliptra-sw#4444.
 [versions]
 "2.1" = "757b7445b18483d624612f03b195cbff2b415963"
-latest = "dd76cbc0efd8bab57e9105bbda40cb3c6e71ea44"
+latest = "59f390c07c15b9547184d400945e575a5f688f6f"

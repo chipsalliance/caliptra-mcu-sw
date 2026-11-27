@@ -27,6 +27,19 @@ mod test {
             /*enable_mcu_uart_log=*/ true,
         );
 
+        #[cfg(hw_rev = "latest")]
+        {
+            // Normal 2.2 setup provisions UDS. This manufacturing test needs
+            // blank seed, digest and metadata before OTP initialization.
+            model.base.set_subsystem_reset(true);
+            let mut otp = model.read_otp_memory();
+            otp[SECRET_MANUF_PARTITION_BYTE_OFFSET
+                ..SECRET_MANUF_PARTITION_BYTE_OFFSET + SECRET_MANUF_PARTITION_BYTE_SIZE]
+                .fill(0);
+            model.base.otp_slice().copy_from_slice(&otp);
+            model.base.set_subsystem_reset(false);
+        }
+
         // check UDS is blank
         let before_uds = &model.read_otp_memory()[SECRET_MANUF_PARTITION_BYTE_OFFSET
             ..SECRET_MANUF_PARTITION_BYTE_OFFSET + SECRET_MANUF_PARTITION_BYTE_SIZE];
