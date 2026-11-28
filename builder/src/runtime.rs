@@ -39,14 +39,16 @@ fn runtime_features(
 
     if platform == "fpga" {
         let features = runtime_features.get_or_insert_with(String::new);
-        if !features
-            .split(',')
-            .any(|feature| feature == "disable-lms-sig-verify")
+        for feature in ["disable-lms-sig-verify"]
+            .into_iter()
+            .chain(example_app.then_some("fpga"))
         {
-            if !features.is_empty() {
-                features.push(',');
+            if !features.split(',').any(|enabled| enabled == feature) {
+                if !features.is_empty() {
+                    features.push(',');
+                }
+                features.push_str(feature);
             }
-            features.push_str("disable-lms-sig-verify");
         }
     }
 
@@ -86,6 +88,17 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
+    let manifest = if platform_str == "emulator"
+        && features.is_some_and(|list| list.split(',').any(|f| f == "test-logging-driver"))
+    {
+        manifest.with_file_name(if args.profile == Some("release") {
+            "logging-driver-test.toml"
+        } else {
+            "logging-driver-test-devel.toml"
+        })
+    } else {
+        manifest
+    };
     let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
 
     let common = Common {
@@ -150,6 +163,14 @@ pub fn bare_metal_build() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::runtime_features;
+
+    #[test]
+    fn fpga_example_app_receives_platform_configuration() {
+        assert_eq!(
+            runtime_features(Some("test-log-ram-usermode"), "fpga", true, true).as_deref(),
+            Some("test-log-ram-usermode,disable-lms-sig-verify,fpga")
+        );
+    }
 
     #[test]
     fn emulator_defaults_enable_dot() {

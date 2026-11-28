@@ -56,11 +56,25 @@ pub fn bundle(
             runtime.append(&mut std::fs::read(&kernel.binary)?);
 
             let base_addr = instructions.offset;
-            for app in output.apps.clone().into_iter() {
+            let mut apps = output.apps.iter().cloned().peekable();
+            while let Some(mut app) = apps.next() {
+                if let Some(next) = apps.peek() {
+                    if next.instruction_block.offset
+                        < app.instruction_block.offset + app.instruction_block.size
+                    {
+                        bail!(
+                            "Overlapping instruction allocations for app {}",
+                            app.binary.name
+                        );
+                    }
+                    app.instruction_block.size =
+                        next.instruction_block.offset - app.instruction_block.offset;
+                }
                 // Find the location the the binary should occupy in the blob.  There could be padding
                 // between the end of one application and the beginning of the next.
                 let app_start: usize =
                     (app.instruction_block.offset - base_addr + header_len).try_into()?;
+                let app_end = app_start + usize::try_from(app.instruction_block.size)?;
                 match runtime.len().cmp(&app_start) {
                     Ordering::Less => runtime.resize(app_start, 0),
                     Ordering::Greater => bail!(
@@ -81,6 +95,7 @@ pub fn bundle(
 
                 let app_bin = std::fs::read(&app.binary.binary)?;
                 runtime.extend(app_bin);
+                runtime.resize(app_end, 0);
             }
         }
         RuntimeVariant::BareMetal((bare_metal, _)) => {
@@ -101,3 +116,6 @@ pub fn bundle(
     let runtime_file = binary_dir.join(name);
     std::fs::write(runtime_file, runtime).map_err(|e| e.into())
 }
+
+#[cfg(test)]
+mod tests;

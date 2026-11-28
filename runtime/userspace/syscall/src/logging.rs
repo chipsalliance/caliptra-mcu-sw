@@ -1,18 +1,65 @@
 // Licensed under the Apache-2.0 license
 
 use crate::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::subscribe::OneId;
-use caliptra_mcu_libtock_platform::{
-    share, AllowRo, DefaultConfig, ErrorCode, Subscribe, Syscalls, Upcall,
-};
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 use core::marker::PhantomData;
+use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
+use smallvec::SmallVec;
 
 /// Upper bound on `yield_wait` calls [`LoggingSyscall::append_entry_sync`] makes
 /// before giving up, so a capsule delivering unrelated upcalls can't spin it
 /// forever in the panic/shutdown path.
 const MAX_APPEND_SYNC_YIELDS: u32 = 64;
+
+type LoggingSlots = SmallVec<[(u32, u32); 4]>;
+
+// Inline slots leave small app heaps available for subscription futures.
+static LOGGING_SLOTS: Mutex<CriticalSectionRawMutex, RefCell<LoggingSlots>> =
+    Mutex::new(RefCell::new(LoggingSlots::new_const()));
+
+struct LoggingSlot<S: Syscalls> {
+    driver_num: u32,
+    upcall: u32,
+    _syscalls: PhantomData<S>,
+}
+
+impl<S: Syscalls> LoggingSlot<S> {
+    fn acquire(driver_num: u32, upcall: u32) -> Result<Self, ErrorCode> {
+        LOGGING_SLOTS.lock(|slots| {
+            let mut slots = slots.borrow_mut();
+            if slots.contains(&(driver_num, upcall)) {
+                return Err(ErrorCode::Busy);
+            }
+            slots.try_reserve(1).map_err(|_| ErrorCode::NoMem)?;
+            slots.push((driver_num, upcall));
+            Ok(())
+        })?;
+        Ok(Self {
+            driver_num,
+            upcall,
+            _syscalls: PhantomData,
+        })
+    }
+}
+
+impl<S: Syscalls> Drop for LoggingSlot<S> {
+    fn drop(&mut self) {
+        S::unsubscribe(self.driver_num, self.upcall);
+        match self.upcall {
+            subscribe::APPEND_DONE => S::unallow_ro(self.driver_num, ro_allow::APPEND),
+            subscribe::READ_DONE => S::unallow_rw(self.driver_num, rw_allow::READ),
+            _ => {}
+        }
+        // Keep ownership until both the subscription and allowed buffer are released.
+        LOGGING_SLOTS.lock(|slots| {
+            slots
+                .borrow_mut()
+                .retain(|slot| *slot != (self.driver_num, self.upcall));
+        });
+    }
+}
 
 pub struct LoggingSyscall<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
@@ -21,11 +68,14 @@ pub struct LoggingSyscall<S: Syscalls = DefaultSyscalls> {
 
 impl<S: Syscalls> Default for LoggingSyscall<S> {
     fn default() -> Self {
-        Self::new(driver_num::LOGGING_FLASH)
+        Self::new(caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM)
     }
 }
 
 /// Represents an asynchronous logging interface.
+///
+/// Calls sharing a driver and completion upcall return `Busy` while another
+/// caller owns that slot, including the interval between its upcall and cleanup.
 impl<S: Syscalls> LoggingSyscall<S> {
     /// Creates a new LoggingSyscall instance with the given driver number.
     ///
@@ -66,6 +116,7 @@ impl<S: Syscalls> LoggingSyscall<S> {
     /// - `Ok(())` on success
     /// - `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn append_entry(&self, entry: &[u8]) -> Result<(), ErrorCode> {
+        let _slot = LoggingSlot::<S>::acquire(self.driver_num, subscribe::APPEND_DONE)?;
         let result = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
@@ -76,14 +127,12 @@ impl<S: Syscalls> LoggingSyscall<S> {
             if let Err(e) = S::command(self.driver_num, logging_cmd::APPEND, entry.len() as u32, 0)
                 .to_result::<(), ErrorCode>()
             {
-                S::unallow_ro(self.driver_num, ro_allow::APPEND);
                 sub.cancel();
                 Err(e)?;
             }
             Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await;
-        S::unallow_ro(self.driver_num, ro_allow::APPEND);
         result.and_then(|(_len, _lost, err)| upcall_err_to_result(err).map(|_| ()))
     }
 
@@ -100,25 +149,8 @@ impl<S: Syscalls> LoggingSyscall<S> {
         let err = Cell::new(0u32);
         let listener = AppendDoneListener(&done, &err);
 
-        share::scope::<
-            (
-                AllowRo<S, { driver_num::LOGGING_FLASH }, { ro_allow::APPEND }>,
-                Subscribe<S, { driver_num::LOGGING_FLASH }, { subscribe::APPEND_DONE }>,
-            ),
-            _,
-            _,
-        >(|handle| {
-            let (allow_ro, subscribe) = handle.split();
-            S::allow_ro::<DefaultConfig, { driver_num::LOGGING_FLASH }, { ro_allow::APPEND }>(
-                allow_ro, entry,
-            )?;
-            S::subscribe::<
-                _,
-                _,
-                DefaultConfig,
-                { driver_num::LOGGING_FLASH },
-                { subscribe::APPEND_DONE },
-            >(subscribe, &listener)?;
+        {
+            let _registration = AppendRegistration::<S>::new(self.driver_num, entry, &listener)?;
             S::command(self.driver_num, logging_cmd::APPEND, entry.len() as u32, 0)
                 .to_result::<(), ErrorCode>()?;
             let mut yields = 0;
@@ -129,8 +161,7 @@ impl<S: Syscalls> LoggingSyscall<S> {
                 yields += 1;
                 S::yield_wait();
             }
-            Ok::<(), ErrorCode>(())
-        })?;
+        }
 
         upcall_err_to_result(err.get())
     }
@@ -144,6 +175,7 @@ impl<S: Syscalls> LoggingSyscall<S> {
     /// * `Ok(usize)` - The number of bytes read.
     /// * `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn read_entry(&self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        let _slot = LoggingSlot::<S>::acquire(self.driver_num, subscribe::READ_DONE)?;
         let result = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
@@ -154,27 +186,24 @@ impl<S: Syscalls> LoggingSyscall<S> {
             if let Err(e) = S::command(self.driver_num, logging_cmd::READ, buffer.len() as u32, 0)
                 .to_result::<(), ErrorCode>()
             {
-                S::unallow_rw(self.driver_num, rw_allow::READ);
                 sub.cancel();
                 Err(e)?;
             }
             Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await;
-        S::unallow_rw(self.driver_num, rw_allow::READ);
         result.and_then(|(len, err, _)| upcall_err_to_result(err).map(|_| len as usize))
     }
 
-    /// Synchronizes the log to ensure all data is written to persistent storage.
+    /// Requests persistence synchronization from the selected backend.
+    /// RAM returns `ErrorCode::NoSupport`.
     ///
     /// # Returns
     /// * `Ok(())` - On success.
     /// * `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn sync(&self) -> Result<(), ErrorCode> {
-        let sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::SYNC_DONE);
-        S::command(self.driver_num, logging_cmd::SYNC, 0, 0).to_result::<(), ErrorCode>()?;
-        let (err, _, _) = sub.await?;
-        upcall_err_to_result(err)
+        self.command_with_completion(logging_cmd::SYNC, subscribe::SYNC_DONE)
+            .await
     }
 
     /// Clears (erases) the log asynchronously.
@@ -183,10 +212,8 @@ impl<S: Syscalls> LoggingSyscall<S> {
     /// * `Ok(())` - On success.
     /// * `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn clear(&self) -> Result<(), ErrorCode> {
-        let sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::ERASE_DONE);
-        S::command(self.driver_num, logging_cmd::ERASE, 0, 0).to_result::<(), ErrorCode>()?;
-        let (err, _, _) = sub.await?;
-        upcall_err_to_result(err)
+        self.command_with_completion(logging_cmd::ERASE, subscribe::ERASE_DONE)
+            .await
     }
 
     /// Seeks to the beginning of the log asynchronously. Used by the logging system to reset the read position.
@@ -195,10 +222,20 @@ impl<S: Syscalls> LoggingSyscall<S> {
     /// * `Ok(())` - On success.
     /// * `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn seek_beginning(&self) -> Result<(), ErrorCode> {
-        let sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::SEEK_DONE);
-        S::command(self.driver_num, logging_cmd::SEEK, 0, 0).to_result::<(), ErrorCode>()?;
-        let (err, _, _) = sub.await?;
-        upcall_err_to_result(err)
+        self.command_with_completion(logging_cmd::SEEK, subscribe::SEEK_DONE)
+            .await
+    }
+
+    async fn command_with_completion(&self, command: u32, upcall: u32) -> Result<(), ErrorCode> {
+        let _slot = LoggingSlot::<S>::acquire(self.driver_num, upcall)?;
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, upcall);
+        if let Err(error) = S::command(self.driver_num, command, 0, 0).to_result::<(), ErrorCode>()
+        {
+            sub.cancel();
+            return Err(error);
+        }
+        let result = sub.as_mut().await;
+        result.and_then(|(error, _, _)| upcall_err_to_result(error))
     }
 }
 
@@ -214,13 +251,67 @@ fn upcall_err_to_result(err: u32) -> Result<(), ErrorCode> {
 /// The append-done upcall arguments are `(length, records_lost, error)`.
 struct AppendDoneListener<'a>(&'a Cell<bool>, &'a Cell<u32>);
 
-impl Upcall<OneId<{ driver_num::LOGGING_FLASH }, { subscribe::APPEND_DONE }>>
-    for AppendDoneListener<'_>
-{
-    fn upcall(&self, _len: u32, _records_lost: u32, error: u32) {
-        self.1.set(error);
-        self.0.set(true);
+struct AppendRegistration<'a, S: Syscalls> {
+    _slot: LoggingSlot<S>,
+    _entry: &'a [u8],
+    _listener: &'a AppendDoneListener<'a>,
+}
+
+impl<'a, S: Syscalls> AppendRegistration<'a, S> {
+    fn new(
+        driver_num: u32,
+        entry: &'a [u8],
+        listener: &'a AppendDoneListener<'a>,
+    ) -> Result<Self, ErrorCode> {
+        use caliptra_mcu_libtock_platform::{allow_ro, return_variant, syscall_class};
+        // The guard retains both borrows and unregisters before either can expire.
+        let registration = Self {
+            _slot: LoggingSlot::acquire(driver_num, subscribe::APPEND_DONE)?,
+            _entry: entry,
+            _listener: listener,
+        };
+        let [variant, error, previous_len, _] = unsafe {
+            S::syscall4::<{ syscall_class::ALLOW_RO }>([
+                driver_num.into(),
+                ro_allow::APPEND.into(),
+                entry.as_ptr().into(),
+                entry.len().into(),
+            ])
+        };
+        if variant.as_u32() != u32::from(return_variant::SUCCESS_2_U32) {
+            return Err(ErrorCode::try_from(error.as_u32()).unwrap_or(ErrorCode::Fail));
+        }
+        if usize::from(error) != 0 || usize::from(previous_len) != 0 {
+            <DefaultConfig as allow_ro::Config>::returned_nonzero_buffer(
+                driver_num,
+                ro_allow::APPEND,
+            );
+        }
+        let [variant, error, _, _] = unsafe {
+            S::syscall4::<{ syscall_class::SUBSCRIBE }>([
+                driver_num.into(),
+                subscribe::APPEND_DONE.into(),
+                (append_done as *const ()).into(),
+                (listener as *const AppendDoneListener<'_>).into(),
+            ])
+        };
+        if variant.as_u32() != u32::from(return_variant::SUCCESS_2_U32) {
+            return Err(ErrorCode::try_from(error.as_u32()).unwrap_or(ErrorCode::Fail));
+        }
+        Ok(registration)
     }
+}
+
+extern "C" fn append_done(
+    _length: u32,
+    _lost: u32,
+    error: u32,
+    data: *const AppendDoneListener<'_>,
+) {
+    // Installed only by AppendRegistration, which bounds this pointer's lifetime.
+    let listener = unsafe { &*data };
+    listener.1.set(error);
+    listener.0.set(true);
 }
 
 // -----------------------------------------------------------------------------
@@ -228,8 +319,8 @@ impl Upcall<OneId<{ driver_num::LOGGING_FLASH }, { subscribe::APPEND_DONE }>>
 // -----------------------------------------------------------------------------
 
 pub mod driver_num {
-    /// Conventional driver number for instance 0; additional instances are platform-defined.
-    pub const LOGGING_FLASH: u32 = 0x9001_0000;
+    /// Driver number for the normal Flash log; additional instances are platform-defined.
+    pub const LOGGING_FLASH: u32 = caliptra_mcu_config::LOGGING_FLASH_DRIVER_NUM;
 }
 
 // Upcalls
@@ -274,3 +365,7 @@ mod logging_cmd {
     pub const ERASE: u32 = 5;
     pub const GET_CAP: u32 = 6;
 }
+
+#[cfg(test)]
+#[path = "logging_tests.rs"]
+mod tests;

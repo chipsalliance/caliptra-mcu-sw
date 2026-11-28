@@ -3,6 +3,8 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
 pub mod flash;
+pub mod ram;
+pub use caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM;
 use caliptra_mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {

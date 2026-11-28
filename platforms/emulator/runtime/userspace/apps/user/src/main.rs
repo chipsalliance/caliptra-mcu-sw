@@ -113,6 +113,58 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
+    #[cfg(feature = "test-logging-driver")]
+    {
+        use caliptra_mcu_libtock_platform::{
+            share, AllowRo, AllowRw, DefaultConfig, ErrorCode, Syscalls,
+        };
+        use caliptra_mcu_libtock_runtime::TockSyscalls as S;
+
+        // Two independent held requests outlive this real Tock process.
+        // Driver numbers match tests::logging_driver_test in the emulator board.
+        let mut read = [0; 16];
+        let append = [0x5a; 16];
+        share::scope::<(AllowRw<S, 0x9001_f000, 0>, AllowRo<S, 0x9001_f002, 0>), _, _>(|allows| {
+            let (read_allow, append_allow) = allows.split();
+            S::allow_rw::<DefaultConfig, 0x9001_f000, 0>(read_allow, &mut read).unwrap();
+            S::allow_ro::<DefaultConfig, 0x9001_f002, 0>(append_allow, &append).unwrap();
+            for control in [0x9001_f001, 0x9001_f003] {
+                S::command(control, 4, 0, 0)
+                    .to_result::<(), ErrorCode>()
+                    .unwrap();
+            }
+            S::command(0x9001_f000, 1, 16, 0)
+                .to_result::<(), ErrorCode>()
+                .unwrap();
+            S::command(0x9001_f002, 2, 16, 0)
+                .to_result::<(), ErrorCode>()
+                .unwrap();
+            S::exit_terminate(0);
+        });
+    }
+
+    #[cfg(any(
+        feature = "test-defmt-logging-vdm-ram",
+        feature = "test-mctp-vdm-cmds-ram",
+        feature = "test-mcu-mbox-cmds-ram",
+        feature = "test-defmt-logging-release-ram"
+    ))]
+    assert_eq!(
+        caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM,
+        caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM
+    );
+
+    #[cfg(feature = "test-log-ram-seed")]
+    {
+        let log: caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall =
+            caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall::new(
+                caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM,
+            );
+        for entry in caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES {
+            log.append_entry(entry).await.expect("seed RAM debug log");
+        }
+    }
+
     // Initialize measurement state before spawning any task that could consume
     // it (image loading, firmware update, SPDM/evidence, MCU mailbox).
     let soc_image_load_list = soc_image_descriptors::SOC_IMAGE_LOAD_LIST;
@@ -197,7 +249,7 @@ pub(crate) async fn async_main() {
         .map_err(|_| log_spawn_error())
         .ok();
 
-    // Production userspace defmt logging: drain staged frames to the flash log
+    // Production userspace defmt logging: drain staged frames to the selected log
     // capsule for host-side decoding. Device-only (defmt's linker section).
     #[cfg(all(feature = "userspace-log", target_arch = "riscv32"))]
     EXECUTOR

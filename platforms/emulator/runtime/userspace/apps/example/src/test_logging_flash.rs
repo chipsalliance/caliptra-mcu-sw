@@ -7,10 +7,11 @@
 // success is reported via the process exit code from `main`, not via stdout.
 #[cfg(feature = "crash-log")]
 use caliptra_mcu_config_emulator::flash::LOGGING_FLASH_DRIVER_NUMS;
+use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall;
 
 pub async fn test_logging_flash_simple() {
-    let log: LoggingSyscall = LoggingSyscall::default();
+    let log: LoggingSyscall = LoggingSyscall::new(LOGGING_PARTITION.driver_num);
 
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
@@ -36,7 +37,7 @@ pub async fn test_logging_flash_simple() {
 }
 
 pub async fn test_logging_flash_various_entries() {
-    let log: LoggingSyscall = LoggingSyscall::default();
+    let log: LoggingSyscall = LoggingSyscall::new(LOGGING_PARTITION.driver_num);
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
     assert!(log.seek_beginning().await.is_ok(), "Seek beginning failed");
@@ -102,7 +103,7 @@ pub async fn test_logging_flash_various_entries() {
 
 #[cfg(feature = "crash-log")]
 pub async fn test_logging_flash_multiple_instances() {
-    let log0: LoggingSyscall = LoggingSyscall::default();
+    let log0: LoggingSyscall = LoggingSyscall::new(LOGGING_PARTITION.driver_num);
     let log1: LoggingSyscall = LoggingSyscall::new(LOGGING_FLASH_DRIVER_NUMS[1]);
     assert!(log0.exists().is_ok(), "Logging instance 0 doesn't exist");
     assert!(log1.exists().is_ok(), "Logging instance 1 doesn't exist");
@@ -180,7 +181,7 @@ pub async fn test_logging_flash_multiple_instances() {
 }
 
 pub async fn test_logging_flash_invalid_inputs() {
-    let log: LoggingSyscall = LoggingSyscall::default();
+    let log: LoggingSyscall = LoggingSyscall::new(LOGGING_PARTITION.driver_num);
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
     assert!(log.seek_beginning().await.is_ok(), "Seek beginning failed");

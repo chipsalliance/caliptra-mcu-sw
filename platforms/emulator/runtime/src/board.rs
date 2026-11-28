@@ -1,6 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::interrupts::EmulatorPeripherals;
+#[cfg(feature = "test-logging-driver")]
+use crate::tests::logging_driver_test::{
+    ControlledLog, CONTROL_DRIVER, EXIT_CONTROL_DRIVER, EXIT_LOG_DRIVER, LOG_DRIVER,
+};
 use crate::MCU_MEMORY_MAP;
 #[cfg(any(
     feature = "spdm",
@@ -33,6 +37,8 @@ use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use caliptra_mcu_components::doe_component_static;
 #[cfg(feature = "userspace-log")]
 use caliptra_mcu_components::instantiate_logging_flash;
+#[cfg(feature = "userspace-ram-log")]
+use caliptra_mcu_components::instantiate_logging_ram;
 #[cfg(any(
     feature = "spdm",
     feature = "streaming-boot",
@@ -58,7 +64,7 @@ use caliptra_mcu_components::{
 };
 #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
-#[cfg(feature = "crash-log")]
+#[cfg(all(feature = "crash-log", feature = "userspace-log"))]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
 use caliptra_mcu_config_emulator::flash::EMULATED_EXT_OTP_PARTITION;
 #[cfg(feature = "userspace-log")]
@@ -69,6 +75,8 @@ use caliptra_mcu_config_emulator::flash::{
 };
 #[cfg(feature = "userspace-log")]
 use caliptra_mcu_config_emulator::logging_flash_list;
+#[cfg(feature = "userspace-ram-log")]
+use caliptra_mcu_config_emulator::logging_ram_list;
 #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 #[cfg(feature = "doe")]
@@ -176,6 +184,11 @@ pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct VeeR {
+    #[cfg(feature = "test-logging-driver")]
+    test_logs:
+        [&'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>; 2],
+    #[cfg(feature = "test-logging-driver")]
+    test_log_controls: [&'static ControlledLog; 2],
     alarm: &'static capsules_core::alarm::AlarmDriver<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -215,6 +228,10 @@ struct VeeR {
     logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     >; caliptra_mcu_config_emulator::flash::LOGGING_FLASH_INSTANCE_COUNT],
+    #[cfg(feature = "userspace-ram-log")]
+    logging_ram: [Option<
+        &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingRamDriver<'static>,
+    >; caliptra_mcu_config_emulator::ram::LOGGING_RAM_INSTANCE_COUNT],
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     #[cfg(feature = "mcu-mbox-service")]
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
@@ -241,6 +258,14 @@ impl SyscallDriverLookup for VeeR {
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
     {
         match driver_num {
+            #[cfg(feature = "test-logging-driver")]
+            LOG_DRIVER => f(Some(self.test_logs[0])),
+            #[cfg(feature = "test-logging-driver")]
+            EXIT_LOG_DRIVER => f(Some(self.test_logs[1])),
+            #[cfg(feature = "test-logging-driver")]
+            CONTROL_DRIVER => f(Some(self.test_log_controls[0])),
+            #[cfg(feature = "test-logging-driver")]
+            EXIT_CONTROL_DRIVER => f(Some(self.test_log_controls[1])),
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(self
                 .console
@@ -300,6 +325,18 @@ impl SyscallDriverLookup for VeeR {
             #[cfg(feature = "mcu-mbox-service")]
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
+            }
+            #[cfg(feature = "userspace-ram-log")]
+            n if caliptra_mcu_config_emulator::ram::LOGGING_RAM_DRIVER_NUMS
+                .iter()
+                .any(|d| *d as usize == n) =>
+            {
+                for drv in self.logging_ram.iter().flatten() {
+                    if drv.get_driver_num() == driver_num {
+                        return f(Some(*drv));
+                    }
+                }
+                f(None)
             }
             caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
@@ -921,6 +958,38 @@ pub unsafe fn main() {
         )
         .finalize(memory_flash_partition_component_static!());
 
+    #[cfg(feature = "test-logging-driver")]
+    let (test_logs, test_log_controls) = {
+        use caliptra_mcu_capsules_runtime::logging::driver::{LoggingFlashDriver, BUF_LEN};
+        use kernel::hil::log::{LogRead, LogWrite};
+
+        let log = static_init!(ControlledLog, ControlledLog::new(board_kernel));
+        let exit_log = static_init!(ControlledLog, ControlledLog::new(board_kernel));
+        let driver = static_init!(
+            LoggingFlashDriver<'static>,
+            LoggingFlashDriver::new(
+                log,
+                LOG_DRIVER,
+                board_kernel.create_grant(LOG_DRIVER, &memory_allocation_cap),
+                static_init!([u8; BUF_LEN], [0; BUF_LEN]),
+            )
+        );
+        let exit_driver = static_init!(
+            LoggingFlashDriver<'static>,
+            LoggingFlashDriver::new(
+                exit_log,
+                EXIT_LOG_DRIVER,
+                board_kernel.create_grant(EXIT_LOG_DRIVER, &memory_allocation_cap),
+                static_init!([u8; BUF_LEN], [0; BUF_LEN]),
+            )
+        );
+        log.set_read_client(driver);
+        log.set_append_client(driver);
+        exit_log.set_read_client(exit_driver);
+        exit_log.set_append_client(exit_driver);
+        ([&*driver, &*exit_driver], [&*log, &*exit_log])
+    };
+
     #[cfg(feature = "userspace-log")]
     let mut logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
@@ -937,6 +1006,20 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
         caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE,
         true
+    );
+
+    #[cfg(feature = "userspace-ram-log")]
+    let mut logging_ram: [Option<
+        &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingRamDriver<'static>,
+    >; caliptra_mcu_config_emulator::ram::LOGGING_RAM_INSTANCE_COUNT] =
+        [None; caliptra_mcu_config_emulator::ram::LOGGING_RAM_INSTANCE_COUNT];
+
+    #[cfg(feature = "userspace-ram-log")]
+    instantiate_logging_ram!(
+        logging_ram_list,
+        logging_ram,
+        board_kernel,
+        !cfg!(feature = "test-log-ram-linear")
     );
 
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
@@ -1121,8 +1204,14 @@ pub unsafe fn main() {
             mailbox,
             caliptra,
             dma,
+            #[cfg(feature = "test-logging-driver")]
+            test_logs,
+            #[cfg(feature = "test-logging-driver")]
+            test_log_controls,
             #[cfg(feature = "userspace-log")]
             logging_flash,
+            #[cfg(feature = "userspace-ram-log")]
+            logging_ram,
             mci,
             #[cfg(feature = "mcu-mbox-service")]
             mcu_mbox0,
@@ -1156,6 +1245,26 @@ pub unsafe fn main() {
         caliptra_mcu_romtime::println!("[mcu-runtime] Error loading processes!");
         caliptra_mcu_romtime::println!("{:?}", err);
     });
+
+    #[cfg(feature = "test-logging-driver")]
+    {
+        let mut loaded = 0;
+        board_kernel.process_each_capability(&process_mgmt_cap, |process| {
+            loaded += 1;
+            caliptra_mcu_romtime::println!(
+                "[logging-driver] loaded {} state {:?}",
+                process.get_process_name(),
+                process.get_state()
+            );
+        });
+        if loaded != 2 {
+            caliptra_mcu_romtime::println!(
+                "logging-driver: FAIL: expected 2 loaded processes, found {}",
+                loaded
+            );
+            crate::io::exit_emulator(1);
+        }
+    }
 
     // Used by flash driver integration tests.
     {

@@ -11,7 +11,7 @@
 //!
 //! This exercises the full host-library E2E path that the `mctp-vdm-client
 //! get-log --elf` CLI ships:
-//!   device defmt::* → flash log → VDM GetDebugLog → drain_debug_log →
+//!   device defmt::* → selected log → VDM GetDebugLog → drain_debug_log →
 //!   decode_defmt_stream(elf) → human-readable messages
 //!
 //! Runs on both the emulator and FPGA.
@@ -31,8 +31,6 @@ mod test {
     use std::process::exit;
     use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
-
-    const FEATURE: &str = "test-defmt-logging-vdm";
 
     /// Decoded messages the user app emits at startup (see `defmt_test.rs`).
     /// Kept in sync with `test_defmt_logging_mailbox::EXPECTED_MESSAGES`.
@@ -63,9 +61,9 @@ mod test {
     /// Tries the firmware bundle first (works on FPGA where the host has no
     /// access to the build tree), then falls back to the build's on-disk path
     /// (typical emulator runs).
-    fn user_app_elf() -> Vec<u8> {
+    fn user_app_elf(feature: &str) -> Vec<u8> {
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            if let Some(bytes) = binaries.test_user_app_elf(FEATURE) {
+            if let Some(bytes) = binaries.test_user_app_elf(feature) {
                 return bytes.to_vec();
             }
         }
@@ -75,7 +73,7 @@ mod test {
             .join("devel")
             .join("user-app");
         if !path.exists() {
-            let _ = compile_runtime(Some(FEATURE), false);
+            let _ = compile_runtime(Some(feature), false);
         }
         std::fs::read(&path)
             .unwrap_or_else(|e| panic!("failed to read user-app ELF {}: {}", path.display(), e))
@@ -85,8 +83,8 @@ mod test {
     /// in `test_mctp_vdm_validator::run_validator_in_process` but adds the
     /// `DefmtRoundTripCheck` so the run also exercises the host library's
     /// defmt drain + decode path.
-    fn run_validator_in_process(i3c_port: u16, i3c_address: DynamicI3cAddress) {
-        let elf = user_app_elf();
+    fn run_validator_in_process(i3c_port: u16, i3c_address: DynamicI3cAddress, feature: &str) {
+        let elf = user_app_elf(feature);
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
@@ -162,22 +160,31 @@ mod test {
 
     #[test]
     fn test_defmt_logging_vdm() {
+        run_defmt_logging_vdm("test-defmt-logging-vdm");
+    }
+
+    #[test]
+    fn test_defmt_logging_vdm_ram() {
+        run_defmt_logging_vdm("test-defmt-logging-vdm-ram");
+    }
+
+    fn run_defmt_logging_vdm(feature: &str) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
 
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(FEATURE),
+            feature: Some(feature),
             i3c_port: Some(i3c_port),
             ..Default::default()
         });
 
         hw.start_i3c_controller();
 
-        // FPGA-only setup: bring up the imaginary flash controller (the
-        // device-side userlog drain task writes through mcu_mbox0 to it).
-        // The log starts empty; the runtime fills it from defmt::* call sites.
+        // FPGA-only setup: start the host Flash controller service.
+        // Flash logging uses this service; RAM storage does not.
+        // The selected log starts empty; the runtime fills it from defmt::* call sites.
         #[cfg(feature = "fpga_realtime")]
         {
             use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
@@ -196,7 +203,7 @@ mod test {
         }
 
         let i3c_address = hw.i3c_address().unwrap();
-        run_validator_in_process(i3c_port, i3c_address.into());
+        run_validator_in_process(i3c_port, i3c_address.into(), feature);
 
         let test = finish_runtime_hw_model(&mut hw);
         assert_eq!(0, test);

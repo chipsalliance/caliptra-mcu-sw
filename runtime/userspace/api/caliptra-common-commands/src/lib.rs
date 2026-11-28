@@ -232,7 +232,7 @@ impl Default for CertChainInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum LogType {
-    /// MCU debug log (Tock logging-flash capsule).
+    /// MCU debug log (selected Tock logging capsule).
     Debug = 0,
 }
 

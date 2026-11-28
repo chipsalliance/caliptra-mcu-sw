@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-// Component for the flash-based logging capsule.
+// Components for the Flash and RAM logging capsules.
 
 use caliptra_mcu_capsules_runtime::logging;
 use core::mem::MaybeUninit;
@@ -152,6 +152,88 @@ where
 
         log.init();
 
+        driver
+    }
+}
+
+#[macro_export]
+macro_rules! logging_ram_component_static {
+    ($size:expr, $buf_len:expr $(,)?) => {{
+        let storage = kernel::static_buf!([u8; $size]);
+        let log =
+            kernel::static_buf!(caliptra_mcu_capsules_runtime::logging::logging_ram::Log<'static>);
+        let driver = kernel::static_buf!(
+            caliptra_mcu_capsules_runtime::logging::driver::LoggingRamDriver<'static>
+        );
+        let buffer = kernel::static_buf!([u8; $buf_len]);
+        (storage, log, driver, buffer)
+    }};
+}
+
+#[macro_export]
+macro_rules! instantiate_logging_ram {
+    ($list_macro:tt, $instances:ident, $kernel:expr, $circular:expr) => {{
+        macro_rules! assign_logging_ram {
+            ($idx:expr, $_var:ident, $partition:path) => {
+                $instances[$idx] = Some(
+                    $crate::logging::LoggingRamComponent::<{ $partition.size }>::new(
+                        $kernel,
+                        $partition.driver_num as usize,
+                        $circular,
+                    )
+                    .finalize($crate::logging_ram_component_static!(
+                        $partition.size,
+                        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+                    )),
+                );
+            };
+        }
+        $list_macro!(assign_logging_ram);
+    }};
+}
+
+pub struct LoggingRamComponent<const SIZE: usize> {
+    board_kernel: &'static kernel::Kernel,
+    driver_num: usize,
+    circular: bool,
+}
+
+impl<const SIZE: usize> LoggingRamComponent<SIZE> {
+    pub fn new(board_kernel: &'static kernel::Kernel, driver_num: usize, circular: bool) -> Self {
+        Self {
+            board_kernel,
+            driver_num,
+            circular,
+        }
+    }
+}
+
+impl<const SIZE: usize> Component for LoggingRamComponent<SIZE> {
+    type StaticInput = (
+        &'static mut MaybeUninit<[u8; SIZE]>,
+        &'static mut MaybeUninit<logging::logging_ram::Log<'static>>,
+        &'static mut MaybeUninit<logging::driver::LoggingRamDriver<'static>>,
+        &'static mut MaybeUninit<[u8; logging::driver::BUF_LEN]>,
+    );
+    type Output = &'static logging::driver::LoggingRamDriver<'static>;
+
+    fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
+        let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+        let log = static_buffer.1.write(logging::logging_ram::Log::new(
+            static_buffer.0.write([0; SIZE]),
+            self.circular,
+        ));
+        kernel::deferred_call::DeferredCallClient::register(log);
+        let driver = static_buffer
+            .2
+            .write(logging::driver::LoggingRamDriver::new(
+                log,
+                self.driver_num,
+                self.board_kernel.create_grant(self.driver_num, &grant_cap),
+                static_buffer.3.write([0; logging::driver::BUF_LEN]),
+            ));
+        log.set_read_client(driver);
+        log.set_append_client(driver);
         driver
     }
 }

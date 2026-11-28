@@ -14,7 +14,7 @@ pub use fmt::{Bytes, Dbg, Hex32};
 pub use defmt;
 
 /// Largest single defmt frame staged/drained, in bytes. Matches the kernel
-/// flash-log per-entry scratch; frames larger than this are dropped whole.
+/// logging per-entry scratch; frames larger than this are dropped whole.
 #[cfg(feature = "defmt-transport")]
 pub(crate) const FRAME_MAX: usize = 256;
 

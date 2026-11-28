@@ -29,6 +29,7 @@ mod test_i3c_dcr;
 mod test_i3c_faults;
 mod test_i3c_simple;
 mod test_log_flash_usermode;
+mod test_log_ram_usermode;
 mod test_mctp_capsule_loopback;
 mod test_mctp_spdm_attestation;
 mod test_mctp_spdm_attestation_pcr_quote;
@@ -133,9 +134,8 @@ mod test {
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
         pub use_strap_secrets: bool,
-        /// If set, the kernel logging-flash partition is host-side seeded
-        /// with these entries before the firmware boots. Honored on both
-        /// emulator and FPGA via `BootParams::primary_flash_initial_contents`.
+        /// Seed Flash before boot. With RAM selected, use test firmware to
+        /// append TEST_DEBUG_LOG_ENTRIES before starting command services.
         pub seeded_log_entries: Option<&'static [&'static [u8]]>,
         /// If true, include the example app in the runtime build instead of the user app.
         pub example_app: bool,
@@ -617,6 +617,35 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
+        let ram_seed_features;
+        let params = if caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM
+            == caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM
+            && params.seeded_log_entries.is_some()
+        {
+            assert_eq!(
+                params.seeded_log_entries.unwrap(),
+                caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES,
+                "RAM test seeding supports the shared debug-log fixture"
+            );
+            assert!(
+                params.custom_mcu_runtime.is_none() && params.firmware_prefix.is_none(),
+                "RAM test seeding requires a runtime built with test-log-ram-seed"
+            );
+            ram_seed_features = match params.feature {
+                Some("test-mctp-vdm-cmds") => "test-mctp-vdm-cmds-ram".to_string(),
+                Some("test-mcu-mbox-cmds") => "test-mcu-mbox-cmds-ram".to_string(),
+                Some("test-defmt-logging-release") => "test-defmt-logging-release-ram".to_string(),
+                Some(feature) if !feature.is_empty() => format!("{feature},test-log-ram-seed"),
+                _ => "test-log-ram-seed".to_string(),
+            };
+            TestParams {
+                feature: Some(&ram_seed_features),
+                seeded_log_entries: None,
+                ..params
+            }
+        } else {
+            params
+        };
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
@@ -1809,6 +1838,51 @@ mod test {
     run_test!(test_log_flash_linear);
     #[cfg(not(feature = "fpga_realtime"))]
     run_test!(test_log_flash_usermode, example_app);
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    fn test_logging_driver() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let feature = "test-logging-driver";
+        let runtime = get_or_compile_runtime(feature, true);
+        let builder = create_caliptra_builder_with_prebuilt(runtime.clone(), feature);
+        let flash_storage = tempfile::tempdir().expect("Failed to create test flash directory");
+        let output = runtime_command(
+            feature,
+            ROM.to_path_buf(),
+            runtime,
+            PortPicker::new().random(true).pick().unwrap().to_string(),
+            true,
+            DeviceLifecycle::Production,
+            None,
+            None,
+            None,
+            None,
+            builder,
+            None,
+            None,
+            None,
+            None,
+        )
+        .arg("--flash-storage-dir")
+        .arg(flash_storage.path())
+        .output()
+        .expect("Failed to run logging driver regression");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        print!("{stdout}");
+        eprint!("{stderr}");
+        assert!(output.status.success(), "Logging driver emulator failed");
+        assert!(
+            stderr.contains("logging-driver: PASS"),
+            "logging driver regressions did not reach their completion marker"
+        );
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(feature = "fpga_realtime"))]
+    run_test!(test_log_ram_usermode, example_app);
+    #[cfg(not(feature = "fpga_realtime"))]
+    run_test!(test_log_ram_linear, example_app);
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);

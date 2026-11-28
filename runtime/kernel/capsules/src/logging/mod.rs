@@ -2,3 +2,4 @@
 
 pub mod driver;
 pub mod logging_flash;
+pub mod logging_ram;

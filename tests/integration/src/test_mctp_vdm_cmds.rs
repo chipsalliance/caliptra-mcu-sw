@@ -414,16 +414,24 @@ pub mod test {
 
         // FPGA-only setup:
         //   1. MCU flash I/O goes via mcu_mbox0 to ImaginaryFlashController,
-        //      independent of emulator's primary_flash. Seed the file directly.
+        //      independent of emulator's primary_flash. Initialize the host Flash
+        //      file; only Flash-selected runs seed log records there.
         //   2. Sync with the user-space VDM responder before sending the first
         //      Private Write, otherwise the request races the responder's
         //      subscribe and is dropped (MctpUtil sends each request only once).
         #[cfg(feature = "fpga_realtime")]
         {
-            use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
+            use caliptra_mcu_config_fpga::flash::LOGGING_PARTITION;
+            let entries = if caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM
+                == caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM
+            {
+                &[][..]
+            } else {
+                config::TEST_DEBUG_LOG_ENTRIES
+            };
             let seeded = caliptra_mcu_testing_common::logging_seed::splice_logging_partition_into_flash_image(
                 None,
-                config::TEST_DEBUG_LOG_ENTRIES,
+                entries,
                 LOGGING_PARTITION.offset,
                 LOGGING_PARTITION.size,
                 256,

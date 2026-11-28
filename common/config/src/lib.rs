@@ -5,7 +5,20 @@
 pub mod boot;
 pub mod capabilities;
 pub mod flash;
+pub mod ram;
 pub mod version;
+
+/// Driver numbers for the normal logging partitions, not crash-log partitions.
+pub const LOGGING_FLASH_DRIVER_NUM: u32 = 0x9001_0000;
+pub const LOGGING_RAM_DRIVER_NUM: u32 = 0x9002_0000;
+
+/// Default userspace logging destination. Select LOGGING_RAM_DRIVER_NUM for RAM.
+/// The selected driver must be enabled in the platform's kernel configuration.
+pub const DEFAULT_LOGGING_DRIVER_NUM: u32 = if cfg!(feature = "test-ram-log") {
+    LOGGING_RAM_DRIVER_NUM
+} else {
+    LOGGING_FLASH_DRIVER_NUM
+};
 
 /// Userspace flash-partition driver used for the ROM-compatible DOT blob.
 pub const DOT_BLOB_STORE_DRIVER_NUM: u32 = 0x8000_0023;

@@ -9,3 +9,6 @@ edition.workspace = true
 [dependencies]
 bitflags.workspace = true
 caliptra-mcu-registers-generated.workspace = true
+
+[features]
+test-ram-log = []

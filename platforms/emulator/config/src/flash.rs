@@ -203,7 +203,7 @@ pub const LOGGING_PARTITION: FlashPartition = FlashPartition {
     name: "logging",
     offset: 0x03FF_8000,
     size: 32 * 1024,
-    driver_num: 0x9001_0000,
+    driver_num: caliptra_mcu_config::LOGGING_FLASH_DRIVER_NUM,
 };
 
 #[cfg(feature = "crash-log")]
