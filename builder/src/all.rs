@@ -80,6 +80,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-fpga-flash-ctrl",
     "test-get-device-state",
     "test-log-flash-usermode",
+    "test-logging-driver",
     "test-mbox-sram",
     "test-mci",
     "test-mctp-user-loopback",

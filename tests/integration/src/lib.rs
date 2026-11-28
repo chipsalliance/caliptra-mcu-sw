@@ -1809,6 +1809,47 @@ mod test {
     run_test!(test_log_flash_linear);
     #[cfg(not(feature = "fpga_realtime"))]
     run_test!(test_log_flash_usermode, example_app);
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    fn test_logging_driver() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let feature = "test-logging-driver";
+        let runtime = get_or_compile_runtime(feature, true);
+        let builder = create_caliptra_builder_with_prebuilt(runtime.clone(), feature);
+        let flash_storage = tempfile::tempdir().expect("Failed to create test flash directory");
+        let output = runtime_command(
+            feature,
+            ROM.to_path_buf(),
+            runtime,
+            PortPicker::new().random(true).pick().unwrap().to_string(),
+            true,
+            DeviceLifecycle::Production,
+            None,
+            None,
+            None,
+            None,
+            builder,
+            None,
+            None,
+            None,
+            None,
+        )
+        .arg("--flash-storage-dir")
+        .arg(flash_storage.path())
+        .output()
+        .expect("Failed to run logging driver regression");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        print!("{stdout}");
+        eprint!("{stderr}");
+        assert!(output.status.success(), "Logging driver emulator failed");
+        assert!(
+            stderr.contains("logging-driver: PASS"),
+            "logging driver regressions did not reach their completion marker"
+        );
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);

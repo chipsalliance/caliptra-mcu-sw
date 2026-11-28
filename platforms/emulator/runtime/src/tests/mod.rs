@@ -1,5 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+#[cfg(feature = "test-logging-driver")]
+pub(crate) mod logging_driver_test;
+
 #[cfg(any(feature = "test-log-flash-circular", feature = "test-log-flash-linear",))]
 pub(crate) mod circular_log_test;
 #[cfg(feature = "test-doe-transport-loopback")]
