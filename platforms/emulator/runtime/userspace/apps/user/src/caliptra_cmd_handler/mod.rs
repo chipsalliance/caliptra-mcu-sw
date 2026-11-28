@@ -381,7 +381,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     /// Drain entries of `log_type` from the backing store.
     ///
-    /// The debug log is backed by the Tock logging-flash capsule via
+    /// The debug log uses the selected Tock logging capsule via
     /// [`LoggingSyscall`](caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall);
     /// the kernel cursor is advanced as entries are consumed and any entry
     /// that does not fit is held over for the next call.

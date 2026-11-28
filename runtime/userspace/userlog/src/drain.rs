@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-//! Async task that ships staged defmt frames to the flash log capsule.
+//! Async task that ships staged defmt frames to the configured default log capsule.
 //!
 //! The logger runs in a critical section and only stages frames; this task pops
-//! them one at a time and appends each as a flash log entry.
+//! them one at a time and appends each as a log entry.
 
 use crate::logger::RING;
 use crate::FRAME_MAX;
@@ -15,8 +15,8 @@ use embassy_sync::signal::Signal;
 /// Signalled by the logger after each frame is staged.
 pub(crate) static WAKE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-/// Drains staged defmt frames into the flash log. Spawn this once from the
-/// userspace app's executor. Parks immediately if no logging-flash capsule is
+/// Drains staged defmt frames into the default log. Spawn this once from the
+/// userspace app's executor. Returns immediately if the selected capsule is not
 /// present (e.g. host fake-kernel unit tests).
 #[embassy_executor::task]
 pub async fn drain_task() {

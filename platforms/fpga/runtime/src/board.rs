@@ -223,6 +223,8 @@ struct VeeR {
     #[cfg(feature = "userspace-log")]
     logging_flash:
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
+    #[cfg(feature = "userspace-ram-log")]
+    logging_ram: &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingRamDriver<'static>,
     dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
     pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
 }
@@ -294,6 +296,10 @@ impl SyscallDriverLookup for VeeR {
             #[cfg(feature = "userspace-log")]
             caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
+            }
+            #[cfg(feature = "userspace-ram-log")]
+            n if n == caliptra_mcu_config_fpga::ram::LOGGING_PARTITION.driver_num as usize => {
+                f(Some(self.logging_ram))
             }
             caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM => {
                 f(Some(self.dpe_handle_store))
@@ -854,6 +860,19 @@ pub unsafe fn main() {
     #[cfg(feature = "userspace-log")]
     caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
 
+    #[cfg(feature = "userspace-ram-log")]
+    let logging_ram = caliptra_mcu_components::logging::LoggingRamComponent::<
+        { caliptra_mcu_config_fpga::ram::LOGGING_PARTITION.size },
+    >::new(
+        board_kernel,
+        caliptra_mcu_config_fpga::ram::LOGGING_PARTITION.driver_num as usize,
+        !cfg!(feature = "test-log-ram-linear"),
+    )
+    .finalize(caliptra_mcu_components::logging_ram_component_static!(
+        caliptra_mcu_config_fpga::ram::LOGGING_PARTITION.size,
+        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+    ));
+
     let total_heks = 0;
     let otp = caliptra_mcu_components::otp::OtpComponent::new(
         board_kernel,
@@ -1055,6 +1074,8 @@ pub unsafe fn main() {
             dma,
             #[cfg(feature = "userspace-log")]
             logging_flash,
+            #[cfg(feature = "userspace-ram-log")]
+            logging_ram,
             dpe_handle_store,
             pcr_store,
         }

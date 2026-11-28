@@ -68,7 +68,7 @@ pub struct LoggingSyscall<S: Syscalls = DefaultSyscalls> {
 
 impl<S: Syscalls> Default for LoggingSyscall<S> {
     fn default() -> Self {
-        Self::new(driver_num::LOGGING_FLASH)
+        Self::new(caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM)
     }
 }
 
@@ -195,7 +195,8 @@ impl<S: Syscalls> LoggingSyscall<S> {
         result.and_then(|(len, err, _)| upcall_err_to_result(err).map(|_| len as usize))
     }
 
-    /// Synchronizes the log to ensure all data is written to persistent storage.
+    /// Requests persistence synchronization from the selected backend.
+    /// RAM returns `ErrorCode::NoSupport`.
     ///
     /// # Returns
     /// * `Ok(())` - On success.
@@ -318,8 +319,8 @@ extern "C" fn append_done(
 // -----------------------------------------------------------------------------
 
 pub mod driver_num {
-    /// Conventional driver number for instance 0; additional instances are platform-defined.
-    pub const LOGGING_FLASH: u32 = 0x9001_0000;
+    /// Driver number for the normal Flash log; additional instances are platform-defined.
+    pub const LOGGING_FLASH: u32 = caliptra_mcu_config::LOGGING_FLASH_DRIVER_NUM;
 }
 
 // Upcalls

@@ -37,6 +37,8 @@ use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use caliptra_mcu_components::doe_component_static;
 #[cfg(feature = "userspace-log")]
 use caliptra_mcu_components::instantiate_logging_flash;
+#[cfg(feature = "userspace-ram-log")]
+use caliptra_mcu_components::instantiate_logging_ram;
 #[cfg(any(
     feature = "spdm",
     feature = "streaming-boot",
@@ -62,7 +64,7 @@ use caliptra_mcu_components::{
 };
 #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
-#[cfg(feature = "crash-log")]
+#[cfg(all(feature = "crash-log", feature = "userspace-log"))]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
 use caliptra_mcu_config_emulator::flash::EMULATED_EXT_OTP_PARTITION;
 #[cfg(feature = "userspace-log")]
@@ -73,6 +75,8 @@ use caliptra_mcu_config_emulator::flash::{
 };
 #[cfg(feature = "userspace-log")]
 use caliptra_mcu_config_emulator::logging_flash_list;
+#[cfg(feature = "userspace-ram-log")]
+use caliptra_mcu_config_emulator::logging_ram_list;
 #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 #[cfg(feature = "doe")]
@@ -224,6 +228,10 @@ struct VeeR {
     logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     >; caliptra_mcu_config_emulator::flash::LOGGING_FLASH_INSTANCE_COUNT],
+    #[cfg(feature = "userspace-ram-log")]
+    logging_ram: [Option<
+        &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingRamDriver<'static>,
+    >; caliptra_mcu_config_emulator::ram::LOGGING_RAM_INSTANCE_COUNT],
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     #[cfg(feature = "mcu-mbox-service")]
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
@@ -317,6 +325,18 @@ impl SyscallDriverLookup for VeeR {
             #[cfg(feature = "mcu-mbox-service")]
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
+            }
+            #[cfg(feature = "userspace-ram-log")]
+            n if caliptra_mcu_config_emulator::ram::LOGGING_RAM_DRIVER_NUMS
+                .iter()
+                .any(|d| *d as usize == n) =>
+            {
+                for drv in self.logging_ram.iter().flatten() {
+                    if drv.get_driver_num() == driver_num {
+                        return f(Some(*drv));
+                    }
+                }
+                f(None)
             }
             caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
@@ -988,6 +1008,20 @@ pub unsafe fn main() {
         true
     );
 
+    #[cfg(feature = "userspace-ram-log")]
+    let mut logging_ram: [Option<
+        &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingRamDriver<'static>,
+    >; caliptra_mcu_config_emulator::ram::LOGGING_RAM_INSTANCE_COUNT] =
+        [None; caliptra_mcu_config_emulator::ram::LOGGING_RAM_INSTANCE_COUNT];
+
+    #[cfg(feature = "userspace-ram-log")]
+    instantiate_logging_ram!(
+        logging_ram_list,
+        logging_ram,
+        board_kernel,
+        !cfg!(feature = "test-log-ram-linear")
+    );
+
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
@@ -1176,6 +1210,8 @@ pub unsafe fn main() {
             test_log_controls,
             #[cfg(feature = "userspace-log")]
             logging_flash,
+            #[cfg(feature = "userspace-ram-log")]
+            logging_ram,
             mci,
             #[cfg(feature = "mcu-mbox-service")]
             mcu_mbox0,

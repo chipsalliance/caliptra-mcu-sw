@@ -94,7 +94,7 @@ unsafe impl defmt::Logger for Logger {
     unsafe fn flush() {
         // Point of no return: the async drain task will not run again. Let any
         // append it left in flight drain first (bounded, never hangs), then
-        // synchronously push the frames still staged in RING to flash.
+        // synchronously push the frames still staged in RING to the default log.
         for _ in 0..MAX_FLUSH_DRAIN_YIELDS {
             if DefaultSyscalls::yield_no_wait() == YieldNoWaitReturn::NoUpcall {
                 break;
@@ -126,7 +126,7 @@ unsafe impl defmt::Logger for Logger {
         TAKEN.store(false, Ordering::Relaxed);
         let restore = CS_RESTORE;
         critical_section::release(restore);
-        // Wake the drain task to ship the frame(s) to flash.
+        // Wake the drain task to ship the frame(s) to the default log.
         WAKE.signal(());
     }
 

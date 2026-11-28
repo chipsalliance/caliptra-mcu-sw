@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+caliptra-mcu-config.workspace = true
 embassy-sync.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_platform.workspace = true

@@ -143,6 +143,28 @@ pub(crate) async fn async_main() {
         });
     }
 
+    #[cfg(any(
+        feature = "test-defmt-logging-vdm-ram",
+        feature = "test-mctp-vdm-cmds-ram",
+        feature = "test-mcu-mbox-cmds-ram",
+        feature = "test-defmt-logging-release-ram"
+    ))]
+    assert_eq!(
+        caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM,
+        caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM
+    );
+
+    #[cfg(feature = "test-log-ram-seed")]
+    {
+        let log: caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall =
+            caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall::new(
+                caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM,
+            );
+        for entry in caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES {
+            log.append_entry(entry).await.expect("seed RAM debug log");
+        }
+    }
+
     // Initialize measurement state before spawning any task that could consume
     // it (image loading, firmware update, SPDM/evidence, MCU mailbox).
     let soc_image_load_list = soc_image_descriptors::SOC_IMAGE_LOAD_LIST;
@@ -227,7 +249,7 @@ pub(crate) async fn async_main() {
         .map_err(|_| log_spawn_error())
         .ok();
 
-    // Production userspace defmt logging: drain staged frames to the flash log
+    // Production userspace defmt logging: drain staged frames to the selected log
     // capsule for host-side decoding. Device-only (defmt's linker section).
     #[cfg(all(feature = "userspace-log", target_arch = "riscv32"))]
     EXECUTOR

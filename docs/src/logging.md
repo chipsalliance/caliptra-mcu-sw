@@ -52,7 +52,7 @@ All log entries are stored as a contiguous byte array in the backend storage.
 
 - **RAM Backend**
     - Implements a circular buffer in RAM.
-    - Provides fast access, but is volatile (logs are lost on reset).
+    - Provides fast access, but is volatile; initialization starts an empty log, and power loss does not retain it.
     - Primarily used for debug and runtime diagnostics.
 
 - **Multiple Log Types**
@@ -61,6 +61,14 @@ All log entries are stored as a contiguous byte array in the backend storage.
 
 ## Architecture
 
+RAM logging is opt-in through `userspace-ram-log` on emulator and FPGA. Flash
+remains the default; `DEFAULT_LOGGING_DRIVER_NUM` selects the userspace destination.
+Applications can explicitly select another partition with `LoggingSyscall::new`.
+RAM and Flash share syscall handling, but each instance owns its storage and
+request state independently. RAM is volatile and does not support persistence
+sync. Selecting RAM neither copies logs to Flash nor changes the host retrieval
+protocol.
+
 The logging module leverages the [Tock Kernel Log HIL](https://docs.tockos.org/kernel/hil/log/index.html) to provide a unified and extensible logging API. It supports multiple storage backends, with initial implementations for both flash-based and RAM-based storage in MCU SDK.
 
 ```mermaid
@@ -68,10 +76,11 @@ flowchart TD
 
     A[Userspace App]
     B[Logging API]
-    C[Logging Syscall Driver]
+    C1[LoggingRamDriver<br/>own LoggingDriver state]
+    C2[LoggingFlashDriver<br/>own LoggingDriver state]
     subgraph Capsule Layer
         D1[Log Capsule RAM]
-        D2[Log Capsule Flash<br/>capsules/extra/src/log.rs]
+        D2[Log Capsule Flash]
     end
 
     F1[hil::flash]
@@ -84,9 +93,10 @@ flowchart TD
 
     %% Show vertical stacking by linking invisible nodes
     A -.-> B
-    B -.-> C
-    C -.-> D1
-    C -.-> D2
+    B -.-> C1
+    B -.-> C2
+    C1 -.-> D1
+    C2 -.-> D2
     D1 -.-> F2
     D2 -.-> F1
     D2 -.-> F2
@@ -97,8 +107,8 @@ flowchart TD
 ### Key Components
 
 - **Logging API**: provides a high-level, backend-agnostic interface for application to use logging module.
-- **Logging Syscall Driver**: bridges userspace and kernel space, exposing logging operations to applications via Tock syscalls.
-- **Log Capsules:** implement the `kernel::hil::log` interface for each backend storage type. Tock provides a capsule `capsules/extra/src/log.rs`for flash-based log storage, which can be used as-is. To add RAM support, a new capsule implementing the same HIL interface should be created. This modular design enables easy integration of new storage backends by simply implementing the required HIL and capsule, without modifying the core logging logic.
+- **Logging Syscall Drivers**: `LoggingFlashDriver` and `LoggingRamDriver` in `logging/driver.rs` expose each backend's supported commands and share device-neutral handling, with independent state per instance.
+- **Log Capsules:** `logging/logging_flash.rs` and `logging/logging_ram.rs` implement `kernel::hil::log` for their respective storage types.
 - **Tock Kernel Log HIL**: provides the abstraction for logging operations.
 
 ### Logging API

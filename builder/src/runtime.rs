@@ -39,14 +39,16 @@ fn runtime_features(
 
     if platform == "fpga" {
         let features = runtime_features.get_or_insert_with(String::new);
-        if !features
-            .split(',')
-            .any(|feature| feature == "disable-lms-sig-verify")
+        for feature in ["disable-lms-sig-verify"]
+            .into_iter()
+            .chain(example_app.then_some("fpga"))
         {
-            if !features.is_empty() {
-                features.push(',');
+            if !features.split(',').any(|enabled| enabled == feature) {
+                if !features.is_empty() {
+                    features.push(',');
+                }
+                features.push_str(feature);
             }
-            features.push_str("disable-lms-sig-verify");
         }
     }
 
@@ -161,6 +163,14 @@ pub fn bare_metal_build() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::runtime_features;
+
+    #[test]
+    fn fpga_example_app_receives_platform_configuration() {
+        assert_eq!(
+            runtime_features(Some("test-log-ram-usermode"), "fpga", true, true).as_deref(),
+            Some("test-log-ram-usermode,disable-lms-sig-verify,fpga")
+        );
+    }
 
     #[test]
     fn emulator_defaults_enable_dot() {

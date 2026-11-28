@@ -28,7 +28,7 @@ fn probe(log: &LoggingSyscall) -> Result<(), CaliptraCompletionCode> {
 
 /// Drain debug-log entries into `dst`, honoring entry-boundary truncation.
 ///
-/// Reads directly into successive slices of `dst`; the kernel logging-flash
+/// Reads directly into successive slices of `dst`; the selected logging
 /// capsule guarantees entry-atomic semantics — if the next entry will not fit
 /// in the buffer it is given, the capsule returns `ErrorCode::SIZE` without
 /// consuming the entry, so it is preserved for the caller's next invocation.

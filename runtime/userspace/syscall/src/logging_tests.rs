@@ -213,10 +213,10 @@ fn asynchronous_control_rejections_return_errors_and_allow_later_commands() {
 }
 
 #[test]
-fn flash_default_and_explicit_selection_are_independent() {
+fn default_routes_appends_to_configured_driver_and_explicit_selection_is_independent() {
     let _lock = TEST_LOCK.lock().unwrap();
     let kernel = fake::Kernel::new();
-    let selected = Rc::new(Driver::new(driver_num::LOGGING_FLASH));
+    let selected = Rc::new(Driver::new(caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM));
     let explicit = Rc::new(Driver::new(TEST_DRIVER));
     kernel.add_driver(&selected);
     kernel.add_driver(&explicit);
@@ -241,7 +241,13 @@ fn flash_default_and_explicit_selection_are_independent() {
 fn unavailable_default_returns_error_without_using_another_partition() {
     let _lock = TEST_LOCK.lock().unwrap();
     let kernel = fake::Kernel::new();
-    let other_num = TEST_DRIVER;
+    let other_num = if caliptra_mcu_config::DEFAULT_LOGGING_DRIVER_NUM
+        == caliptra_mcu_config::LOGGING_FLASH_DRIVER_NUM
+    {
+        caliptra_mcu_config::LOGGING_RAM_DRIVER_NUM
+    } else {
+        caliptra_mcu_config::LOGGING_FLASH_DRIVER_NUM
+    };
     let other = Rc::new(Driver::new(other_num));
     kernel.add_driver(&other);
     let log = LoggingSyscall::<fake::Syscalls>::default();

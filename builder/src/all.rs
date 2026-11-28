@@ -81,6 +81,8 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-get-device-state",
     "test-log-flash-usermode",
     "test-logging-driver",
+    "test-log-ram-usermode",
+    "test-log-ram-linear",
     "test-mbox-sram",
     "test-mci",
     "test-mctp-user-loopback",
@@ -1716,6 +1718,34 @@ fn get_default_pldm_fw_manifest(dev_uuid: &[u8], image: &[u8]) -> FirmwareManife
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registered_runtimes_are_named_cargo_features() {
+        for (manifest, runtime_features) in [
+            (
+                "platforms/emulator/runtime/Cargo.toml",
+                crate::features::EMULATOR_RUNTIME_TEST_FEATURES,
+            ),
+            (
+                "platforms/emulator/runtime/Cargo.toml",
+                crate::features::RELEASE_RUNTIME_TEST_FEATURES,
+            ),
+            (
+                "platforms/fpga/runtime/Cargo.toml",
+                crate::features::FPGA_RUNTIME_TEST_FEATURES,
+            ),
+        ] {
+            let contents = std::fs::read_to_string(PROJECT_ROOT.join(manifest)).unwrap();
+            let manifest: toml::Value = toml::from_str(&contents).unwrap();
+            let features = manifest["features"].as_table().unwrap();
+            for feature in runtime_features {
+                assert!(
+                    features.contains_key(*feature),
+                    "runtime registration must name a Cargo feature: {feature}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn generated_config_fingerprint_tracks_both_inputs_without_mtime_changes() {

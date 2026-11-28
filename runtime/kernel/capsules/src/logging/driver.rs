@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! This provides the logging syscall driver.
+//! Device-neutral ownership, queueing, and completion handling for logging syscalls.
 
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
@@ -74,7 +74,7 @@ impl Default for App {
 pub trait LogReadWrite<'a>: LogRead<'a, EntryID = usize> + LogWrite<'a> {}
 impl<'a, T: LogRead<'a, EntryID = usize> + LogWrite<'a>> LogReadWrite<'a> for T {}
 
-pub struct LoggingFlashDriver<'a> {
+struct LoggingDriver<'a> {
     driver: &'a dyn LogReadWrite<'a>,
     driver_num: usize,
     // Per-app state.
@@ -89,8 +89,8 @@ pub struct LoggingFlashDriver<'a> {
     current_app: OptionalCell<ProcessId>,
 }
 
-impl<'a> LoggingFlashDriver<'a> {
-    pub fn new(
+impl<'a> LoggingDriver<'a> {
+    fn new(
         driver: &'a dyn LogReadWrite<'a>,
         driver_num: usize,
         grant: Grant<
@@ -100,8 +100,8 @@ impl<'a> LoggingFlashDriver<'a> {
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
         buffer: &'static mut [u8],
-    ) -> LoggingFlashDriver<'a> {
-        LoggingFlashDriver {
+    ) -> Self {
+        Self {
             driver,
             driver_num,
             apps: grant,
@@ -110,8 +110,29 @@ impl<'a> LoggingFlashDriver<'a> {
         }
     }
 
-    pub fn get_driver_num(&self) -> usize {
+    fn get_driver_num(&self) -> usize {
         self.driver_num
+    }
+
+    fn dispatch(
+        &self,
+        command: LoggingOps,
+        processid: ProcessId,
+        arg1: usize,
+        arg2: usize,
+    ) -> CommandReturn {
+        match self.enqueue_command(command, Some(processid), arg1, arg2) {
+            Ok(()) => CommandReturn::success(),
+            Err(error) => CommandReturn::failure(error),
+        }
+    }
+
+    fn capacity(&self) -> CommandReturn {
+        CommandReturn::success_u32(self.driver.get_size() as u32)
+    }
+
+    fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
+        self.apps.enter(processid, |_, _| {})
     }
 
     fn enqueue_command(
@@ -259,7 +280,7 @@ impl<'a> LoggingFlashDriver<'a> {
     }
 }
 
-impl LogReadClient for LoggingFlashDriver<'_> {
+impl LogReadClient for LoggingDriver<'_> {
     fn read_done(
         &self,
         buffer: &'static mut [u8],
@@ -310,7 +331,7 @@ impl LogReadClient for LoggingFlashDriver<'_> {
     }
 }
 
-impl LogWriteClient for LoggingFlashDriver<'_> {
+impl LogWriteClient for LoggingDriver<'_> {
     fn append_done(
         &self,
         buffer: &'static mut [u8],
@@ -366,54 +387,165 @@ impl LogWriteClient for LoggingFlashDriver<'_> {
     }
 }
 
-// Provide an interface for userland.
+pub struct LoggingFlashDriver<'a> {
+    driver: LoggingDriver<'a>,
+}
+
+impl<'a> LoggingFlashDriver<'a> {
+    pub fn new(
+        log: &'a dyn LogReadWrite<'a>,
+        driver_num: usize,
+        grant: Grant<
+            App,
+            UpcallCount<{ upcall::COUNT }>,
+            AllowRoCount<{ ro_allow::COUNT }>,
+            AllowRwCount<{ rw_allow::COUNT }>,
+        >,
+        buffer: &'static mut [u8],
+    ) -> Self {
+        Self {
+            driver: LoggingDriver::new(log, driver_num, grant, buffer),
+        }
+    }
+
+    pub fn get_driver_num(&self) -> usize {
+        self.driver.get_driver_num()
+    }
+}
+
 impl SyscallDriver for LoggingFlashDriver<'_> {
     fn command(
         &self,
         command_num: usize,
         arg1: usize,
-        _arg2: usize,
+        arg2: usize,
         processid: ProcessId,
     ) -> CommandReturn {
-        match command_num {
-            0 => CommandReturn::success(),
-
-            logging_cmd::GET_CAP => CommandReturn::success_u32(self.driver.get_size() as u32),
-            logging_cmd::READ => {
-                match self.enqueue_command(LoggingOps::Read, Some(processid), arg1, _arg2) {
-                    Ok(()) => CommandReturn::success(),
-                    Err(e) => CommandReturn::failure(e),
-                }
-            }
-            logging_cmd::APPEND => {
-                match self.enqueue_command(LoggingOps::Append, Some(processid), arg1, _arg2) {
-                    Ok(()) => CommandReturn::success(),
-                    Err(e) => CommandReturn::failure(e),
-                }
-            }
-            logging_cmd::SEEK => {
-                match self.enqueue_command(LoggingOps::Seek, Some(processid), arg1, _arg2) {
-                    Ok(()) => CommandReturn::success(),
-                    Err(e) => CommandReturn::failure(e),
-                }
-            }
-            logging_cmd::SYNC => {
-                match self.enqueue_command(LoggingOps::Sync, Some(processid), arg1, _arg2) {
-                    Ok(()) => CommandReturn::success(),
-                    Err(e) => CommandReturn::failure(e),
-                }
-            }
-            logging_cmd::ERASE => {
-                match self.enqueue_command(LoggingOps::Erase, Some(processid), arg1, _arg2) {
-                    Ok(()) => CommandReturn::success(),
-                    Err(e) => CommandReturn::failure(e),
-                }
-            }
-            _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
-        }
+        let operation = match command_num {
+            0 => return CommandReturn::success(),
+            logging_cmd::GET_CAP => return self.driver.capacity(),
+            logging_cmd::READ => LoggingOps::Read,
+            logging_cmd::APPEND => LoggingOps::Append,
+            logging_cmd::SEEK => LoggingOps::Seek,
+            logging_cmd::SYNC => LoggingOps::Sync,
+            logging_cmd::ERASE => LoggingOps::Erase,
+            _ => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+        self.driver.dispatch(operation, processid, arg1, arg2)
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
-        self.apps.enter(processid, |_, _| {})
+        self.driver.allocate_grant(processid)
+    }
+}
+
+impl LogReadClient for LoggingFlashDriver<'_> {
+    fn read_done(&self, buffer: &'static mut [u8], length: usize, error: Result<(), ErrorCode>) {
+        self.driver.read_done(buffer, length, error);
+    }
+
+    fn seek_done(&self, error: Result<(), ErrorCode>) {
+        self.driver.seek_done(error);
+    }
+}
+
+impl LogWriteClient for LoggingFlashDriver<'_> {
+    fn append_done(
+        &self,
+        buffer: &'static mut [u8],
+        length: usize,
+        records_lost: bool,
+        error: Result<(), ErrorCode>,
+    ) {
+        self.driver.append_done(buffer, length, records_lost, error);
+    }
+
+    fn sync_done(&self, error: Result<(), ErrorCode>) {
+        self.driver.sync_done(error);
+    }
+
+    fn erase_done(&self, error: Result<(), ErrorCode>) {
+        self.driver.erase_done(error);
+    }
+}
+
+pub struct LoggingRamDriver<'a> {
+    driver: LoggingDriver<'a>,
+}
+
+impl<'a> LoggingRamDriver<'a> {
+    pub fn new(
+        log: &'a dyn LogReadWrite<'a>,
+        driver_num: usize,
+        grant: Grant<
+            App,
+            UpcallCount<{ upcall::COUNT }>,
+            AllowRoCount<{ ro_allow::COUNT }>,
+            AllowRwCount<{ rw_allow::COUNT }>,
+        >,
+        buffer: &'static mut [u8],
+    ) -> Self {
+        Self {
+            driver: LoggingDriver::new(log, driver_num, grant, buffer),
+        }
+    }
+
+    pub fn get_driver_num(&self) -> usize {
+        self.driver.get_driver_num()
+    }
+}
+
+impl SyscallDriver for LoggingRamDriver<'_> {
+    fn command(
+        &self,
+        command_num: usize,
+        arg1: usize,
+        arg2: usize,
+        processid: ProcessId,
+    ) -> CommandReturn {
+        let operation = match command_num {
+            0 => return CommandReturn::success(),
+            logging_cmd::GET_CAP => return self.driver.capacity(),
+            logging_cmd::READ => LoggingOps::Read,
+            logging_cmd::APPEND => LoggingOps::Append,
+            logging_cmd::SEEK => LoggingOps::Seek,
+            logging_cmd::ERASE => LoggingOps::Erase,
+            _ => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+        self.driver.dispatch(operation, processid, arg1, arg2)
+    }
+
+    fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
+        self.driver.allocate_grant(processid)
+    }
+}
+
+impl LogReadClient for LoggingRamDriver<'_> {
+    fn read_done(&self, buffer: &'static mut [u8], length: usize, error: Result<(), ErrorCode>) {
+        self.driver.read_done(buffer, length, error);
+    }
+
+    fn seek_done(&self, error: Result<(), ErrorCode>) {
+        self.driver.seek_done(error);
+    }
+}
+
+impl LogWriteClient for LoggingRamDriver<'_> {
+    fn append_done(
+        &self,
+        buffer: &'static mut [u8],
+        length: usize,
+        records_lost: bool,
+        error: Result<(), ErrorCode>,
+    ) {
+        self.driver.append_done(buffer, length, records_lost, error);
+    }
+
+    fn sync_done(&self, error: Result<(), ErrorCode>) {
+        self.driver.sync_done(error);
+    }
+
+    fn erase_done(&self, error: Result<(), ErrorCode>) {
+        self.driver.erase_done(error);
     }
 }

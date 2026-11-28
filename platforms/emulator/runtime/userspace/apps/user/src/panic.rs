@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 //! User-app panic handler: record the panic reason via `defmt` and flush staged
-//! frames to flash (when `userspace-log` is enabled) before terminating.
+//! frames to the selected log (when `userspace-log` is enabled) before terminating.
 
 use caliptra_mcu_libtock_low_level_debug::{AlertCode, LowLevelDebug};
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
@@ -14,7 +14,7 @@ use caliptra_mcu_libtock_runtime::TockSyscalls;
     allow(unused_variables)
 )]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    // Point of no return: record the reason and flush staged frames to flash.
+    // Record the panic reason and flush staged frames to the selected log.
     #[cfg(feature = "userspace-log")]
     {
         defmt::error!("panic: {}", defmt::Display2Format(info));

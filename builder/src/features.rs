@@ -31,13 +31,17 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-log-flash-linear",
     "test-log-flash-usermode",
     "test-logging-driver",
+    "test-log-ram-usermode",
+    "test-log-ram-linear",
     "test-defmt-logging-mailbox",
     "test-defmt-logging-release",
     "test-defmt-logging-vdm",
+    "test-defmt-logging-vdm-ram",
     "test-mctp-ctrl-cmds",
     "test-mctp-linux-i3c",
     "test-mctp-user-loopback",
     "test-mctp-vdm-cmds",
+    "test-mctp-vdm-cmds-ram",
     "test-mctp-vdm-production",
     "test-pldm-discovery",
     "test-pldm-fw-update",
@@ -45,6 +49,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-driver",
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-cmds",
+    "test-mcu-mbox-cmds-ram",
     "test-mbox-sram",
     "test-external-otp",
     "test-dpe-handle-store",
@@ -57,6 +62,8 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
 ];
 
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
+    "test-log-ram-usermode",
+    "test-log-ram-linear",
     "test-i3c-simple",
     "test-i3c-constant-writes",
     "test-caliptra-certs",
@@ -68,11 +75,14 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-firmware-v2",
     "test-mcu-mbox-usermode",
     "test-mcu-mbox-cmds",
+    "test-mcu-mbox-cmds-ram",
     "test-mctp-vdm-cmds",
+    "test-mctp-vdm-cmds-ram",
     "test-mctp-vdm-production",
     "test-mcu-mbox-fips-self-test",
     "test-mcu-mbox-fips-periodic",
     "test-defmt-logging-vdm",
+    "test-defmt-logging-vdm-ram",
     "test-exit-immediately",
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-tcb",
@@ -87,8 +97,11 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
 /// Release-profile runtime test features (emulator).
 /// These are the subset of tests we run against the release (512 KB SRAM)
 /// firmware to verify it boots and keeps release userspace defmt logs working.
-pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] =
-    &["test-flash-based-boot", "test-defmt-logging-release"];
+pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] = &[
+    "test-flash-based-boot",
+    "test-defmt-logging-release",
+    "test-defmt-logging-release-ram",
+];
 
 /// ROM-only test features that need a prebuilt ROM but no custom runtime.
 /// These features exist in both the emulator and FPGA ROM crates; the

@@ -107,7 +107,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     }
 
     async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
-        // Delegate to the production backend so the real Tock logging-flash
+        // Delegate to the production backend so the selected Tock logging
         // path is exercised end-to-end by mailbox command tests.
         CaliptraCmdBackend.get_log(log_type, data).await
     }

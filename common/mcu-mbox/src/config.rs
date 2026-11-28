@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-// Deterministic test fixture for the debug log, host-side seeded into the
-// kernel `logging_flash` partition before the firmware starts. Total payload
+// Deterministic debug-log fixture: host-seeded into Flash before boot or
+// appended through the RAM syscall by test firmware before services start. Total payload
 // is just over the 900-byte MCTP VDM per-call cap (forces multi-call drain)
 // and fits the MCU mailbox 4 KiB budget in a single call.
 pub static TEST_DEBUG_LOG_ENTRIES: &[&[u8]] = &[

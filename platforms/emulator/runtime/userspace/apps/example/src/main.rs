@@ -40,6 +40,8 @@ mod test_caliptra_certs;
 mod test_logging_driver;
 #[cfg(feature = "test-log-flash-usermode")]
 mod test_logging_flash;
+#[cfg(feature = "test-log-ram-usermode")]
+mod test_logging_ram;
 
 #[cfg(any(feature = "test-mci", feature = "test-warm-reset"))]
 mod test_mci;
@@ -240,6 +242,20 @@ pub(crate) async fn async_main<S: Syscalls>() {
         #[cfg(feature = "crash-log")]
         test_logging_flash::test_logging_flash_multiple_instances().await;
         test_logging_flash::test_logging_flash_invalid_inputs().await;
+        System::exit(0);
+    }
+    #[cfg(feature = "test-log-ram-usermode")]
+    {
+        test_logging_ram::test_logging_ram_simple().await;
+        test_logging_ram::test_logging_ram_various_entries().await;
+        test_logging_ram::test_logging_ram_invalid_inputs().await;
+        #[cfg(not(feature = "test-log-ram-linear"))]
+        test_logging_ram::test_logging_ram_circular().await;
+        #[cfg(feature = "test-log-ram-linear")]
+        test_logging_ram::test_logging_ram_linear().await;
+        #[cfg(all(feature = "crash-log", not(feature = "fpga")))]
+        test_logging_ram::test_logging_ram_multiple_instances().await;
+        test_logging_ram::test_logging_ram_and_flash().await;
         System::exit(0);
     }
     #[cfg(feature = "test-mci")]

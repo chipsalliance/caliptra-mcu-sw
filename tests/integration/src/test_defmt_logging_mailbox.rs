@@ -149,7 +149,7 @@ mod test {
         let cmd = req.cmd_code().0;
         let payload = req.as_bytes().expect("as_bytes").to_vec();
 
-        // Retry until the appended frame is drained from flash. Issuing the
+        // Retry until the appended frame is drained from the selected log. Issuing the
         // command steps the emulator, which also lets the drain task run.
         let mut log_bytes: Vec<u8> = Vec::new();
         const HDR_LEN: usize = size_of::<MailboxRespHeaderVarSize>();
