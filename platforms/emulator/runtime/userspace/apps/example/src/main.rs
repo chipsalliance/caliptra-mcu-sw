@@ -36,6 +36,8 @@ mod test_doe_loopback;
 ))]
 mod test_caliptra_certs;
 
+#[cfg(feature = "test-logging-driver")]
+mod test_logging_driver;
 #[cfg(feature = "test-log-flash-usermode")]
 mod test_logging_flash;
 
@@ -96,6 +98,22 @@ async fn start() {
 
 #[allow(unreachable_code)]
 pub(crate) async fn async_main<S: Syscalls>() {
+    #[cfg(feature = "test-logging-driver")]
+    {
+        assert!(
+            AsyncAlarm::<S>::exists().is_ok(),
+            "Logging test requires alarm"
+        );
+        if let Err(error) = test_logging_driver::run().await {
+            writeln!(Console::<S>::writer(), "logging-driver: FAIL: {}", error).unwrap();
+            System::exit(1);
+            return;
+        }
+        writeln!(Console::<S>::writer(), "logging-driver: PASS").unwrap();
+        System::exit(0);
+        return;
+    }
+
     let mut console_writer = Console::<S>::writer();
     writeln!(
         console_writer,

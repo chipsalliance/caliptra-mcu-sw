@@ -1,6 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::interrupts::EmulatorPeripherals;
+#[cfg(feature = "test-logging-driver")]
+use crate::tests::logging_driver_test::{
+    ControlledLog, CONTROL_DRIVER, EXIT_CONTROL_DRIVER, EXIT_LOG_DRIVER, LOG_DRIVER,
+};
 use crate::MCU_MEMORY_MAP;
 #[cfg(any(
     feature = "spdm",
@@ -176,6 +180,11 @@ pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct VeeR {
+    #[cfg(feature = "test-logging-driver")]
+    test_logs:
+        [&'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>; 2],
+    #[cfg(feature = "test-logging-driver")]
+    test_log_controls: [&'static ControlledLog; 2],
     alarm: &'static capsules_core::alarm::AlarmDriver<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -241,6 +250,14 @@ impl SyscallDriverLookup for VeeR {
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
     {
         match driver_num {
+            #[cfg(feature = "test-logging-driver")]
+            LOG_DRIVER => f(Some(self.test_logs[0])),
+            #[cfg(feature = "test-logging-driver")]
+            EXIT_LOG_DRIVER => f(Some(self.test_logs[1])),
+            #[cfg(feature = "test-logging-driver")]
+            CONTROL_DRIVER => f(Some(self.test_log_controls[0])),
+            #[cfg(feature = "test-logging-driver")]
+            EXIT_CONTROL_DRIVER => f(Some(self.test_log_controls[1])),
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(self
                 .console
@@ -921,6 +938,38 @@ pub unsafe fn main() {
         )
         .finalize(memory_flash_partition_component_static!());
 
+    #[cfg(feature = "test-logging-driver")]
+    let (test_logs, test_log_controls) = {
+        use caliptra_mcu_capsules_runtime::logging::driver::{LoggingFlashDriver, BUF_LEN};
+        use kernel::hil::log::{LogRead, LogWrite};
+
+        let log = static_init!(ControlledLog, ControlledLog::new(board_kernel));
+        let exit_log = static_init!(ControlledLog, ControlledLog::new(board_kernel));
+        let driver = static_init!(
+            LoggingFlashDriver<'static>,
+            LoggingFlashDriver::new(
+                log,
+                LOG_DRIVER,
+                board_kernel.create_grant(LOG_DRIVER, &memory_allocation_cap),
+                static_init!([u8; BUF_LEN], [0; BUF_LEN]),
+            )
+        );
+        let exit_driver = static_init!(
+            LoggingFlashDriver<'static>,
+            LoggingFlashDriver::new(
+                exit_log,
+                EXIT_LOG_DRIVER,
+                board_kernel.create_grant(EXIT_LOG_DRIVER, &memory_allocation_cap),
+                static_init!([u8; BUF_LEN], [0; BUF_LEN]),
+            )
+        );
+        log.set_read_client(driver);
+        log.set_append_client(driver);
+        exit_log.set_read_client(exit_driver);
+        exit_log.set_append_client(exit_driver);
+        ([&*driver, &*exit_driver], [&*log, &*exit_log])
+    };
+
     #[cfg(feature = "userspace-log")]
     let mut logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
@@ -1121,6 +1170,10 @@ pub unsafe fn main() {
             mailbox,
             caliptra,
             dma,
+            #[cfg(feature = "test-logging-driver")]
+            test_logs,
+            #[cfg(feature = "test-logging-driver")]
+            test_log_controls,
             #[cfg(feature = "userspace-log")]
             logging_flash,
             mci,
@@ -1156,6 +1209,26 @@ pub unsafe fn main() {
         caliptra_mcu_romtime::println!("[mcu-runtime] Error loading processes!");
         caliptra_mcu_romtime::println!("{:?}", err);
     });
+
+    #[cfg(feature = "test-logging-driver")]
+    {
+        let mut loaded = 0;
+        board_kernel.process_each_capability(&process_mgmt_cap, |process| {
+            loaded += 1;
+            caliptra_mcu_romtime::println!(
+                "[logging-driver] loaded {} state {:?}",
+                process.get_process_name(),
+                process.get_state()
+            );
+        });
+        if loaded != 2 {
+            caliptra_mcu_romtime::println!(
+                "logging-driver: FAIL: expected 2 loaded processes, found {}",
+                loaded
+            );
+            crate::io::exit_emulator(1);
+        }
+    }
 
     // Used by flash driver integration tests.
     {

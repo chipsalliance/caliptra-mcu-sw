@@ -86,6 +86,17 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
+    let manifest = if platform_str == "emulator"
+        && features.is_some_and(|list| list.split(',').any(|f| f == "test-logging-driver"))
+    {
+        manifest.with_file_name(if args.profile == Some("release") {
+            "logging-driver-test.toml"
+        } else {
+            "logging-driver-test-devel.toml"
+        })
+    } else {
+        manifest
+    };
     let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
 
     let common = Common {

@@ -1,0 +1,44 @@
+# Licensed under the Apache-2.0 license
+#
+# Logging syscall regression: coordinator and terminating request owner.
+
+[platform]
+name = "emulator-logging-driver-test"
+tuple = "riscv32imc-unknown-none-elf"
+dynamic_sizing = true
+page_size = 256
+storage_size = 0x1000
+
+[platform.rom]
+offset = 0x8000_0000
+size = 0x1_0000
+
+[platform.runtime_memory]
+sram = { offset = 0x4000_0000, size = 0x10_0000 }
+
+[platform.dccm]
+offset = 0x5000_0000
+size = 0x3C00
+
+[platform.handoff]
+offset = 0x5000_3C00
+size = 1024
+
+[rom]
+name = "mcu-rom-emulator"
+stack = 0x2d00
+exception_stack = 0x200
+
+[kernel]
+name = "mcu-runtime-emulator"
+stack = 0x0_7000
+
+[[app]]
+name = "example-app"
+stack = 0x7600
+grant_space = 0x4000
+
+[[app]]
+name = "user-app"
+stack = 0xae00
+grant_space = 0x1000

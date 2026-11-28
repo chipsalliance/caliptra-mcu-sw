@@ -1636,6 +1636,7 @@ dependencies = [
  "caliptra-mcu-registers-generated",
  "embassy-sync",
  "futures",
+ "smallvec",
  "zerocopy",
 ]
 
